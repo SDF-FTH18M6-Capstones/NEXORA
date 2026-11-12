@@ -1,12 +1,23 @@
-from passlib.context import CryptContext
+from argon2 import PasswordHasher
+from argon2.exceptions import InvalidHashError, VerificationError
 
-# Set up password hashing context using bcrypt
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+ph = PasswordHasher()
 
-def verify_password(plain_password: str, hashed_password: str) -> bool:
-    """Verifies a plain-text password against a stored hash."""
-    return pwd_context.verify(plain_password, hashed_password)
 
-def get_password_hash(password: str) -> str:
-    """Generates a secure bcrypt hash for a plain-text password."""
-    return pwd_context.hash(password)
+def hash_password(password: str) -> str:
+    return ph.hash(password)
+
+
+def verify_password(password: str, hashed: str) -> bool:
+    try:
+        return ph.verify(hashed, password)
+    except (VerificationError, InvalidHashError):
+        return False
+
+
+def validate_password(password: str, email: str) -> str | None:
+    if len(password) < 8:
+        return "Password must be at least 8 characters long."
+    if email and email.lower() in password.lower():
+        return "Password cannot contain your email address."
+    return None
