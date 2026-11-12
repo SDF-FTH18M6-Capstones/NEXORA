@@ -6,11 +6,11 @@ A full-stack web application built with **React**, **Flask** and **PostgreSQL**.
 
 ## Tech stack
 
-| Layer     | Technology                      |
-|-----------|---------------------------------|
-| Frontend  | React 19 + Vite                 |
-| Backend   | Flask (Python), psycopg 3       |
-| Database  | PostgreSQL 18                   |
+| Layer     | Technology                                                                 |
+|-----------|----------------------------------------------------------------------------|
+| Frontend  | React 19 + Vite                                                            |
+| Backend   | Flask (Python), Flask-SQLAlchemy, Flask-Migrate, psycopg 3, pytest, Ruff   |
+| Database  | PostgreSQL 18                                                              |
 
 ## Repository structure
 
@@ -43,6 +43,7 @@ Project documentation lives in [`docs/`](docs/):
 ```bash
 git clone git@github.com:SDF-FTH18M6-Capstones/NEXORA.git
 cd NEXORA
+git checkout -b feature/sam-project-skeleton
 ```
 
 Make sure your Git identity is set:
@@ -64,7 +65,7 @@ psql -U postgres -c "CREATE DATABASE nexora_dev;"
 
 ```bash
 cd backend
-python -m venv venv
+python3 -m venv venv
 source venv/Scripts/activate      # Windows (Git Bash)
 # source venv/bin/activate        # macOS / Linux
 pip install -r requirements.txt
