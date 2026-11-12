@@ -1,5 +1,6 @@
 """NEXORA application factory."""
 from flask import Blueprint, Flask
+from app.models import user, sacco, membership, savings, ledger, audit 
 
 from app.extensions import db, migrate
 from config import Config
