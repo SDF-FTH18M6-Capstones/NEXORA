@@ -3,21 +3,13 @@ from argon2.exceptions import VerifyMismatchError
 
 ph = PasswordHasher()
 
-
 def hash_password(password: str) -> str:
+    """Hash a plain text password using Argon2."""
     return ph.hash(password)
 
-
-def verify_password(password: str, hashed: str) -> bool:
+def verify_password(hashed_password: str, plain_password: str) -> bool:
+    """Verify a plain password against the stored Argon2 hash."""
     try:
-        return ph.verify(hashed, password)
-    except (VerifyMismatchError, Exception):
+        return ph.verify(hashed_password, plain_password)
+    except VerifyMismatchError:
         return False
-
-
-def validate_password(password: str, email: str) -> str | None:
-    if len(password) < 8:
-        return "Password must be at least 8 characters long."
-    if email and email.lower() in password.lower():
-        return "Password cannot contain your email address."
-    return None
