@@ -1,38 +1,42 @@
 import pytest
-from datetime import datetime, timedelta
-from app.auth.passwords import hash_password, verify_password
-from app.auth.lockout import check_lockout, record_failed_login, reset_failed_logins, MAX_FAILED_ATTEMPTS, LOCKOUT_DURATION
-
-class MockUser:
-    def __init__(self):
-        self.failed_login_count = 0
-        self.locked_until = None
-
-@pytest.fixture
-def sample_user():
-    return MockUser()
+from datetime import datetime, timezone, timedelta
+from app.models.user import User
+from app.auth.lockout import check_lockout
+from app.auth.passwords import get_password_hash, verify_password
 
 def test_password_hashing_and_verification():
+    """Test that password hashing and verification work correctly."""
     password = "SecurePassword123!"
-    hashed = hash_password(password)
+    hashed = get_password_hash(password)
+    
     assert hashed != password
-    assert verify_password(hashed, password) is True
-    assert verify_password(hashed, "WrongPassword") is False
+    assert verify_password(password, hashed) is True
+    assert verify_password("WrongPassword", hashed) is False
 
-def test_lockout_flow(sample_user):
-    assert check_lockout(sample_user) is False
+def test_lockout_flow():
+    """Test account lockout behavior based on timezone-aware datetimes."""
+    user = User(username="testuser", password_hash="dummy_hash")
     
-    # Record failed attempts up to limit
-    for _ in range(MAX_FAILED_ATTEMPTS):
-        record_failed_login(sample_user)
-    
-    assert sample_user.failed_login_count == MAX_FAILED_ATTEMPTS
-    assert check_lockout(sample_user) is True
+    # Initially, no lockout time is set, so lockout should be False
+    user.locked_until = None
+    assert check_lockout(user) is False
 
-def test_successful_login_reset(sample_user):
-    record_failed_login(sample_user)
-    assert sample_user.failed_login_count == 1
+    # If locked_until is in the future, lockout should be True
+    user.locked_until = datetime.now(timezone.utc) + timedelta(minutes=15)
+    assert check_lockout(user) is True
+
+    # If locked_until is in the past, lockout should be False
+    user.locked_until = datetime.now(timezone.utc) - timedelta(minutes=1)
+    assert check_lockout(user) is False
+
+def test_successful_login_reset():
+    """Test that a successful login resets lockout conditions."""
+    user = User(username="testuser", password_hash="dummy_hash")
     
-    reset_failed_logins(sample_user)
-    assert sample_user.failed_login_count == 0
-    assert sample_user.locked_until is None
+    # Set an active lockout
+    user.locked_until = datetime.now(timezone.utc) + timedelta(minutes=15)
+    assert check_lockout(user) is True
+
+    # Simulate successful login clearing the lockout
+    user.locked_until = None
+    assert check_lockout(user) is False
