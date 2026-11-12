@@ -55,7 +55,7 @@ The application uses React, Flask and PostgreSQL.
 
 ## 5. Financial Integrity
 
-- Use decimal database types for monetary values.
+- Store money as integer minor units (e.g. cents) in BIGINT columns, never floats. Each SACCO has one currency.
 - Use atomic database transactions for financial operations.
 - Preserve historical financial records.
 - Correct financial mistakes using reversal entries rather than silently editing historical transactions.

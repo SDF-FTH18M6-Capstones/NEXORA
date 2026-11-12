@@ -3,6 +3,7 @@ from pathlib import Path
 import pytest
 from flask_migrate import downgrade, upgrade
 from sqlalchemy import inspect, text
+from sqlalchemy.engine import make_url
 from sqlalchemy.exc import DBAPIError, IntegrityError
 
 from app import create_app
@@ -31,8 +32,8 @@ def _reset_schema():
 def schema_app():
     app = create_app(TestConfig)
     uri = app.config["SQLALCHEMY_DATABASE_URI"]
-    if "test" not in uri:
-        raise RuntimeError(f"Refusing to migrate a non-test database: {uri}")
+    if not (make_url(uri).database or "").endswith("_test"):
+        raise RuntimeError("Refusing to migrate a database whose name does not end in _test")
     with app.app_context():
         _reset_schema()
         upgrade(directory=MIGRATIONS, revision="head")
@@ -77,19 +78,27 @@ def make_savings(s, membership, sacco, balance=0):
     return acc
 
 
+def post(s, acc, type_, amount, **extra):
+    """Post a ledger row as the account's own membership."""
+    fields = {
+        "sacco_id": acc.sacco_id,
+        "savings_account_id": acc.id,
+        "type": type_,
+        "amount": amount,
+        "reference": f"ref-{next(_counter)}",
+        "created_by_membership_id": acc.membership_id,
+    }
+    tx = Transaction(**{**fields, **extra})
+    s.add(tx)
+    s.flush()
+    return tx
+
+
 def make_ledger_row(s, amount=100):
     sacco = make_sacco(s)
     m = make_membership(s, make_user(s), sacco)
     acc = make_savings(s, m, sacco)
-    tx = Transaction(
-        sacco_id=sacco.id,
-        savings_account_id=acc.id,
-        type=TransactionType.DEPOSIT,
-        amount=amount,
-    )
-    s.add(tx)
-    s.flush()
-    return tx
+    return post(s, acc, TransactionType.DEPOSIT, amount)
 
 
 # Constraint tests 
@@ -152,6 +161,148 @@ def test_ledger_row_cannot_be_deleted(session):
             {"id": tx.id},
         )
 
+def test_sacco_names_must_be_unique_ignoring_case_and_spaces(session):
+    session.add(Sacco(name="Unique Test Sacco"))
+    session.flush()
+    session.add(Sacco(name=" UNIQUE test sacco "))
+    with pytest.raises(IntegrityError):
+        session.flush()
+
+
+def test_blank_sacco_name_rejected(session):
+    session.add(Sacco(name="   "))
+    with pytest.raises(IntegrityError):
+        session.flush()
+
+
+def test_membership_can_have_only_one_savings_account(session):
+    sacco = make_sacco(session)
+    membership = make_membership(session, make_user(session), sacco)
+    make_savings(session, membership, sacco)
+    session.add(SavingsAccount(membership_id=membership.id, sacco_id=sacco.id))
+    with pytest.raises(IntegrityError):
+        session.flush()
+
+
+def test_ledger_rows_drive_the_balance(session):
+    tx = make_ledger_row(session, amount=500)
+    acc = session.get(SavingsAccount, tx.savings_account_id)
+    post(session, acc, TransactionType.WITHDRAWAL, 200)
+    session.refresh(acc)
+    assert acc.balance == 300
+
+
+def test_withdrawal_over_balance_rejected(session):
+    tx = make_ledger_row(session, amount=100)
+    acc = session.get(SavingsAccount, tx.savings_account_id)
+    with pytest.raises(IntegrityError):
+        post(session, acc, TransactionType.WITHDRAWAL, 101)
+
+
+def test_balance_cannot_be_edited_directly(session):
+    tx = make_ledger_row(session)
+    with pytest.raises(IntegrityError):
+        session.execute(
+            text("UPDATE savings_accounts SET balance = 1000000 WHERE id = :id"),
+            {"id": tx.savings_account_id},
+        )
+
+
+def test_account_cannot_start_with_a_balance(session):
+    sacco = make_sacco(session)
+    m = make_membership(session, make_user(session), sacco)
+    with pytest.raises(IntegrityError):
+        make_savings(session, m, sacco, balance=500)
+
+
+@pytest.mark.parametrize("table", ["transactions", "audit_logs"])
+def test_append_only_tables_cannot_be_truncated(session, table):
+    with pytest.raises(DBAPIError):
+        session.execute(text(f"TRUNCATE {table} CASCADE"))
+
+
+def test_audit_log_cannot_be_changed(session):
+    for sql in ("UPDATE audit_logs SET action = 'x'", "DELETE FROM audit_logs"):
+        session.execute(text("INSERT INTO audit_logs (action) VALUES ('login')"))
+        with pytest.raises(DBAPIError):
+            session.execute(text(sql))
+        session.rollback()
+
+
+def test_blank_audit_action_rejected(session):
+    with pytest.raises(IntegrityError):
+        session.execute(text("INSERT INTO audit_logs (action) VALUES (' ')"))
+
+
+def test_negative_failed_login_count_rejected(session):
+    with pytest.raises(IntegrityError):
+        session.add(User(email="neg@example.com", password_hash="x", failed_login_count=-1))
+        session.flush()
+
+
+def test_membership_cannot_change_user(session):
+    sacco = make_sacco(session)
+    m = make_membership(session, make_user(session), sacco)
+    other = make_user(session)
+    with pytest.raises(IntegrityError):
+        session.execute(
+            text("UPDATE sacco_memberships SET user_id = :u WHERE id = :id"),
+            {"u": other.id, "id": m.id},
+        )
+
+def test_reference_cannot_be_reused_within_a_sacco(session):
+    tx = make_ledger_row(session)
+    acc = session.get(SavingsAccount, tx.savings_account_id)
+    with pytest.raises(IntegrityError):
+        post(session, acc, TransactionType.DEPOSIT, 5, reference=tx.reference)
+
+
+def test_reversal_must_mirror_the_original_and_works_once(session):
+    tx = make_ledger_row(session, amount=100)
+    acc = session.get(SavingsAccount, tx.savings_account_id)
+    with pytest.raises(IntegrityError):  # same direction
+        post(session, acc, TransactionType.DEPOSIT, 100, reverses_id=tx.id)
+    session.rollback()
+    tx = make_ledger_row(session, amount=100)
+    acc = session.get(SavingsAccount, tx.savings_account_id)
+    post(session, acc, TransactionType.WITHDRAWAL, 100, reverses_id=tx.id)
+    session.refresh(acc)
+    assert acc.balance == 0
+    with pytest.raises(IntegrityError):  # already reversed
+        post(session, acc, TransactionType.WITHDRAWAL, 100, reverses_id=tx.id)
+
+
+def test_reversal_cannot_cross_accounts(session):
+    tx = make_ledger_row(session, amount=100)
+    other = session.get(SavingsAccount, make_ledger_row(session, amount=100).savings_account_id)
+    with pytest.raises(IntegrityError):
+        post(session, other, TransactionType.WITHDRAWAL, 100, reverses_id=tx.id)
+
+
+def test_inactive_membership_cannot_post(session):
+    tx = make_ledger_row(session)
+    acc = session.get(SavingsAccount, tx.savings_account_id)
+    session.execute(text("UPDATE sacco_memberships SET status = 'inactive' WHERE id = :m"), {"m": acc.membership_id})
+    with pytest.raises(IntegrityError):
+        post(session, acc, TransactionType.DEPOSIT, 5)
+
+
+def test_actor_must_belong_to_the_same_sacco(session):
+    tx = make_ledger_row(session)
+    acc = session.get(SavingsAccount, tx.savings_account_id)
+    outsider = make_membership(session, make_user(session), make_sacco(session))
+    with pytest.raises(IntegrityError):
+        post(session, acc, TransactionType.DEPOSIT, 5, created_by_membership_id=outsider.id)
+
+
+def test_sacco_currency_must_be_a_three_letter_code(session):
+    session.add(Sacco(name="Bad Currency Sacco", currency="ks1"))
+    with pytest.raises(IntegrityError):
+        session.flush()
+
+
+def test_new_users_are_not_platform_owners(session):
+    assert make_user(session).is_platform_owner is False
 
 # Migration test: KEEP LAST, it drops and rebuilds the schema
 
@@ -160,3 +311,5 @@ def test_downgrade_removes_all_tables(schema_app):
     tables = set(inspect(db.engine).get_table_names()) - {"alembic_version"}
     assert tables == set()
     upgrade(directory=MIGRATIONS, revision="head")
+
+

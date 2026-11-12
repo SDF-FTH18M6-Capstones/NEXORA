@@ -1,3 +1,4 @@
+import uuid
 import os
 import threading
 from concurrent.futures import ThreadPoolExecutor
@@ -332,7 +333,7 @@ def test_logout_is_idempotent_and_rejects_bad_tokens(client):
 
 
 def join_sacco(status=SaccoStatus.ACTIVE, role=MembershipRole.MEMBER):
-    sacco = Sacco(name="Test Sacco", status=status)
+    sacco = Sacco(name=f"Test Sacco {uuid.uuid4().hex[:8]}", status=status)
     db.session.add(sacco)
     db.session.flush()
     db.session.add(SaccoMembership(user_id=1, sacco_id=sacco.id, role=role))
