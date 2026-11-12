@@ -43,7 +43,6 @@ Project documentation lives in [`docs/`](docs/):
 ```bash
 git clone git@github.com:SDF-FTH18M6-Capstones/NEXORA.git
 cd NEXORA
-git checkout -b feature/sam-project-skeleton
 ```
 
 Make sure your Git identity is set:
