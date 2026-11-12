@@ -22,6 +22,9 @@ def create_app(config_class=Config):
     db.init_app(app)
     migrate.init_app(app, db)
 
+    # Import models so Alembic's autogenerate can see every table.
+    from app.models import audit, ledger, membership, sacco, savings, user  # noqa: F401
+
     for blueprint in BLUEPRINTS:
         app.register_blueprint(blueprint)
 
