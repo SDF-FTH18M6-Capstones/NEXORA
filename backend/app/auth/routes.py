@@ -137,7 +137,7 @@ def login():
     reset_failed_logins(user)
     if message := check_sacco_not_suspended(user):
         db.session.commit()
-        return _error(message, 403)
+        return _error(message, 423)
     refresh_token = create_refresh_token(user.id)
     db.session.commit()
     return _tokens(user.id, refresh_token)
@@ -160,7 +160,7 @@ def refresh():
         # A suspension must also cut off sessions that were already open.
         if message := check_sacco_not_suspended(db.session.get(User, user_id)):
             revoke_refresh_token(new_token)
-            return _error(message, 403)
+            return _error(message, 423)
         return _tokens(user_id, new_token)
 
     return _with_refresh_token(rotate)
