@@ -1,0 +1,426 @@
+from concurrent.futures import ThreadPoolExecutor
+from datetime import UTC, datetime, timedelta
+
+import jwt
+import pytest
+from sqlalchemy import text
+from sqlalchemy.exc import IntegrityError
+
+from app.auth.tokens import decode_access_token
+from app.extensions import db
+from app import create_app
+from app.auth.limits import limiter
+from app.auth.suspension import SUSPENDED_MESSAGE
+from app.models.membership import MembershipRole, SaccoMembership
+from app.models.refresh_token import RefreshToken
+from app.models.sacco import Sacco, SaccoStatus
+from app.models.user import User
+from config import TestConfig
+
+EMAIL = "jane@example.com"
+PASSWORD = "correct-horse-battery"
+WRONG = "wrong-password-123"
+
+
+def _truncate():
+    db.session.remove()
+    db.session.execute(
+        text("TRUNCATE refresh_tokens, users, saccos RESTART IDENTITY CASCADE")
+    )
+    db.session.commit()
+
+
+@pytest.fixture(autouse=True)
+def clean_tables(app):
+    _truncate()
+    yield
+    _truncate()
+
+
+def post(client, path, **body):
+    return client.post(f"/auth/{path}", json=body)
+
+
+def register(client, email=EMAIL, password=PASSWORD):
+    return post(client, "register", email=email, password=password)
+
+
+def login(client, email=EMAIL, password=PASSWORD):
+    return post(client, "login", email=email, password=password)
+
+
+def logged_in(client):
+    register(client)
+    return login(client).get_json()
+
+
+def refresh(client, token):
+    return post(client, "refresh", refresh_token=token)
+
+
+def parallel(app, n, fn):
+    with ThreadPoolExecutor(n) as pool:
+        return list(pool.map(lambda _: fn(app.test_client()), range(n)))
+
+
+def forge(app, **claims):
+    now = datetime.now(UTC)
+    base = {"sub": "1", "type": "refresh", "jti": "a" * 32, "iat": now}
+    base |= {"exp": now + timedelta(days=1)} | claims
+    return jwt.encode(base, app.config["SECRET_KEY"], algorithm="HS256")
+
+
+# ---------- register ----------
+
+
+def test_register_creates_user_and_hashes_password(client):
+    resp = register(client, email="Jane@Example.com")
+    assert resp.status_code == 201
+    assert resp.get_json() == {"id": 1, "email": EMAIL}
+    assert db.session.query(User).one().password_hash != PASSWORD
+
+
+def test_register_rejects_duplicates_in_any_case(client):
+    assert register(client).status_code == 201
+    assert register(client, email="JANE@example.COM").status_code == 409
+
+
+def test_database_refuses_emails_that_differ_only_by_case(client):
+    db.session.add(User(email="A@x.com", password_hash="h"))
+    db.session.commit()
+    db.session.add(User(email="a@x.com", password_hash="h"))
+    with pytest.raises(IntegrityError):
+        db.session.commit()
+    db.session.rollback()
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {},
+        {"email": "not-an-email", "password": PASSWORD},
+        {"email": EMAIL},
+        {"email": EMAIL, "password": "short"},
+        {"email": EMAIL, "password": 12345678},
+        {"email": EMAIL, "password": "x" * 129},
+        {"email": "pass@example.com", "password": "pass@example.com"},
+        {"email": ["a@b.com"], "password": PASSWORD},
+        {"email": "a\x00b@example.com", "password": PASSWORD},
+        {"email": "a\ud800b@example.com", "password": PASSWORD},
+        {"email": EMAIL, "password": "\ud800abcdefgh"},
+        {"email": EMAIL, "password": "abc\x00defgh"},
+    ],
+)
+def test_register_rejects_bad_input_with_400(client, payload):
+    assert client.post("/auth/register", json=payload).status_code == 400
+
+
+def test_non_json_body_is_400(client):
+    resp = client.post("/auth/register", data="nope", content_type="text/plain")
+    assert resp.status_code == 400
+
+
+def test_oversized_body_is_413(client):
+    assert login(client, password="x" * 20_000).status_code == 413
+
+
+# ---------- login ----------
+
+
+def test_login_returns_15_minute_access_and_stored_refresh_token(client):
+    register(client)
+    body = login(client).get_json()
+    claims = decode_access_token(body["access_token"])
+    assert claims["sub"] == "1"
+    assert claims["exp"] - claims["iat"] == 15 * 60
+    assert db.session.query(RefreshToken).count() == 1
+
+
+def test_wrong_and_unknown_logins_are_identical_401s(client):
+    register(client)
+    wrong, unknown = login(client, password=WRONG), login(client, email="no@x.com")
+    assert wrong.status_code == unknown.status_code == 401
+    assert (
+        wrong.get_json()
+        == unknown.get_json()
+        == {"error": "Invalid email or password."}
+    )
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {},
+        {"email": EMAIL},
+        {"email": EMAIL, "password": 5},
+        {"email": 5, "password": "x"},
+        {"email": "a\ud800@x.com", "password": PASSWORD},
+        {"email": EMAIL, "password": "\ud800abcdefgh"},
+        {"email": "a\x00@x.com", "password": PASSWORD},
+    ],
+)
+def test_login_malformed_body_is_401_not_500(client, payload):
+    register(client)
+    assert client.post("/auth/login", json=payload).status_code == 401
+
+
+def test_five_failures_lock_and_then_refuse_the_right_password(client):
+    register(client)
+    assert [login(client, password=WRONG).status_code for _ in range(5)] == [401] * 5
+    assert login(client).status_code == 423
+    assert db.session.query(User).one().failed_login_count == 5
+
+
+def test_parallel_guesses_are_turned_away_not_counted_past_the_limit(app, client):
+    register(client)
+    codes = [
+        r.status_code for r in parallel(app, 12, lambda c: login(c, password=WRONG))
+    ]
+    assert set(codes) <= {401, 429} and codes.count(401) <= 5
+    while login(client, password=WRONG).status_code == 401:
+        pass
+    assert login(client).status_code == 423
+
+
+def test_login_with_unicode_email_whose_case_mapping_differs_between_engines(client):
+    email = "\ua7ce@example.com"
+    assert register(client, email=email).status_code == 201
+    assert login(client, email=email).status_code == 200
+
+
+def test_auth_responses_are_not_cacheable(client):
+    assert login(client).headers["Cache-Control"] == "no-store"
+
+
+def test_lock_expiry_allows_login_and_clears_counters(client):
+    register(client)
+    for _ in range(5):
+        login(client, password=WRONG)
+    user = db.session.query(User).one()
+    user.locked_until = datetime.now(UTC) - timedelta(seconds=1)
+    db.session.commit()
+    assert login(client).status_code == 200
+    db.session.expire_all()
+    user = db.session.query(User).one()
+    assert (user.failed_login_count, user.locked_until) == (0, None)
+
+
+# ---------- refresh ----------
+
+
+def test_refresh_rotates_and_the_old_token_dies_immediately(client):
+    first = logged_in(client)
+    second = refresh(client, first["refresh_token"])
+    assert second.status_code == 200
+    decode_access_token(second.get_json()["access_token"])
+    assert refresh(client, first["refresh_token"]).status_code == 401
+
+
+def test_quick_replay_is_refused_but_leaves_other_sessions_alone(client):
+    register(client)
+    a, b = login(client).get_json(), login(client).get_json()
+    assert refresh(client, a["refresh_token"]).status_code == 200
+    assert refresh(client, a["refresh_token"]).status_code == 401
+    assert refresh(client, b["refresh_token"]).status_code == 200
+
+
+def test_replaying_an_old_spent_token_revokes_the_whole_chain(client):
+    first = logged_in(client)
+    second = refresh(client, first["refresh_token"]).get_json()
+    db.session.query(RefreshToken).filter(RefreshToken.revoked_at.isnot(None)).update(
+        {"revoked_at": datetime.now(UTC) - timedelta(minutes=1)}
+    )
+    db.session.commit()
+    assert refresh(client, first["refresh_token"]).status_code == 401
+    assert refresh(client, second["refresh_token"]).status_code == 401
+
+
+def test_parallel_refresh_with_one_token_keeps_the_winner_alive(app, client):
+    token = logged_in(client)["refresh_token"]
+    results = parallel(app, 2, lambda c: refresh(c, token))
+    assert sorted(r.status_code for r in results) == [200, 401]
+    winner = next(r for r in results if r.status_code == 200).get_json()
+    assert refresh(client, winner["refresh_token"]).status_code == 200
+
+
+def test_refresh_requires_a_refresh_token(client):
+    tokens = logged_in(client)
+    assert refresh(client, tokens["access_token"]).status_code == 401
+    assert refresh(client, "garbage").status_code == 401
+    assert refresh(client, "").status_code == 400
+    assert post(client, "refresh").status_code == 400
+
+
+def test_refresh_rejects_forged_expired_and_unknown_tokens(app, client):
+    logged_in(client)
+    wrong_key = jwt.encode(
+        {"sub": "1", "type": "refresh", "jti": "x", "iat": 1, "exp": 4_000_000_000},
+        "another-secret-another-secret-0123",
+        algorithm="HS256",
+    )
+    bad = [
+        forge(app, exp=datetime.now(UTC) - timedelta(seconds=5)),
+        wrong_key,
+        forge(app),  # valid signature, jti not in the database
+        forge(app, sub="abc"),
+        forge(app, sub="99999999999999999999"),
+        forge(app, sub="-1"),
+        forge(app, sub="+1"),
+        forge(app, sub=" 1"),
+        forge(app, sub="\u0661"),
+        forge(app, jti="a\x00" * 16),
+        forge(app, jti="not-hex"),
+        forge(app, type="access"),
+    ]
+    assert {refresh(client, t).status_code for t in bad} == {401}
+    assert {
+        refresh(client, jwt.encode({}, key=None, algorithm="none")).status_code
+    } == {401}
+
+
+def test_unknown_jti_does_not_revoke_the_users_real_tokens(app, client):
+    tokens = logged_in(client)
+    refresh(client, forge(app))
+    assert refresh(client, tokens["refresh_token"]).status_code == 200
+
+
+def test_expired_database_row_is_rejected(client):
+    tokens = logged_in(client)
+    db.session.query(RefreshToken).update(
+        {"expires_at": datetime.now(UTC) - timedelta(seconds=1)}
+    )
+    db.session.commit()
+    assert refresh(client, tokens["refresh_token"]).status_code == 401
+
+
+def test_deleted_users_tokens_stop_working(client):
+    tokens = logged_in(client)
+    db.session.query(User).delete()
+    db.session.commit()
+    assert refresh(client, tokens["refresh_token"]).status_code == 401
+
+
+# ---------- logout ----------
+
+
+def test_logout_invalidates_only_the_sent_refresh_token(client):
+    register(client)
+    a, b = login(client).get_json(), login(client).get_json()
+    assert post(client, "logout", refresh_token=a["refresh_token"]).status_code == 200
+    assert refresh(client, a["refresh_token"]).status_code == 401
+    assert refresh(client, b["refresh_token"]).status_code == 200
+
+
+def test_logout_is_idempotent_and_rejects_bad_tokens(client):
+    tokens = logged_in(client)
+    for _ in range(2):
+        assert (
+            post(client, "logout", refresh_token=tokens["refresh_token"]).status_code
+            == 200
+        )
+    assert post(client, "logout", refresh_token="garbage").status_code == 401
+    assert (
+        post(client, "logout", refresh_token=tokens["access_token"]).status_code == 401
+    )
+    assert post(client, "logout").status_code == 400
+
+
+# ---------- suspended SACCO ----------
+
+
+def join_sacco(status=SaccoStatus.ACTIVE, role=MembershipRole.MEMBER):
+    sacco = Sacco(name="Test Sacco", status=status)
+    db.session.add(sacco)
+    db.session.flush()
+    db.session.add(SaccoMembership(user_id=1, sacco_id=sacco.id, role=role))
+    db.session.commit()
+    return sacco
+
+
+def test_member_of_active_sacco_can_log_in(client):
+    register(client)
+    join_sacco()
+    assert login(client).status_code == 200
+
+
+@pytest.mark.parametrize("role", [MembershipRole.MEMBER, MembershipRole.STAFF])
+def test_suspended_sacco_blocks_login_and_issues_no_token(client, role):
+    register(client)
+    join_sacco(SaccoStatus.SUSPENDED, role)
+    resp = login(client)
+    assert resp.status_code == 403
+    assert resp.get_json() == {"error": SUSPENDED_MESSAGE}
+    assert db.session.query(RefreshToken).count() == 0
+
+
+def test_suspension_is_not_revealed_to_a_wrong_password(client):
+    register(client)
+    join_sacco(SaccoStatus.SUSPENDED)
+    assert login(client, password=WRONG).get_json() == {
+        "error": "Invalid email or password."
+    }
+
+
+def test_suspending_a_sacco_cuts_off_sessions_already_open(client):
+    tokens = logged_in(client)
+    join_sacco(SaccoStatus.SUSPENDED)
+    assert refresh(client, tokens["refresh_token"]).status_code == 403
+    assert db.session.query(RefreshToken).filter_by(revoked_at=None).count() == 0
+
+
+# ---------- rate limiting ----------
+
+
+@pytest.fixture
+def limited_client(app):
+    """A client for an app with Neo's real limits on (the shared app has them off)."""
+
+    class Limited(TestConfig):
+        RATELIMIT_ENABLED = True
+
+    limited = create_app(Limited)
+    limiter.reset()
+    yield limited.test_client()
+    limiter.reset()
+    limiter.enabled = False
+
+
+@pytest.mark.parametrize("path", ["login", "register"])
+def test_sixth_request_in_a_minute_is_429(limited_client, path):
+    codes = [
+        post(limited_client, path, email=EMAIL, password=WRONG).status_code
+        for _ in range(6)
+    ]
+    assert codes[-1] == 429 and 429 not in codes[:-1]
+    assert post(limited_client, path, email=EMAIL, password=WRONG).get_json()["message"]
+
+
+def test_rate_limit_does_not_touch_refresh(limited_client):
+    register(limited_client)
+    tokens = login(limited_client).get_json()
+    for _ in range(8):
+        tokens = refresh(limited_client, tokens["refresh_token"]).get_json()
+    assert "access_token" in tokens
+
+
+def test_rate_limit_uses_the_client_address_forwarded_by_a_trusted_proxy(app):
+    class Behind(TestConfig):
+        RATELIMIT_ENABLED = True
+        TRUSTED_PROXIES = 1
+
+    client = create_app(Behind).test_client()
+    limiter.reset()
+    try:
+
+        def attempt(ip):
+            body = {"email": EMAIL, "password": WRONG}
+            return client.post(
+                "/auth/login", json=body, headers={"X-Forwarded-For": ip}
+            ).status_code
+
+        codes = [attempt("1.1.1.1") for _ in range(6)]
+        assert codes[-1] == 429 and 429 not in codes[:-1]
+        assert attempt("2.2.2.2") != 429  # a different client has its own allowance
+    finally:
+        limiter.reset()
+        limiter.enabled = False

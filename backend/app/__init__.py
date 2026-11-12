@@ -1,6 +1,8 @@
 """NEXORA application factory."""
 from flask import Blueprint, Flask
+from werkzeug.middleware.proxy_fix import ProxyFix
 
+from app.auth.limits import init_limiter
 from app.extensions import db, migrate
 from config import Config
 
@@ -17,12 +19,19 @@ def create_app(config_class=Config):
     app = Flask(__name__)
     app.config.from_object(config_class)
     _check_required_settings(app)
+    if app.config["TRUSTED_PROXIES"]:
+        app.wsgi_app = ProxyFix(app.wsgi_app, x_for=app.config["TRUSTED_PROXIES"])
 
     db.init_app(app)
     migrate.init_app(app, db)
 
     # Import models so Alembic's autogenerate can see every table.
-    from app.models import audit, ledger, membership, sacco, savings, user  # noqa: F401
+    from app.models import audit, ledger, membership, refresh_token, sacco, savings, user  # noqa: F401
+
+    # Importing the routes attaches them to auth_bp.
+    from app.auth import routes  # noqa: F401
+
+    init_limiter(app)
 
     for blueprint in BLUEPRINTS:
         app.register_blueprint(blueprint)
