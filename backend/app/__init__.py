@@ -19,8 +19,11 @@ def create_app(config_class=Config):
     app = Flask(__name__)
     app.config.from_object(config_class)
     _check_required_settings(app)
-    if app.config["TRUSTED_PROXIES"]:
-        app.wsgi_app = ProxyFix(app.wsgi_app, x_for=app.config["TRUSTED_PROXIES"])
+    proxies = str(app.config["TRUSTED_PROXIES"])
+    if not proxies.isdecimal():
+        raise RuntimeError("TRUSTED_PROXIES must be 0 or a positive whole number.")
+    if int(proxies):
+        app.wsgi_app = ProxyFix(app.wsgi_app, x_for=int(proxies))
 
     db.init_app(app)
     migrate.init_app(app, db)

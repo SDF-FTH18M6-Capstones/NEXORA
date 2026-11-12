@@ -1,8 +1,11 @@
+import os
+import threading
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime, timedelta
 
 import jwt
 import pytest
+import redis
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 
@@ -343,14 +346,21 @@ def test_member_of_active_sacco_can_log_in(client):
     assert login(client).status_code == 200
 
 
-@pytest.mark.parametrize("role", [MembershipRole.MEMBER, MembershipRole.STAFF])
+@pytest.mark.parametrize("role", list(MembershipRole))
 def test_suspended_sacco_blocks_login_and_issues_no_token(client, role):
     register(client)
     join_sacco(SaccoStatus.SUSPENDED, role)
     resp = login(client)
-    assert resp.status_code == 403
+    assert resp.status_code == 423
     assert resp.get_json() == {"error": SUSPENDED_MESSAGE}
     assert db.session.query(RefreshToken).count() == 0
+
+
+def test_one_suspended_sacco_blocks_a_user_who_also_belongs_to_an_active_one(client):
+    register(client)
+    join_sacco(SaccoStatus.ACTIVE)
+    join_sacco(SaccoStatus.SUSPENDED)
+    assert login(client).status_code == 423
 
 
 def test_suspension_is_not_revealed_to_a_wrong_password(client):
@@ -364,7 +374,7 @@ def test_suspension_is_not_revealed_to_a_wrong_password(client):
 def test_suspending_a_sacco_cuts_off_sessions_already_open(client):
     tokens = logged_in(client)
     join_sacco(SaccoStatus.SUSPENDED)
-    assert refresh(client, tokens["refresh_token"]).status_code == 403
+    assert refresh(client, tokens["refresh_token"]).status_code == 423
     assert db.session.query(RefreshToken).filter_by(revoked_at=None).count() == 0
 
 
@@ -392,7 +402,7 @@ def test_sixth_request_in_a_minute_is_429(limited_client, path):
         for _ in range(6)
     ]
     assert codes[-1] == 429 and 429 not in codes[:-1]
-    assert post(limited_client, path, email=EMAIL, password=WRONG).get_json()["message"]
+    assert post(limited_client, path, email=EMAIL, password=WRONG).get_json()["error"]
 
 
 def test_rate_limit_does_not_touch_refresh(limited_client):
@@ -424,3 +434,103 @@ def test_rate_limit_uses_the_client_address_forwarded_by_a_trusted_proxy(app):
     finally:
         limiter.reset()
         limiter.enabled = False
+
+
+# ---------- rate-limit storage ----------
+
+
+def _clear_limiter_keys(url):
+    store = redis.Redis.from_url(url)
+    for key in store.scan_iter("LIMITS:*"):
+        store.delete(key)
+
+
+@pytest.fixture
+def redis_server():
+    """Redis for the storage tests.
+
+    Uses the server at TEST_REDIS_URL when set (point it at a throwaway Redis),
+    otherwise an in-process server that speaks the Redis protocol.
+    """
+    if url := os.environ.get("TEST_REDIS_URL"):
+        _clear_limiter_keys(url)
+        yield url
+        _clear_limiter_keys(url)
+        return
+    fakeredis = pytest.importorskip("fakeredis")
+    server = fakeredis.TcpFakeServer(("127.0.0.1", 0), server_type="redis")
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    yield f"redis://127.0.0.1:{server.server_address[1]}/0"
+    server.shutdown()
+    server.server_close()
+
+
+def limited_client_with(storage_uri):
+    class Config(TestConfig):
+        RATELIMIT_ENABLED = True
+        RATELIMIT_STORAGE_URI = storage_uri
+
+    return create_app(Config).test_client()
+
+
+def test_rate_limit_counters_live_in_redis(app, redis_server):
+    client = limited_client_with(redis_server)
+    try:
+        for _ in range(3):
+            post(client, "login", email=EMAIL, password=WRONG)
+        store = redis.Redis.from_url(redis_server)
+        (key,) = store.keys("LIMITS:*")
+        assert int(store.get(key)) == 3
+        codes = [
+            post(client, "login", email=EMAIL, password=WRONG).status_code
+            for _ in range(3)
+        ]
+        assert codes == [401, 401, 429]
+    finally:
+        limiter.enabled = False
+
+
+def test_logins_keep_working_and_stay_limited_when_redis_is_down(app):
+    client = limited_client_with("redis://127.0.0.1:1/0")
+    try:
+        codes = [
+            post(client, "login", email=EMAIL, password=WRONG).status_code
+            for _ in range(6)
+        ]
+        assert 500 not in codes and codes[-1] == 429
+    finally:
+        limiter.enabled = False
+
+
+def test_unreachable_redis_is_reported_at_startup_without_leaking_the_password(caplog):
+    try:
+        limited_client_with("redis://:s3cretpw@127.0.0.1:1/0")
+    finally:
+        limiter.enabled = False
+    assert "127.0.0.1" in caplog.text and "unreachable" in caplog.text
+    assert "s3cretpw" not in caplog.text
+
+
+def test_reachable_redis_logs_no_warning(redis_server, caplog):
+    try:
+        limited_client_with(redis_server)
+    finally:
+        limiter.enabled = False
+    assert "unreachable" not in caplog.text
+
+
+@pytest.mark.parametrize("value", ["abc", "-1", "1.5", "1 2"])
+def test_invalid_trusted_proxies_stops_startup_with_a_clear_message(value):
+    class Bad(TestConfig):
+        TRUSTED_PROXIES = value
+
+    with pytest.raises(RuntimeError, match="TRUSTED_PROXIES must be 0 or a positive"):
+        create_app(Bad)
+
+
+@pytest.mark.parametrize("value", ["0", "1", "2", 1])
+def test_valid_trusted_proxies_values_start_fine(value):
+    class Good(TestConfig):
+        TRUSTED_PROXIES = value
+
+    assert create_app(Good)

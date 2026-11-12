@@ -11,7 +11,11 @@ class Config:
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     # Reverse proxies in front of the app (0 = none). Per-IP rate limits need the
     # real client address, so set this to the proxy count when deployed behind one.
-    TRUSTED_PROXIES = int(os.environ.get("TRUSTED_PROXIES", "0"))
+    TRUSTED_PROXIES = os.environ.get("TRUSTED_PROXIES", "").strip() or "0"
+    # Rate-limit counters. Use redis://host:6379/0 in production so every worker
+    # shares them; memory:// is per-process and only fine for local development.
+    RATELIMIT_STORAGE_URI = os.environ.get("RATELIMIT_STORAGE_URI", "memory://")
+    RATELIMIT_IN_MEMORY_FALLBACK_ENABLED = True  # a Redis outage must not stop logins
     MAX_CONTENT_LENGTH = 16 * 1024  # auth bodies are tiny; reject anything bigger
 
     # Auth values from the Day 4 plan. Refresh lifetime is a placeholder until Move 3.
