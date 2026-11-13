@@ -70,7 +70,7 @@ Records financial activities.
 - Foreign keys must enforce valid relationships.
 - Email addresses must be unique where required.
 - Membership numbers must be unique within their SACCO.
-- Monetary amounts must use DECIMAL or NUMERIC, not FLOAT.
+- Monetary amounts are integer minor units in BIGINT columns, not FLOAT. Each SACCO has one currency.
 - Financial transactions must not silently overwrite historical records.
 - Financial operations must use database transactions.
 
