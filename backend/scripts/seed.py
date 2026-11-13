@@ -6,6 +6,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from app import create_app
 from app.extensions import db
 from werkzeug.security import generate_password_hash
+from datetime import datetime
 
 def seed_data():
     app = create_app()
@@ -14,14 +15,20 @@ def seed_data():
 
         res_a = db.session.execute(db.text("SELECT id FROM saccos WHERE name = :name"), {"name": "Alpha SACCO"}).fetchone()
         if not res_a:
-            db.session.execute(db.text("INSERT INTO saccos (name) VALUES (:name)"), {"name": "Alpha SACCO"})
+            db.session.execute(
+                db.text("INSERT INTO saccos (name, created_at) VALUES (:name, :created_at)"),
+                {"name": "Alpha SACCO", "created_at": datetime.utcnow()}
+            )
             db.session.commit()
             res_a = db.session.execute(db.text("SELECT id FROM saccos WHERE name = :name"), {"name": "Alpha SACCO"}).fetchone()
         sacco1_id = res_a[0]
 
         res_b = db.session.execute(db.text("SELECT id FROM saccos WHERE name = :name"), {"name": "Beta SACCO"}).fetchone()
         if not res_b:
-            db.session.execute(db.text("INSERT INTO saccos (name) VALUES (:name)"), {"name": "Beta SACCO"})
+            db.session.execute(
+                db.text("INSERT INTO saccos (name, created_at) VALUES (:name, :created_at)"),
+                {"name": "Beta SACCO", "created_at": datetime.utcnow()}
+            )
             db.session.commit()
             res_b = db.session.execute(db.text("SELECT id FROM saccos WHERE name = :name"), {"name": "Beta SACCO"}).fetchone()
         sacco2_id = res_b[0]
