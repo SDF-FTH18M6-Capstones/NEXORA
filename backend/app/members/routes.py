@@ -10,32 +10,34 @@ from sqlalchemy.exc import IntegrityError
 
 from app import members_bp, saccos_bp
 from app.auth.routes import _body, _error
-from app.auth.tokens import TokenError, decode_access_token
+from app.auth.suspension import check_sacco_not_suspended
 from app.extensions import db
 from app.members import self_service
 from app.members.schemas import InvalidMember, parse_create_member, parse_update_member
 from app.models.audit import AuditLog
 from app.models.membership import MembershipRole, SaccoMembership
 from app.models.user import User
-from app.security.tenant import sacco_scoped
+from app.security.tenant import AccessDenied, current_user, sacco_scoped
 
 
 def _me_error(message: str, status: int):
     return jsonify({"error": message}), status
 
 
-def _me_user_id() -> int | None:
-    """The user id in the Bearer access token, or None.
+def _me_user() -> tuple[User | None, tuple | None]:
+    """The signed-in caller for /me, or (None, error response).
 
-    Swap this for the tenant guard from Day 4 once it is on development.
+    401 for no or a bad token. 423 when the caller's SACCO is suspended, so a token
+    issued before the suspension stops working (same rule as login and refresh).
+    The platform owner is never blocked: check_sacco_not_suspended lets them through.
     """
-    scheme, _, token = request.headers.get("Authorization", "").partition(" ")
-    if scheme.lower() != "bearer" or not token:
-        return None
     try:
-        return int(decode_access_token(token)["sub"])
-    except TokenError:
-        return None
+        user = current_user()
+    except AccessDenied as exc:
+        return None, _me_error(exc.message, exc.status)
+    if message := check_sacco_not_suspended(user):
+        return None, _me_error(message, 423)
+    return user, None
 
 
 @members_bp.after_request
@@ -46,25 +48,25 @@ def _me_no_store(response):
 
 @members_bp.get("/me")
 def get_me():
-    user_id = _me_user_id()
-    if user_id is None:
-        return _me_error("Authentication required.", 401)
+    user, error = _me_user()
+    if error:
+        return error
     try:
-        return jsonify(self_service.get_profile(user_id))
+        return jsonify(self_service.get_profile(user.id))
     except self_service.ProfileError as exc:
         return _me_error(exc.message, exc.status)
 
 
 @members_bp.patch("/me")
 def patch_me():
-    user_id = _me_user_id()
-    if user_id is None:
-        return _me_error("Authentication required.", 401)
+    user, error = _me_user()
+    if error:
+        return error
     body = request.get_json(silent=True)
     if not isinstance(body, dict):
         return _me_error("A JSON object is required.", 400)
     try:
-        return jsonify(self_service.update_profile(user_id, body))
+        return jsonify(self_service.update_profile(user.id, body))
     except self_service.ProfileError as exc:
         return _me_error(exc.message, exc.status)
 
