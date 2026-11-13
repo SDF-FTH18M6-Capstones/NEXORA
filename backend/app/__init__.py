@@ -3,6 +3,8 @@ import os
 
 import psycopg
 from flask import Blueprint, Flask, jsonify
+from sqlalchemy.engine import make_url
+from sqlalchemy.exc import ArgumentError
 from werkzeug.middleware.proxy_fix import ProxyFix
 
 from app.auth.limits import init_limiter
@@ -62,14 +64,18 @@ def _register_health(app):
             return jsonify({"status": "error", "database": "not_configured"}), 503
 
         try:
-            with psycopg.connect(database_url) as connection:
+            # libpq does not understand SQLAlchemy's driver suffix, and .env.example
+            # tells everyone to use postgresql+psycopg://. Strip it before connecting.
+            dsn = make_url(database_url).set(drivername="postgresql")
+            dsn_text = dsn.render_as_string(hide_password=False)
+            with psycopg.connect(dsn_text) as connection:
                 with connection.cursor() as cursor:
                     cursor.execute("SELECT 1")
                     cursor.fetchone()
 
             return jsonify({"status": "healthy", "database": "connected"}), 200
 
-        except psycopg.Error:
+        except (psycopg.Error, ArgumentError):
             return jsonify({"status": "error", "database": "disconnected"}), 503
 
 
