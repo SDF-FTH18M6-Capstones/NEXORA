@@ -38,7 +38,7 @@ def create_app(config_class=Config):
     # Importing the routes attaches them to auth_bp.
     from app.auth import routes  # noqa: F401
     from app.members import routes as members_routes  # noqa: F401
-    # from app.savings import routes as savings_routes  # noqa: F401
+    from app.savings import routes as savings_routes  # noqa: F401
 
     init_limiter(app)
 
