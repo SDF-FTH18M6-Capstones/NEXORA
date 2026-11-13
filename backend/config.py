@@ -16,6 +16,8 @@ class Config:
     # shares them; memory:// is per-process and only fine for local development.
     RATELIMIT_STORAGE_URI = os.environ.get("RATELIMIT_STORAGE_URI", "memory://")
     RATELIMIT_IN_MEMORY_FALLBACK_ENABLED = True  # a Redis outage must not stop logins
+    # Fail fast when Redis is unreachable instead of waiting on the OS connect timeout.
+    RATELIMIT_STORAGE_OPTIONS = {"socket_connect_timeout": 1, "socket_timeout": 1}
     MAX_CONTENT_LENGTH = 16 * 1024  # auth bodies are tiny; reject anything bigger
 
     # Auth values from the Day 4 plan. Refresh lifetime is a placeholder until Move 3.
@@ -34,3 +36,7 @@ class TestConfig(Config):
     RATELIMIT_ENABLED = False  # tests make many logins from one address
     SECRET_KEY = "test-only-not-a-real-secret-0123456789"
     SQLALCHEMY_DATABASE_URI = os.environ.get("TEST_DATABASE_URL", "")
+    # A test that waits on a database lock for more than 15s fails with an error
+    # instead of hanging forever (e.g. a stale connection left on the test database).
+    SQLALCHEMY_ENGINE_OPTIONS = {"connect_args": {"options": "-c lock_timeout=15000"}}
+

@@ -54,13 +54,19 @@ git config user.email "you@example.com"
 
 ### 2. Database
 
-Create the development database (Name: nexora_dev):
+Create the development and test databases (all three are needed to run the tests):
 
 ```bash
 psql -U postgres -c "CREATE DATABASE nexora_dev;"
+psql -U postgres -c "CREATE DATABASE nexora_test;"
+psql -U postgres -c "CREATE DATABASE nexora_schema_test;"
 ```
 
+If your app uses a non-superuser role, add `OWNER <that_role>` to each statement.
+
 ### 3. Backend
+
+Requires **Python 3.12 or newer** (check with `python --version`).
 
 ```bash
 cd backend
@@ -71,11 +77,11 @@ pip install -r requirements.txt
 cp .env.example .env
 ```
 
-Edit `backend/.env` and replace `YOUR_PASSWORD` with your local PostgreSQL password:
+Edit `backend/.env`: set `SECRET_KEY`, and replace `YOUR_PASSWORD` in `DATABASE_URL` and `TEST_DATABASE_URL` with your local PostgreSQL password. Keep the `postgresql+psycopg://` prefix (plain `postgresql://` makes SQLAlchemy look for the wrong driver, psycopg2).
 
 ```
-DATABASE_URL=postgresql://postgres:YOUR_PASSWORD@localhost:5432/nexora_dev
-FLASK_DEBUG=1
+DATABASE_URL=postgresql+psycopg://postgres:YOUR_PASSWORD@localhost:5432/nexora_dev
+TEST_DATABASE_URL=postgresql+psycopg://postgres:YOUR_PASSWORD@localhost:5432/nexora_test
 ```
 
 Run the API:
@@ -85,6 +91,19 @@ python app.py
 ```
 
 The API runs on <http://localhost:5000>.
+
+### Running the tests
+
+From the repo root, with the virtualenv active:
+
+```bash
+pytest              # everyday tests (nexora_test)
+pytest -m schema    # migration tests (nexora_schema_test, slower)
+```
+
+The schema tests drop and rebuild their whole database, so they use their own
+`<TEST_DATABASE_URL name minus _test>_schema_test` database (`nexora_schema_test`).
+Create it once as shown in step 2.
 
 ### 4. Frontend
 
@@ -114,7 +133,11 @@ Secrets are **never committed**. Only `.env.example` files are tracked; each dev
 
 | Variable       | Where    | Description                          |
 |----------------|----------|--------------------------------------|
+| `SECRET_KEY`   | backend  | Flask / token signing secret         |
 | `DATABASE_URL` | backend  | PostgreSQL connection string         |
+| `TEST_DATABASE_URL` | backend | Test database; name must end in `_test` |
+| `TRUSTED_PROXIES` | backend | Number of reverse proxies in front (0 = none) |
+| `RATELIMIT_STORAGE_URI` | backend | `memory://` locally, `redis://...` in production |
 | `FLASK_DEBUG`  | backend  | `1` enables Flask debug mode         |
 
 If your database password contains special characters (`@`, `#`, `/`, `:`), URL-encode them (for example `@` becomes `%40`).
@@ -134,6 +157,10 @@ If your database password contains special characters (`@`, `#`, `/`, `:`), URL-
 | `psql: command not found` | Add `C:\Program Files\PostgreSQL\18\bin` to your PATH, then reopen the terminal |
 | `password authentication failed` | The password in `.env` doesn't match your PostgreSQL `postgres` user password |
 | Health check returns `disconnected` | Confirm PostgreSQL is running and `nexora_dev` exists |
+| Tests hang, or fail with `canceling statement due to lock timeout` | Another connection has an open transaction on the test database (a killed earlier run, DBeaver, pgAdmin, `psql`). Find it: `SELECT pid, state, left(query,60) FROM pg_stat_activity WHERE datname='nexora_test';` then `SELECT pg_terminate_backend(<pid>);` for any `idle in transaction` row |
+| `ImportError: cannot import name 'UTC'` | Python is older than 3.11. Install Python 3.12+ and recreate the virtualenv |
+| `No module named 'psycopg2'` | `DATABASE_URL` / `TEST_DATABASE_URL` must start with `postgresql+psycopg://` |
+| `Could not create database 'nexora_schema_test'` | Create it once: `psql -U postgres -c "CREATE DATABASE nexora_schema_test OWNER <your_role>;"` |
 | `npm error Missing script: "lint"` | You're in the wrong folder. Run it from `frontend/` |
 
 ## Status
