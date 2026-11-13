@@ -1,5 +1,8 @@
 """NEXORA application factory."""
-from flask import Blueprint, Flask
+import os
+
+import psycopg
+from flask import Blueprint, Flask, jsonify
 from werkzeug.middleware.proxy_fix import ProxyFix
 
 from app.auth.limits import init_limiter
@@ -39,7 +42,29 @@ def create_app(config_class=Config):
     for blueprint in BLUEPRINTS:
         app.register_blueprint(blueprint)
 
+    _register_health(app)
+
     return app
+
+
+def _register_health(app):
+    @app.get("/api/health")
+    def health():
+        database_url = os.getenv("DATABASE_URL")
+
+        if not database_url:
+            return jsonify({"status": "error", "database": "not_configured"}), 503
+
+        try:
+            with psycopg.connect(database_url) as connection:
+                with connection.cursor() as cursor:
+                    cursor.execute("SELECT 1")
+                    cursor.fetchone()
+
+            return jsonify({"status": "healthy", "database": "connected"}), 200
+
+        except psycopg.Error:
+            return jsonify({"status": "error", "database": "disconnected"}), 503
 
 
 def _check_required_settings(app):
