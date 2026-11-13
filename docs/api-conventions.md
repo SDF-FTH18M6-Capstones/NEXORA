@@ -16,9 +16,13 @@ All developers must follow the agreed API conventions.
 
 ## 3. Endpoint Naming
 
-Proposed endpoint structure:
+Endpoint structure (agreed by the team, Move 1):
 
     /api/v1/resource
+
+Every resource route is served under `/api/v1`. The prefix is set in one
+place, `API_PREFIX` in `backend/app/__init__.py`. The health check stays
+unversioned at `GET /api/health`.
 
 Examples:
 
@@ -136,7 +140,6 @@ for each endpoint when introduced.
 
 ## 13. Decisions Requiring Team Approval
 
-- Whether API versioning will use /api/v1.
 - Final authentication mechanism.
 - Final response envelope.
 - Pagination defaults and maximum page size.
