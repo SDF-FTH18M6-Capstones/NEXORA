@@ -2,7 +2,8 @@
 
 Only the platform owner and that SACCO's administrator may manage members.
 Another SACCO's records are never returned: an administrator of the wrong SACCO
-gets 403 for the SACCO itself, and a membership id from another SACCO gets 404.
+gets the same 404 as a missing SACCO, and so does a membership id from another
+SACCO. Only the platform owner creates or changes administrator memberships.
 """
 
 from dataclasses import dataclass
@@ -12,8 +13,9 @@ from sqlalchemy import select, text
 
 from app.auth.tokens import create_access_token
 from app.extensions import db
+from app.models.audit import AuditLog
 from app.models.membership import MembershipRole, MembershipStatus, SaccoMembership
-from app.models.sacco import Sacco
+from app.models.sacco import Sacco, SaccoStatus
 from app.models.user import User
 
 PASSWORD_HASH = "not-a-real-hash"  # these tests mint tokens; they never log in
@@ -152,10 +154,10 @@ def test_a_member_cannot_manage_members(client, world):
     )
 
 
-def test_an_administrator_of_another_sacco_is_refused(client, world):
+def test_an_administrator_of_another_sacco_gets_404(client, world):
     headers = auth(world.other_admin)
     resp = client.get(collection(world.sacco), headers=headers)
-    assert resp.status_code == 403
+    assert resp.status_code == 404
     assert "member@example.com" not in resp.get_data(as_text=True)
 
 
@@ -302,7 +304,7 @@ def test_an_admin_cannot_add_to_another_sacco(client, world):
         headers=auth(world.admin),
         json={"email": "new@example.com"},
     )
-    assert resp.status_code == 403
+    assert resp.status_code == 404
 
 
 @pytest.mark.parametrize(
@@ -391,3 +393,124 @@ def test_a_bad_update_body_is_400(client, world, payload):
         json=payload,
     )
     assert resp.status_code == 400
+
+
+# ---------- administrators, audit, suspension, id range ----------
+
+
+def admin_membership(world):
+    return db.session.execute(
+        select(SaccoMembership).where(SaccoMembership.user_id == world.admin.id)
+    ).scalar_one()
+
+
+def test_an_admin_cannot_change_another_administrator(client, world):
+    second = make_user("second-admin@example.com")
+    target = make_membership(second, world.sacco, MembershipRole.SACCO_ADMIN)
+    resp = client.patch(
+        item(world.sacco, target),
+        headers=auth(world.admin),
+        json={"status": "inactive"},
+    )
+    assert resp.status_code == 403
+    db.session.expire_all()
+    assert db.session.get(SaccoMembership, target.id).status is MembershipStatus.ACTIVE
+
+
+def test_an_admin_cannot_change_their_own_membership(client, world):
+    own = admin_membership(world)
+    resp = client.patch(
+        item(world.sacco, own), headers=auth(world.admin), json={"role": "member"}
+    )
+    assert resp.status_code == 403
+    db.session.expire_all()
+    assert db.session.get(SaccoMembership, own.id).role is MembershipRole.SACCO_ADMIN
+
+
+def test_the_platform_owner_can_demote_an_administrator(client, world):
+    resp = client.patch(
+        item(world.sacco, admin_membership(world)),
+        headers=auth(world.owner),
+        json={"role": "member"},
+    )
+    assert resp.status_code == 200
+    assert resp.get_json()["role"] == "member"
+
+
+def test_the_platform_owner_looks_like_an_unknown_email(client, world):
+    resp = client.post(
+        collection(world.sacco),
+        headers=auth(world.admin),
+        json={"email": "owner@example.com"},
+    )
+    unknown = client.post(
+        collection(world.sacco),
+        headers=auth(world.admin),
+        json={"email": "nobody@example.com"},
+    )
+    assert resp.status_code == unknown.status_code == 404
+    assert resp.get_json() == unknown.get_json()
+
+
+def audit_rows():
+    db.session.expire_all()
+    return db.session.execute(select(AuditLog).order_by(AuditLog.id)).scalars().all()
+
+
+def test_add_and_update_are_audited_with_the_actor(client, world):
+    added = client.post(
+        collection(world.sacco),
+        headers=auth(world.admin),
+        json={"email": "new@example.com"},
+    ).get_json()
+    client.patch(
+        f"{collection(world.sacco)}/{added['id']}",
+        headers=auth(world.admin),
+        json={"status": "inactive"},
+    )
+    rows = audit_rows()
+    assert [(r.action, r.actor_id, r.sacco_id) for r in rows] == [
+        ("member.add", world.admin.id, world.sacco.id),
+        ("member.update", world.admin.id, world.sacco.id),
+    ]
+    assert rows[0].target == f"membership:{added['id']} member/active"
+    assert rows[1].target == f"membership:{added['id']} member/active -> member/inactive"
+
+
+def test_an_update_that_changes_nothing_writes_no_audit_row(client, world):
+    resp = client.patch(
+        item(world.sacco, world.member_membership),
+        headers=auth(world.admin),
+        json={"role": "member", "status": "active"},
+    )
+    assert resp.status_code == 200
+    assert audit_rows() == []
+
+
+def test_a_refused_add_writes_no_audit_row(client, world):
+    client.post(
+        collection(world.sacco),
+        headers=auth(world.admin),
+        json={"email": "member@example.com"},
+    )
+    assert audit_rows() == []
+
+
+def test_a_suspended_saccos_admin_is_423(client, world):
+    world.sacco.status = SaccoStatus.SUSPENDED
+    db.session.commit()
+    admin, url = auth(world.admin), collection(world.sacco)
+    assert client.get(url, headers=admin).status_code == 423
+    resp = client.post(url, headers=admin, json={"email": "new@example.com"})
+    assert resp.status_code == 423
+    assert client.get(url, headers=auth(world.owner)).status_code == 200
+
+
+@pytest.mark.parametrize("bad_id", [0, 2**31, 10**40, "9" * 5000, "01", "%D9%A1"])
+def test_membership_ids_outside_the_database_range_are_a_404(client, world, bad_id):
+    url = f"{collection(world.sacco)}/{bad_id}"
+    for method in ("get", "patch"):
+        resp = getattr(client, method)(
+            url, headers=auth(world.admin), json={"role": "member"}
+        )
+        assert resp.status_code == 404

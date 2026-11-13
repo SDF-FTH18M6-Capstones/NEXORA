@@ -1,8 +1,10 @@
 import pytest
-from sqlalchemy import text
+from sqlalchemy import select, text
 
 from app.auth.passwords import hash_password
 from app.extensions import db
+from app.models.audit import AuditLog
+from app.models.membership import MembershipRole, SaccoMembership
 from app.models.user import User
 
 OWNER = "owner@example.com"
@@ -187,3 +189,71 @@ def test_deactivating_one_sacco_leaves_others_active(client, owner):
     client.post(f"{URL}/{first}/deactivate", headers=owner)
     listed = client.get(URL, headers=owner).get_json()["saccos"]
     assert [s["status"] for s in listed] == ["suspended", "active"]
+
+
+# ---------- audit, owner lockout, id range, JSON errors ----------
+
+
+def audit_actions():
+    db.session.expire_all()
+    rows = db.session.execute(select(AuditLog).order_by(AuditLog.id)).scalars()
+    return [(r.action, r.sacco_id) for r in rows]
+
+
+def test_create_and_status_changes_are_audited_once_each(client, owner):
+    sacco_id = create_sacco(client, owner)
+    client.post(f"{URL}/{sacco_id}/deactivate", headers=owner)
+    client.post(f"{URL}/{sacco_id}/deactivate", headers=owner)  # no change, no row
+    client.post(f"{URL}/{sacco_id}/activate", headers=owner)
+    assert audit_actions() == [
+        ("sacco.create", sacco_id),
+        ("sacco.deactivate", sacco_id),
+        ("sacco.activate", sacco_id),
+    ]
+
+
+def test_a_refused_create_writes_no_audit_row(client, owner):
+    create_sacco(client, owner, "Umoja SACCO")
+    resp = client.post(URL, headers=owner, json={"name": "umoja sacco"})
+    assert resp.status_code == 409
+    assert audit_actions() == [("sacco.create", 1)]
+
+
+@pytest.mark.parametrize("name", ["​", "Foo​", "tab\there"])
+def test_create_refuses_hidden_characters_like_rename_does(client, owner, name):
+    assert client.post(URL, headers=owner, json={"name": name}).status_code == 400
+
+
+def test_the_owner_can_always_log_in_even_with_a_membership_in_a_suspended_sacco(
+    client, owner
+):
+    sacco_id = create_sacco(client, owner)
+    owner_id = db.session.execute(
+        select(User.id).where(User.email == OWNER)
+    ).scalar_one()
+    db.session.add(
+        SaccoMembership(user_id=owner_id, sacco_id=sacco_id, role=MembershipRole.MEMBER)
+    )
+    db.session.commit()
+    client.post(f"{URL}/{sacco_id}/deactivate", headers=owner)
+    assert "access_token" in login_body(client, OWNER)
+    resp = client.post(f"{URL}/{sacco_id}/activate", headers=bearer(client))
+    assert resp.status_code == 200
+
+
+@pytest.mark.parametrize("bad_id", [0, 2**31, 10**40, "9" * 5000, "01", "%EF%BC%91"])
+@pytest.mark.parametrize("action", ["activate", "deactivate"])
+def test_out_of_range_status_change_is_a_json_404(client, owner, action, bad_id):
+    assert create_sacco(client, owner) == 1  # so "01" would hit a real row
+    resp = client.post(f"{URL}/{bad_id}/{action}", headers=owner)
+    assert resp.status_code == 404
+    assert resp.get_json() == {"error": "Not found."}
+
+
+def test_unknown_routes_and_wrong_methods_answer_in_json(client):
+    resp = client.get("/api/v1/nope")
+    assert (resp.status_code, resp.get_json()) == (404, {"error": "Not found."})
+    resp = client.delete(URL)
+    assert resp.status_code == 405
+    assert resp.get_json() == {"error": "Method Not Allowed."}
+    assert "GET" in resp.headers["Allow"]

@@ -4,8 +4,8 @@ Expected statuses come from docs/roles-permissions.md: the platform owner
 manages SACCOs, a SACCO administrator is confined to their own SACCO, a member
 has no management endpoints, and an anonymous caller gets 401.
 
-Collins's GET and PATCH /api/v1/saccos/<id> are not on development yet, so the
-two endpoints missing from this matrix are his.
+Another SACCO's administrator gets 404, the same answer as a missing SACCO, so
+the existence of a record is never revealed.
 """
 
 from dataclasses import dataclass
@@ -41,21 +41,29 @@ MATRIX = [
         "anonymous": 401, "member": 403, "sacco_admin": 403,
         "other_admin": 403, "platform_owner": 200,
     }),
+    ("get", "/api/v1/saccos/{sacco}", None, {
+        "anonymous": 401, "member": 403, "sacco_admin": 200,
+        "other_admin": 404, "platform_owner": 200,
+    }),
+    ("patch", "/api/v1/saccos/{sacco}", {"name": "Renamed SACCO"}, {
+        "anonymous": 401, "member": 403, "sacco_admin": 200,
+        "other_admin": 404, "platform_owner": 200,
+    }),
     ("get", "/api/v1/saccos/{sacco}/members", None, {
         "anonymous": 401, "member": 403, "sacco_admin": 200,
-        "other_admin": 403, "platform_owner": 200,
+        "other_admin": 404, "platform_owner": 200,
     }),
     ("post", "/api/v1/saccos/{sacco}/members", {"email": "new@example.com"}, {
         "anonymous": 401, "member": 403, "sacco_admin": 201,
-        "other_admin": 403, "platform_owner": 201,
+        "other_admin": 404, "platform_owner": 201,
     }),
     ("get", "/api/v1/saccos/{sacco}/members/{membership}", None, {
         "anonymous": 401, "member": 403, "sacco_admin": 200,
-        "other_admin": 403, "platform_owner": 200,
+        "other_admin": 404, "platform_owner": 200,
     }),
     ("patch", "/api/v1/saccos/{sacco}/members/{membership}", {"role": "staff"}, {
         "anonymous": 401, "member": 403, "sacco_admin": 200,
-        "other_admin": 403, "platform_owner": 200,
+        "other_admin": 404, "platform_owner": 200,
     }),
 ]
 
@@ -160,23 +168,18 @@ def test_the_other_saccos_administrator_cannot_reach_members_or_a_membership(
 ):
     headers = world.headers["other_admin"]
     resp = client.get(f"/api/v1/saccos/{world.sacco.id}/members", headers=headers)
-    assert resp.status_code == 403
+    assert resp.status_code == 404
     assert "member@example.com" not in resp.get_data(as_text=True)
 
     resp = client.get(
         f"/api/v1/saccos/{world.sacco.id}/members/{world.member_membership.id}",
         headers=headers,
     )
-    assert resp.status_code == 403
-
-
-def test_a_membership_id_from_another_sacco_is_404(client, world):
-    resp = client.get(
-        f"/api/v1/saccos/{world.sacco.id}/members/{world.other_membership.id}",
-        headers=world.headers["sacco_admin"],
-    )
     assert resp.status_code == 404
-    assert "other-admin@example.com" not in resp.get_data(as_text=True)
+    # Same answer and body as a SACCO that does not exist.
+    assert resp.get_json() == client.get(
+        "/api/v1/saccos/999999/members", headers=headers
+    ).get_json()
 
 
 def test_a_listing_never_contains_another_saccos_members(client, world):

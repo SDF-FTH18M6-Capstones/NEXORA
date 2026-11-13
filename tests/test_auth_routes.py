@@ -15,7 +15,7 @@ from app.extensions import db
 from app import create_app
 from app.auth.limits import limiter
 from app.auth.suspension import SUSPENDED_MESSAGE
-from app.models.membership import MembershipRole, SaccoMembership
+from app.models.membership import MembershipRole, MembershipStatus, SaccoMembership
 from app.models.refresh_token import RefreshToken
 from app.models.sacco import Sacco, SaccoStatus
 from app.models.user import User
@@ -363,9 +363,23 @@ def test_suspended_sacco_blocks_login_and_issues_no_token(client, role):
     assert db.session.query(RefreshToken).count() == 0
 
 
-def test_one_suspended_sacco_blocks_a_user_who_also_belongs_to_an_active_one(client):
+def test_a_user_with_an_active_sacco_still_logs_in_when_another_is_suspended(client):
+    # Otherwise any admin could lock a user out everywhere by adding them to a
+    # SACCO that later gets suspended. The suspended SACCO itself still answers
+    # 423 through the tenant guard.
     register(client)
     join_sacco(SaccoStatus.ACTIVE)
+    join_sacco(SaccoStatus.SUSPENDED)
+    assert login(client).status_code == 200
+
+
+def test_an_inactive_membership_does_not_keep_a_suspended_user_logged_in(client):
+    register(client)
+    active = join_sacco(SaccoStatus.ACTIVE)
+    db.session.query(SaccoMembership).filter_by(sacco_id=active.id).update(
+        {"status": MembershipStatus.INACTIVE}
+    )
+    db.session.commit()
     join_sacco(SaccoStatus.SUSPENDED)
     assert login(client).status_code == 423
 
