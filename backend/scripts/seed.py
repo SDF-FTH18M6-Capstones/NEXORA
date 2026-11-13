@@ -14,14 +14,14 @@ def seed_data():
     with app.app_context():
         print("Starting database seeding...")
 
-        sacco1 = Sacco.query.filter_by(code="SACCO-A").first()
+        sacco1 = Sacco.query.filter_by(name="Alpha SACCO").first()
         if not sacco1:
-            sacco1 = Sacco(name="Alpha SACCO", code="SACCO-A", is_active=True)
+            sacco1 = Sacco(name="Alpha SACCO", is_active=True)
             db.session.add(sacco1)
 
-        sacco2 = Sacco.query.filter_by(code="SACCO-B").first()
+        sacco2 = Sacco.query.filter_by(name="Beta SACCO").first()
         if not sacco2:
-            sacco2 = Sacco(name="Beta SACCO", code="SACCO-B", is_active=True)
+            sacco2 = Sacco(name="Beta SACCO", is_active=True)
             db.session.add(sacco2)
         
         db.session.commit()
