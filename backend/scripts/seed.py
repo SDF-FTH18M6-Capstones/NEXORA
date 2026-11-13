@@ -12,7 +12,6 @@ def seed_data():
     with app.app_context():
         print("Starting database seeding...")
 
-        # 1. Ensure SACCOs exist (using raw SQL against existing columns only)
         res_a = db.session.execute(db.text("SELECT id FROM saccos WHERE name = :name"), {"name": "Alpha SACCO"}).fetchone()
         if not res_a:
             db.session.execute(db.text("INSERT INTO saccos (name) VALUES (:name)"), {"name": "Alpha SACCO"})
@@ -27,7 +26,6 @@ def seed_data():
             res_b = db.session.execute(db.text("SELECT id FROM saccos WHERE name = :name"), {"name": "Beta SACCO"}).fetchone()
         sacco2_id = res_b[0]
 
-        # 2. Helper to insert users safely depending on schema column names
         def upsert_user(email, password, role, sacco_id=None):
             user_res = db.session.execute(db.text("SELECT id FROM users WHERE email = :email"), {"email": email}).fetchone()
             if not user_res:
