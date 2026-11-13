@@ -455,6 +455,12 @@ def redis_server():
     otherwise an in-process server that speaks the Redis protocol.
     """
     if url := os.environ.get("TEST_REDIS_URL"):
+        try:
+            redis.Redis.from_url(url).ping()
+        except redis.exceptions.ConnectionError:
+            if os.environ.get("CI"):
+                raise
+            pytest.skip(f"TEST_REDIS_URL={url} is unreachable")
         _clear_limiter_keys(url)
         yield url
         _clear_limiter_keys(url)
