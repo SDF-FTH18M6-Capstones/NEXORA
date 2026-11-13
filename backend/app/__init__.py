@@ -9,6 +9,8 @@ from app.auth.limits import init_limiter
 from app.extensions import db, migrate
 from config import Config
 
+API_PREFIX = "/api/v1"  # the one place the version prefix is set
+
 # Empty blueprints for Move 1. Routes are added in Moves 3 to 5.
 auth_bp = Blueprint("auth", __name__, url_prefix="/auth")
 saccos_bp = Blueprint("saccos", __name__, url_prefix="/saccos")
@@ -43,7 +45,7 @@ def create_app(config_class=Config):
     init_limiter(app)
 
     for blueprint in BLUEPRINTS:
-        app.register_blueprint(blueprint)
+        app.register_blueprint(blueprint, url_prefix=f"{API_PREFIX}{blueprint.url_prefix}")
 
     _register_health(app)
 
