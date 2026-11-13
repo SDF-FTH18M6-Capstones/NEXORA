@@ -12,69 +12,42 @@ def seed_data():
     with app.app_context():
         print("Starting database seeding...")
 
-        # 1. SACCOs using raw SQL (inserting only existing columns: name)
-        result_a = db.session.execute(db.text("SELECT id FROM saccos WHERE name = :name"), {"name": "Alpha SACCO"}).fetchone()
-        if not result_a:
+        # 1. Ensure SACCOs exist (using raw SQL against existing columns only)
+        res_a = db.session.execute(db.text("SELECT id FROM saccos WHERE name = :name"), {"name": "Alpha SACCO"}).fetchone()
+        if not res_a:
             db.session.execute(db.text("INSERT INTO saccos (name) VALUES (:name)"), {"name": "Alpha SACCO"})
             db.session.commit()
-            result_a = db.session.execute(db.text("SELECT id FROM saccos WHERE name = :name"), {"name": "Alpha SACCO"}).fetchone()
-        sacco1_id = result_a[0]
+            res_a = db.session.execute(db.text("SELECT id FROM saccos WHERE name = :name"), {"name": "Alpha SACCO"}).fetchone()
+        sacco1_id = res_a[0]
 
-        result_b = db.session.execute(db.text("SELECT id FROM saccos WHERE name = :name"), {"name": "Beta SACCO"}).fetchone()
-        if not result_b:
+        res_b = db.session.execute(db.text("SELECT id FROM saccos WHERE name = :name"), {"name": "Beta SACCO"}).fetchone()
+        if not res_b:
             db.session.execute(db.text("INSERT INTO saccos (name) VALUES (:name)"), {"name": "Beta SACCO"})
             db.session.commit()
-            result_b = db.session.execute(db.text("SELECT id FROM saccos WHERE name = :name"), {"name": "Beta SACCO"}).fetchone()
-        sacco2_id = result_b[0]
+            res_b = db.session.execute(db.text("SELECT id FROM saccos WHERE name = :name"), {"name": "Beta SACCO"}).fetchone()
+        sacco2_id = res_b[0]
 
-        # 2. Users using raw SQL
-        owner_res = db.session.execute(db.text("SELECT id FROM users WHERE email = :email"), {"email": "owner@nexora.com"}).fetchone()
-        if not owner_res:
-            hashed_pw = generate_password_hash("SecureOwner123!")
-            try:
-                db.session.execute(
-                    db.text("INSERT INTO users (email, password_hash, role) VALUES (:email, :pw, :role)"),
-                    {"email": "owner@nexora.com", "pw": hashed_pw, "role": "platform_owner"}
-                )
-            except Exception:
-                db.session.rollback()
-                db.session.execute(
-                    db.text("INSERT INTO users (email, password, role) VALUES (:email, :pw, :role)"),
-                    {"email": "owner@nexora.com", "pw": hashed_pw, "role": "platform_owner"}
-                )
-            db.session.commit()
+        # 2. Helper to insert users safely depending on schema column names
+        def upsert_user(email, password, role, sacco_id=None):
+            user_res = db.session.execute(db.text("SELECT id FROM users WHERE email = :email"), {"email": email}).fetchone()
+            if not user_res:
+                hashed_pw = generate_password_hash(password)
+                try:
+                    db.session.execute(
+                        db.text("INSERT INTO users (email, password_hash, role, sacco_id) VALUES (:email, :pw, :role, :sacco_id)"),
+                        {"email": email, "pw": hashed_pw, "role": role, "sacco_id": sacco_id}
+                    )
+                except Exception:
+                    db.session.rollback()
+                    db.session.execute(
+                        db.text("INSERT INTO users (email, password, role, sacco_id) VALUES (:email, :pw, :role, :sacco_id)"),
+                        {"email": email, "pw": hashed_pw, "role": role, "sacco_id": sacco_id}
+                    )
+                db.session.commit()
 
-        admin_res = db.session.execute(db.text("SELECT id FROM users WHERE email = :email"), {"email": "admin@alpha.com"}).fetchone()
-        if not admin_res:
-            hashed_pw = generate_password_hash("AdminAlpha123!")
-            try:
-                db.session.execute(
-                    db.text("INSERT INTO users (email, password_hash, role, sacco_id) VALUES (:email, :pw, :role, :sacco_id)"),
-                    {"email": "admin@alpha.com", "pw": hashed_pw, "role": "sacco_admin", "sacco_id": sacco1_id}
-                )
-            except Exception:
-                db.session.rollback()
-                db.session.execute(
-                    db.text("INSERT INTO users (email, password, role, sacco_id) VALUES (:email, :pw, :role, :sacco_id)"),
-                    {"email": "admin@alpha.com", "pw": hashed_pw, "role": "sacco_admin", "sacco_id": sacco1_id}
-                )
-            db.session.commit()
-
-        member_res = db.session.execute(db.text("SELECT id FROM users WHERE email = :email"), {"email": "member@alpha.com"}).fetchone()
-        if not member_res:
-            hashed_pw = generate_password_hash("MemberAlpha123!")
-            try:
-                db.session.execute(
-                    db.text("INSERT INTO users (email, password_hash, role, sacco_id) VALUES (:email, :pw, :role, :sacco_id)"),
-                    {"email": "member@alpha.com", "pw": hashed_pw, "role": "member", "sacco_id": sacco1_id}
-                )
-            except Exception:
-                db.session.rollback()
-                db.session.execute(
-                    db.text("INSERT INTO users (email, password, role, sacco_id) VALUES (:email, :pw, :role, :sacco_id)"),
-                    {"email": "member@alpha.com", "pw": hashed_pw, "role": "member", "sacco_id": sacco1_id}
-                )
-            db.session.commit()
+        upsert_user("owner@nexora.com", "SecureOwner123!", "platform_owner", None)
+        upsert_user("admin@alpha.com", "AdminAlpha123!", "sacco_admin", sacco1_id)
+        upsert_user("member@alpha.com", "MemberAlpha123!", "member", sacco1_id)
 
         print("Database seeding completed successfully.")
 
