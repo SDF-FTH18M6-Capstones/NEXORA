@@ -180,11 +180,16 @@ def test_parallel_guesses_are_turned_away_not_counted_past_the_limit(app, client
     codes = [
         r.status_code for r in parallel(app, 12, lambda c: login(c, password=WRONG))
     ]
-    assert set(codes) <= {401, 429} and codes.count(401) <= 5
+    # How many requests overlap depends on the machine: overlapping ones get 429,
+    # and once five failures are counted the rest get 423. Either way, no more
+    # than five failures may ever be counted.
+    assert set(codes) <= {401, 423, 429} and codes.count(401) <= 5
     for _ in range(10):  # bounded: never spin forever if the lockout fails to engage
         if login(client, password=WRONG).status_code != 401:
             break
     assert login(client).status_code == 423
+    db.session.expire_all()
+    assert db.session.query(User).one().failed_login_count == 5
 
 
 def test_login_with_unicode_email_whose_case_mapping_differs_between_engines(client):
