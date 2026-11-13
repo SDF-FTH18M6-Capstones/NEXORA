@@ -42,7 +42,7 @@ def clean_tables(app):
 
 
 def post(client, path, **body):
-    return client.post(f"/auth/{path}", json=body)
+    return client.post(f"/api/v1/auth/{path}", json=body)
 
 
 def register(client, email=EMAIL, password=PASSWORD):
@@ -116,11 +116,11 @@ def test_database_refuses_emails_that_differ_only_by_case(client):
     ],
 )
 def test_register_rejects_bad_input_with_400(client, payload):
-    assert client.post("/auth/register", json=payload).status_code == 400
+    assert client.post("/api/v1/auth/register", json=payload).status_code == 400
 
 
 def test_non_json_body_is_400(client):
-    resp = client.post("/auth/register", data="nope", content_type="text/plain")
+    resp = client.post("/api/v1/auth/register", data="nope", content_type="text/plain")
     assert resp.status_code == 400
 
 
@@ -165,7 +165,7 @@ def test_wrong_and_unknown_logins_are_identical_401s(client):
 )
 def test_login_malformed_body_is_401_not_500(client, payload):
     register(client)
-    assert client.post("/auth/login", json=payload).status_code == 401
+    assert client.post("/api/v1/auth/login", json=payload).status_code == 401
 
 
 def test_five_failures_lock_and_then_refuse_the_right_password(client):
@@ -427,7 +427,7 @@ def test_rate_limit_uses_the_client_address_forwarded_by_a_trusted_proxy(app):
         def attempt(ip):
             body = {"email": EMAIL, "password": WRONG}
             return client.post(
-                "/auth/login", json=body, headers={"X-Forwarded-For": ip}
+                "/api/v1/auth/login", json=body, headers={"X-Forwarded-For": ip}
             ).status_code
 
         codes = [attempt("1.1.1.1") for _ in range(6)]
@@ -467,6 +467,8 @@ def redis_server():
         return
     fakeredis = pytest.importorskip("fakeredis")
     server = fakeredis.TcpFakeServer(("127.0.0.1", 0), server_type="redis")
+    server.block_on_close = False
+    server.daemon_threads = True
     threading.Thread(target=server.serve_forever, daemon=True).start()
     yield f"redis://127.0.0.1:{server.server_address[1]}/0"
     server.shutdown()
