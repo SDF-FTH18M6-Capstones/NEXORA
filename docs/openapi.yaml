@@ -1,0 +1,72 @@
+openapi: 3.0.3
+info:
+  title: Nexora API
+  version: 1.0.0
+  description: Backend API for multi-tenant SACCO management.
+paths:
+  /api/v1/saccos:
+    post:
+      summary: Create a new SACCO (Platform Owner only)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                code:
+                  type: string
+      responses:
+        '201':
+          description: SACCO created successfully.
+        '400':
+          description: Validation error.
+        '409':
+          description: Conflict, SACCO name or code already exists.
+  /api/v1/savings/deposit:
+    post:
+      summary: Deposit funds into a member savings account
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                member_id:
+                  type: integer
+                amount:
+                  type: integer
+                  description: Minor units (e.g., cents)
+      responses:
+        '200':
+          description: Deposit successful.
+        '400':
+          description: Invalid amount or validation error.
+  /api/v1/savings/withdraw:
+    post:
+      summary: Withdraw funds with row-level locking
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                member_id:
+                  type: integer
+                amount:
+                  type: integer
+      responses:
+        '200':
+          description: Withdrawal successful.
+        '400':
+          description: Insufficient funds or invalid amount.
+  /api/v1/savings/history:
+    get:
+      summary: Get paginated transaction history for the authenticated member
+      responses:
+        '200':
+          description: Transaction history retrieved.
