@@ -14,17 +14,22 @@ def seed_data():
     with app.app_context():
         print("Starting database seeding...")
 
-        sacco1 = Sacco.query.filter_by(name="Alpha SACCO").first()
-        if not sacco1:
-            sacco1 = Sacco(name="Alpha SACCO", is_active=True)
-            db.session.add(sacco1)
+        # Use raw SQL or inspect to avoid querying non-existent columns, 
+        # or safely check via connection execution if needed.
+        # Let's check Sacco existence via raw execute to bypass model attribute mapping mismatches:
+        result_a = db.session.execute(db.text("SELECT id FROM saccos WHERE name = :name"), {"name": "Alpha SACCO"}).fetchone()
+        if not result_a:
+            db.session.execute(db.text("INSERT INTO saccos (name, is_active) VALUES (:name, :active)"), {"name": "Alpha SACCO", "active": True})
+            db.session.commit()
+            result_a = db.session.execute(db.text("SELECT id FROM saccos WHERE name = :name"), {"name": "Alpha SACCO"}).fetchone()
+        sacco1_id = result_a[0]
 
-        sacco2 = Sacco.query.filter_by(name="Beta SACCO").first()
-        if not sacco2:
-            sacco2 = Sacco(name="Beta SACCO", is_active=True)
-            db.session.add(sacco2)
-        
-        db.session.commit()
+        result_b = db.session.execute(db.text("SELECT id FROM saccos WHERE name = :name"), {"name": "Beta SACCO"}).fetchone()
+        if not result_b:
+            db.session.execute(db.text("INSERT INTO saccos (name, is_active) VALUES (:name, :active)"), {"name": "Beta SACCO", "active": True})
+            db.session.commit()
+            result_b = db.session.execute(db.text("SELECT id FROM saccos WHERE name = :name"), {"name": "Beta SACCO"}).fetchone()
+        sacco2_id = result_b[0]
 
         owner = User.query.filter_by(email="owner@nexora.com").first()
         if not owner:
@@ -41,7 +46,7 @@ def seed_data():
                 email="admin@alpha.com",
                 password_hash=generate_password_hash("AdminAlpha123!"),
                 role="sacco_admin",
-                sacco_id=sacco1.id
+                sacco_id=sacco1_id
             )
             db.session.add(admin_a)
 
@@ -51,7 +56,7 @@ def seed_data():
                 email="member@alpha.com",
                 password_hash=generate_password_hash("MemberAlpha123!"),
                 role="member",
-                sacco_id=sacco1.id
+                sacco_id=sacco1_id
             )
             db.session.add(member_a)
 
