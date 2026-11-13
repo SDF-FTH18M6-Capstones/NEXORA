@@ -5,7 +5,9 @@ import psycopg
 from flask import Blueprint, Flask, jsonify
 from sqlalchemy.engine import make_url
 from sqlalchemy.exc import ArgumentError
+from werkzeug.exceptions import HTTPException
 from werkzeug.middleware.proxy_fix import ProxyFix
+from werkzeug.routing import IntegerConverter
 
 from app.auth.limits import init_limiter
 from app.extensions import db, migrate
@@ -21,6 +23,31 @@ admin_bp = Blueprint("admin", __name__, url_prefix="/admin")
 members_bp = Blueprint("members", __name__, url_prefix="/members")
 
 BLUEPRINTS = (auth_bp, saccos_bp, savings_bp, admin_bp, members_bp)
+MAX_ID = 2**31 - 1  # ids are 32-bit integers in Postgres
+
+
+class IdConverter(IntegerConverter):
+    """`<int:...>` accepts plain ASCII ids only. Anything else becomes 0, which no
+    row has, so every lookup answers its normal 404 instead of a 500.
+
+    Refused: ids Postgres cannot hold, leading zeros and non-ASCII digits (one
+    record, one URL). Mapping instead of rejecting, because werkzeug would
+    answer 405 for a rejected PATCH id.
+    """
+
+    def to_python(self, value: str) -> int:
+        plain = value.isascii() and len(value) <= 10 and not value.startswith("0")
+        number = int(value) if plain else 0
+        return number if number <= MAX_ID else 0
+
+
+def _json_http_error(exc: HTTPException):
+    """Every HTTP error (404, 405, 413, ...) answers in the API's JSON shape."""
+    response = exc.get_response()
+    message = "Not found." if exc.code == 404 else f"{exc.name}."
+    response.data = jsonify(error=message).data
+    response.content_type = "application/json"
+    return response
 
 
 def create_app(config_class=Config):
@@ -33,6 +60,8 @@ def create_app(config_class=Config):
     if int(proxies):
         app.wsgi_app = ProxyFix(app.wsgi_app, x_for=int(proxies))
 
+    app.url_map.converters["int"] = IdConverter
+    app.register_error_handler(HTTPException, _json_http_error)
     db.init_app(app)
     migrate.init_app(app, db)
 

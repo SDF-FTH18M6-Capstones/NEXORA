@@ -4,7 +4,7 @@ Two groups live here because they both serve members: the signed-in user's own
 profile under /members/me (Sam's Move 2 work), and one SACCO's member list
 under /saccos/<sacco_id>/members (Neo's Move 2 work).
 """
-from flask import jsonify, request
+from flask import g, jsonify, request
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 
@@ -14,9 +14,10 @@ from app.auth.tokens import TokenError, decode_access_token
 from app.extensions import db
 from app.members import self_service
 from app.members.schemas import InvalidMember, parse_create_member, parse_update_member
-from app.models.membership import MembershipRole, MembershipStatus, SaccoMembership
-from app.models.sacco import Sacco
+from app.models.audit import AuditLog
+from app.models.membership import MembershipRole, SaccoMembership
 from app.models.user import User
+from app.security.tenant import sacco_scoped
 
 
 def _me_error(message: str, status: int):
@@ -70,47 +71,11 @@ def patch_me():
 
 # ---------------------------------------------------------------------------
 # One SACCO's members (Move 2, Neo). Platform owner or that SACCO's admin only.
+# The tenant guard answers 401/404/403/423, so another SACCO is never revealed.
+# Only the platform owner creates, edits or removes administrator memberships.
 # ---------------------------------------------------------------------------
 
-
-def _current_user() -> User | None:
-    """The signed-in user from the Bearer token, or None."""
-    scheme, _, token = request.headers.get("Authorization", "").partition(" ")
-    if scheme.lower() != "bearer" or not token:
-        return None
-    try:
-        claims = decode_access_token(token)
-    except TokenError:
-        return None
-    return db.session.get(User, int(claims["sub"]))
-
-
-def _sacco_for_manager(user: User, sacco_id: int):
-    """(sacco, None) when the caller may manage this SACCO, else (None, response).
-
-    The platform owner manages any SACCO. Anyone else needs an active SACCO
-    administrator membership in this exact SACCO: another SACCO's records are
-    never reachable, per docs/roles-permissions.md.
-    """
-    sacco = db.session.get(Sacco, sacco_id)
-    if sacco is None:
-        return None, _error("SACCO not found.", 404)
-    if user.is_platform_owner:
-        return sacco, None
-    membership = db.session.execute(
-        select(SaccoMembership).where(
-            SaccoMembership.user_id == user.id,
-            SaccoMembership.sacco_id == sacco_id,
-        )
-    ).scalar_one_or_none()
-    if membership is None:
-        return None, _error("You do not have access to this SACCO.", 403)
-    if (
-        membership.status is not MembershipStatus.ACTIVE
-        or membership.role is not MembershipRole.SACCO_ADMIN
-    ):
-        return None, _error("SACCO administrator access required.", 403)
-    return sacco, None
+ADMIN = MembershipRole.SACCO_ADMIN
 
 
 def _member_json(membership: SaccoMembership, email: str) -> dict:
@@ -124,117 +89,109 @@ def _member_json(membership: SaccoMembership, email: str) -> dict:
     }
 
 
-def _member_row(sacco_id: int, membership_id: int):
-    """The membership in this SACCO with its user's email, or None.
+def _state(membership: SaccoMembership) -> str:
+    return f"{membership.role.value}/{membership.status.value}"
 
-    The SACCO id is part of the lookup, so a membership id from another SACCO is
-    simply not found here and its existence is never revealed.
-    """
-    return db.session.execute(
-        select(SaccoMembership, User.email)
-        .join(User, User.id == SaccoMembership.user_id)
-        .where(
-            SaccoMembership.id == membership_id,
-            SaccoMembership.sacco_id == sacco_id,
+
+def _audit(membership: SaccoMembership, action: str, before: str = "") -> None:
+    # Same transaction as the change: both are saved or neither is.
+    change = f"{before} -> {_state(membership)}" if before else _state(membership)
+    db.session.add(
+        AuditLog(
+            sacco_id=membership.sacco_id,
+            actor_id=g.access.user.id,
+            action=action,
+            target=f"membership:{membership.id} {change}",
         )
-    ).first()
+    )
 
 
-@saccos_bp.get("/<int:sacco_id>/members")
-def list_members(sacco_id):
-    user = _current_user()
-    if user is None:
-        return _error("Authentication required.", 401)
-    _, denied = _sacco_for_manager(user, sacco_id)
-    if denied is not None:
-        return denied
-    rows = db.session.execute(
+def _members(sacco_id: int, membership_id: int | None = None, lock: bool = False):
+    """(membership, email) rows in this SACCO only, so other SACCOs never leak."""
+    query = (
         select(SaccoMembership, User.email)
         .join(User, User.id == SaccoMembership.user_id)
         .where(SaccoMembership.sacco_id == sacco_id)
         .order_by(SaccoMembership.id)
-    ).all()
-    return jsonify(
-        members=[_member_json(membership, email) for membership, email in rows]
     )
+    if membership_id is not None:
+        query = query.where(SaccoMembership.id == membership_id)
+    if lock:
+        query = query.with_for_update(of=SaccoMembership)
+    return db.session.execute(query).all()
+
+
+@saccos_bp.get("/<int:sacco_id>/members")
+@sacco_scoped()
+def list_members(sacco_id):
+    return jsonify(members=[_member_json(*row) for row in _members(sacco_id)])
 
 
 @saccos_bp.get("/<int:sacco_id>/members/<int:membership_id>")
+@sacco_scoped()
 def get_member(sacco_id, membership_id):
-    user = _current_user()
-    if user is None:
-        return _error("Authentication required.", 401)
-    _, denied = _sacco_for_manager(user, sacco_id)
-    if denied is not None:
-        return denied
-    row = _member_row(sacco_id, membership_id)
-    if row is None:
+    rows = _members(sacco_id, membership_id)
+    if not rows:
         return _error("Member not found.", 404)
-    return jsonify(_member_json(*row))
+    return jsonify(_member_json(*rows[0]))
 
 
 @saccos_bp.post("/<int:sacco_id>/members")
+@sacco_scoped()
 def add_member(sacco_id):
-    user = _current_user()
-    if user is None:
-        return _error("Authentication required.", 401)
-    sacco, denied = _sacco_for_manager(user, sacco_id)
-    if denied is not None:
-        return denied
+    owner = g.access.user.is_platform_owner
     try:
         email, role, status = parse_create_member(_body())
     except InvalidMember as exc:
         return _error(str(exc), 400)
-    # Creating administrators is still a team decision (roles doc, section 7), so
-    # only the platform owner may hand out SACCO administrator rights.
-    if role is MembershipRole.SACCO_ADMIN and not user.is_platform_owner:
+    if role is ADMIN and not owner:
         return _error("Only the platform owner can add a SACCO administrator.", 403)
     target = db.session.execute(
         select(User).where(User.email == email)
     ).scalar_one_or_none()
-    if target is None:
+    # The platform owner gets the same answer as an unknown email, so an admin
+    # cannot discover the owner's address. The owner never needs a membership.
+    if target is None or target.is_platform_owner:
         return _error("No registered user with that email.", 404)
     membership = SaccoMembership(
-        user_id=target.id, sacco_id=sacco.id, role=role, status=status
+        user_id=target.id, sacco_id=sacco_id, role=role, status=status
     )
     db.session.add(membership)
     try:
-        db.session.commit()
+        db.session.flush()  # assigns the id the audit row points at
     except IntegrityError:  # unique (user_id, sacco_id)
         db.session.rollback()
         return _error("That user is already a member of this SACCO.", 409)
+    _audit(membership, "member.add")
+    db.session.commit()
     return jsonify(_member_json(membership, target.email)), 201
 
 
 @saccos_bp.patch("/<int:sacco_id>/members/<int:membership_id>")
+@sacco_scoped()
 def update_member(sacco_id, membership_id):
-    user = _current_user()
-    if user is None:
-        return _error("Authentication required.", 401)
-    _, denied = _sacco_for_manager(user, sacco_id)
-    if denied is not None:
-        return denied
     try:
         changes = parse_update_member(_body())
     except InvalidMember as exc:
         return _error(str(exc), 400)
-    membership = db.session.execute(
-        select(SaccoMembership)
-        .where(
-            SaccoMembership.id == membership_id,
-            SaccoMembership.sacco_id == sacco_id,
-        )
-        .with_for_update()
-    ).scalar_one_or_none()
-    if membership is None:
+    rows = _members(sacco_id, membership_id, lock=True)
+    if not rows:
+        db.session.rollback()
         return _error("Member not found.", 404)
-    granting_admin = changes.get("role") is MembershipRole.SACCO_ADMIN
-    if granting_admin and not user.is_platform_owner:
-        return _error(
-            "Only the platform owner can grant SACCO administrator rights.", 403
-        )
+    membership, email = rows[0]
+    # An admin cannot touch an admin row (their own included) or create one.
+    touches_admin = membership.role is ADMIN or changes.get("role") is ADMIN
+    if touches_admin and not g.access.user.is_platform_owner:
+        db.session.rollback()
+        return _error("Only the platform owner can change SACCO administrators.", 403)
+    if all(getattr(membership, f) is v for f, v in changes.items()):
+        body = _member_json(membership, email)
+        db.session.rollback()  # nothing changed; release the lock
+        return jsonify(body)
+    before = _state(membership)
     for field, value in changes.items():
         setattr(membership, field, value)
+    _audit(membership, "member.update", before)
+    body = _member_json(membership, email)
     db.session.commit()
-    email = db.session.get(User, membership.user_id).email
-    return jsonify(_member_json(membership, email))
+    return jsonify(body)

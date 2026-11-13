@@ -26,7 +26,6 @@ from app.models.sacco import Sacco, SaccoStatus
 from app.models.user import User
 
 ADMIN_ONLY = (MembershipRole.SACCO_ADMIN,)
-MAX_ID = 2**31 - 1  # ids are 32-bit integers in Postgres
 
 
 class AccessDenied(Exception):
@@ -62,9 +61,8 @@ def current_user() -> User:
 
 def sacco_access(user: User, sacco_id: int, roles=ADMIN_ONLY) -> Access:
     """Open `sacco_id` for `user`, or raise AccessDenied."""
-    # An id beyond the database's integer range cannot exist. Treat it as missing
-    # (the same 404) instead of letting Postgres reject it with a 500.
-    sacco = db.session.get(Sacco, sacco_id) if 0 < sacco_id <= MAX_ID else None
+    # The URL converter (app/__init__.py) only lets through ids Postgres can hold.
+    sacco = db.session.get(Sacco, sacco_id)
     if user.is_platform_owner:
         if sacco is None:
             raise AccessDenied("Not found.", 404)
