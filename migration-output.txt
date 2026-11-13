@@ -1,0 +1,21 @@
+INFO  [alembic.runtime.migration] Context impl PostgresqlImpl.
+INFO  [alembic.runtime.migration] Will assume transactional DDL.
+INFO  [alembic.runtime.migration] Running upgrade  -> 0001, schema v1
+INFO  [alembic.runtime.migration] Running upgrade 0001 -> 0002, refresh tokens
+INFO  [alembic.runtime.migration] Running upgrade 0002 -> 0003, case-insensitive unique email
+INFO  [alembic.runtime.migration] Running upgrade 0003 -> 0004, unique sacco name (case/space-insensitive, not blank) and one savings account per membership
+INFO  [alembic.runtime.migration] Running upgrade 0004 -> 0005, ledger drives balances, append-only audit log, value checks, lookup indexes
+INFO  [alembic.runtime.migration] Running upgrade 0005 -> 0006, platform owner flag, currency, membership status, ledger actor/reference/reversal
+INFO  [alembic.runtime.migration] Context impl PostgresqlImpl.
+INFO  [alembic.runtime.migration] Will assume transactional DDL.
+0006 (head)
+INFO  [alembic.runtime.migration] Context impl PostgresqlImpl.
+INFO  [alembic.runtime.migration] Will assume transactional DDL.
+INFO  [alembic.runtime.migration] Running downgrade 0006 -> 0005, platform owner flag, currency, membership status, ledger actor/reference/reversal
+INFO  [alembic.runtime.migration] Running downgrade 0005 -> 0004, ledger drives balances, append-only audit log, value checks, lookup indexes
+INFO  [alembic.runtime.migration] Running downgrade 0004 -> 0003, unique sacco name (case/space-insensitive, not blank) and one savings account per membership
+INFO  [alembic.runtime.migration] Context impl PostgresqlImpl.
+INFO  [alembic.runtime.migration] Will assume transactional DDL.
+INFO  [alembic.runtime.migration] Running upgrade 0003 -> 0004, unique sacco name (case/space-insensitive, not blank) and one savings account per membership
+INFO  [alembic.runtime.migration] Running upgrade 0004 -> 0005, ledger drives balances, append-only audit log, value checks, lookup indexes
+INFO  [alembic.runtime.migration] Running upgrade 0005 -> 0006, platform owner flag, currency, membership status, ledger actor/reference/reversal

@@ -14,8 +14,9 @@ auth_bp = Blueprint("auth", __name__, url_prefix="/auth")
 saccos_bp = Blueprint("saccos", __name__, url_prefix="/saccos")
 savings_bp = Blueprint("savings", __name__, url_prefix="/savings")
 admin_bp = Blueprint("admin", __name__, url_prefix="/admin")
+members_bp = Blueprint("members", __name__, url_prefix="/members")
 
-BLUEPRINTS = (auth_bp, saccos_bp, savings_bp, admin_bp)
+BLUEPRINTS = (auth_bp, saccos_bp, savings_bp, admin_bp, members_bp)
 
 
 def create_app(config_class=Config):
@@ -36,6 +37,8 @@ def create_app(config_class=Config):
 
     # Importing the routes attaches them to auth_bp.
     from app.auth import routes  # noqa: F401
+    from app.members import routes as members_routes  # noqa: F401
+    # from app.savings import routes as savings_routes  # noqa: F401
 
     init_limiter(app)
 
