@@ -181,8 +181,9 @@ def test_parallel_guesses_are_turned_away_not_counted_past_the_limit(app, client
         r.status_code for r in parallel(app, 12, lambda c: login(c, password=WRONG))
     ]
     assert set(codes) <= {401, 429} and codes.count(401) <= 5
-    while login(client, password=WRONG).status_code == 401:
-        pass
+    for _ in range(10):  # bounded: never spin forever if the lockout fails to engage
+        if login(client, password=WRONG).status_code != 401:
+            break
     assert login(client).status_code == 423
 
 

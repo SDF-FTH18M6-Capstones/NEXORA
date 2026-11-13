@@ -1,6 +1,7 @@
 from pathlib import Path
 
 import pytest
+import psycopg
 from flask_migrate import downgrade, upgrade
 from sqlalchemy import inspect, text
 from sqlalchemy.engine import make_url
@@ -28,12 +29,46 @@ def _reset_schema():
     db.session.commit()
 
 
+def _schema_test_url():
+    """`nexora_test` -> `nexora_schema_test`: a database only these tests touch.
+
+    They drop and rebuild the whole schema, so sharing nexora_test with the other
+    tests (or with anything else connected to it) can block or wreck both.
+    """
+    url = make_url(TestConfig.SQLALCHEMY_DATABASE_URI)
+    name = url.database or ""
+    if not name.endswith("_test"):
+        raise RuntimeError("TEST_DATABASE_URL must point at a database whose name ends in _test.")
+    return url.set(database=f"{name[: -len('_test')]}_schema_test")
+
+
+def _ensure_database(url):
+    """Create the schema-test database if it does not exist yet."""
+    admin = TestConfig.SQLALCHEMY_DATABASE_URI
+    dsn = make_url(admin).set(drivername="postgresql").render_as_string(hide_password=False)
+    with psycopg.connect(dsn, autocommit=True) as conn:
+        exists = conn.execute(
+            "SELECT 1 FROM pg_database WHERE datname = %s", (url.database,)
+        ).fetchone()
+        if not exists:
+            conn.execute(f'CREATE DATABASE "{url.database}"')
+
+
 @pytest.fixture(scope="module")
 def schema_app():
-    app = create_app(TestConfig)
-    uri = app.config["SQLALCHEMY_DATABASE_URI"]
-    if not (make_url(uri).database or "").endswith("_test"):
-        raise RuntimeError("Refusing to migrate a database whose name does not end in _test")
+    url = _schema_test_url()
+    try:
+        _ensure_database(url)
+    except psycopg.Error as exc:
+        pytest.fail(
+            f"Could not create database {url.database!r}. Create it once with: "
+            f"psql -U postgres -c 'CREATE DATABASE {url.database} OWNER {url.username};'  ({exc})"
+        )
+
+    class SchemaConfig(TestConfig):
+        SQLALCHEMY_DATABASE_URI = url.render_as_string(hide_password=False)
+
+    app = create_app(SchemaConfig)
     with app.app_context():
         _reset_schema()
         upgrade(directory=MIGRATIONS, revision="head")
