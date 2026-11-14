@@ -12,7 +12,6 @@ from types import SimpleNamespace
 import psycopg
 import pytest
 from flask_migrate import downgrade, upgrade
-from test_schema import MIGRATIONS, _ensure_database, _reset_schema, _schema_test_url
 
 from app import create_app
 from app.extensions import db
@@ -21,6 +20,7 @@ from app.models.sacco import Sacco
 from app.models.user import User
 from app.savings import service
 from config import TestConfig
+from test_schema import MIGRATIONS, _ensure_database, _reset_schema, _schema_test_url
 
 _counter = itertools.count(1)
 
@@ -94,7 +94,9 @@ class Setup:
         self.member_membership = _ref(member_membership)
         db.session.commit()
 
-        self.account = _ref(service.open_account(self.admin.id, self.member_membership.id))
+        self.account = _ref(
+            service.open_account(self.admin.id, self.member_membership.id)
+        )
         if balance:
             service.deposit(self.admin.id, self.account.id, balance, f"setup-{tag}")
         db.session.remove()

@@ -1,6 +1,6 @@
-import uuid
 import os
 import threading
+import uuid
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime, timedelta
 
@@ -10,11 +10,11 @@ import redis
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 
-from app.auth.tokens import decode_access_token
-from app.extensions import db
 from app import create_app
 from app.auth.limits import limiter
 from app.auth.suspension import SUSPENDED_MESSAGE
+from app.auth.tokens import decode_access_token
+from app.extensions import db
 from app.models.membership import MembershipRole, MembershipStatus, SaccoMembership
 from app.models.refresh_token import RefreshToken
 from app.models.sacco import Sacco, SaccoStatus

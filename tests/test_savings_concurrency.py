@@ -10,12 +10,12 @@ from concurrent.futures import ThreadPoolExecutor
 
 import psycopg
 import pytest
-from savings_support import Setup, release_session, schema_app  # noqa: F401
 from sqlalchemy import text
 
 from app.extensions import db
 from app.models.audit import AuditLog
 from app.savings import service
+from savings_support import Setup, release_session, schema_app  # noqa: F401
 
 pytestmark = pytest.mark.schema
 

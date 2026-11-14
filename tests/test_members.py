@@ -133,7 +133,9 @@ def test_a_member_cannot_manage_members(client, world):
     headers = auth(world.member)
     assert client.get(collection(world.sacco), headers=headers).status_code == 403
     assert (
-        client.get(item(world.sacco, world.member_membership), headers=headers).status_code
+        client.get(
+            item(world.sacco, world.member_membership), headers=headers
+        ).status_code
         == 403
     )
     assert (
@@ -163,7 +165,9 @@ def test_an_administrator_of_another_sacco_gets_404(client, world):
 
 def test_a_missing_sacco_is_404(client, world):
     assert (
-        client.get("/api/v1/saccos/999999/members", headers=auth(world.owner)).status_code
+        client.get(
+            "/api/v1/saccos/999999/members", headers=auth(world.owner)
+        ).status_code
         == 404
     )
 
@@ -190,7 +194,8 @@ def test_the_admin_lists_only_their_own_sacco(client, world):
 
 def test_the_platform_owner_lists_any_sacco(client, world):
     resp = client.get(collection(world.other_sacco), headers=auth(world.owner))
-    assert [m["email"] for m in resp.get_json()["members"]] == ["other-admin@example.com"]
+    emails = [m["email"] for m in resp.get_json()["members"]]
+    assert emails == ["other-admin@example.com"]
 
 
 def test_members_are_listed_in_creation_order_with_their_role_and_status(
@@ -339,7 +344,10 @@ def test_an_admin_updates_the_role_and_status(client, world):
     assert resp.get_json()["status"] == "inactive"
     db.session.expire_all()
     stored = db.session.get(SaccoMembership, world.member_membership.id)
-    assert (stored.role, stored.status) == (MembershipRole.STAFF, MembershipStatus.INACTIVE)
+    assert (stored.role, stored.status) == (
+        MembershipRole.STAFF,
+        MembershipStatus.INACTIVE,
+    )
 
 
 def test_an_admin_cannot_grant_administrator_rights(client, world):
@@ -377,14 +385,22 @@ def test_updating_a_membership_from_another_sacco_is_404_and_changes_nothing(
 
 def test_updating_a_missing_membership_is_404(client, world):
     resp = client.patch(
-        f"{collection(world.sacco)}/999999", headers=auth(world.admin), json={"role": "member"}
+        f"{collection(world.sacco)}/999999",
+        headers=auth(world.admin),
+        json={"role": "member"},
     )
     assert resp.status_code == 404
 
 
 @pytest.mark.parametrize(
     "payload",
-    [{}, {"email": "member@example.com"}, {"role": "owner"}, {"status": 5}, {"role": None}],
+    [
+        {},
+        {"email": "member@example.com"},
+        {"role": "owner"},
+        {"status": 5},
+        {"role": None},
+    ],
 )
 def test_a_bad_update_body_is_400(client, world, payload):
     resp = client.patch(
@@ -474,7 +490,8 @@ def test_add_and_update_are_audited_with_the_actor(client, world):
         ("member.update", world.admin.id, world.sacco.id),
     ]
     assert rows[0].target == f"membership:{added['id']} member/active"
-    assert rows[1].target == f"membership:{added['id']} member/active -> member/inactive"
+    expected = f"membership:{added['id']} member/active -> member/inactive"
+    assert rows[1].target == expected
 
 
 def test_an_update_that_changes_nothing_writes_no_audit_row(client, world):

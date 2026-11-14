@@ -12,13 +12,13 @@ what must stay true whichever one wins:
 """
 
 import pytest
-from savings_support import Setup, release_session, schema_app  # noqa: F401
 from sqlalchemy import text
-from test_savings_concurrency import balance_and_ledger, ledger_rows, run_together
 
 from app.extensions import db
 from app.ledger.reversals import ReversalView, reverse_transaction
 from app.savings import service
+from savings_support import Setup, release_session, schema_app  # noqa: F401
+from test_savings_concurrency import balance_and_ledger, ledger_rows, run_together
 
 pytestmark = pytest.mark.schema
 
@@ -27,7 +27,10 @@ def tx_id(account_id, reference):
     """The ledger id of a posted entry, looked up by its reference."""
     db.session.remove()
     found = db.session.execute(
-        text("SELECT id FROM transactions WHERE savings_account_id = :a AND reference = :r"),
+        text(
+            "SELECT id FROM transactions WHERE savings_account_id = :a"
+            " AND reference = :r"
+        ),
         {"a": account_id, "r": reference},
     ).scalar_one()
     db.session.remove()
@@ -35,7 +38,7 @@ def tx_id(account_id, reference):
 
 
 def audit_rows(account_id):
-    """Audit rows that name this account (its open, deposits, withdrawals, reversals)."""
+    """Audit rows naming this account (its open, deposits, withdrawals, reversals)."""
     db.session.remove()
     count = db.session.execute(
         text("SELECT count(*) FROM audit_logs WHERE target = :t OR target LIKE :p"),
@@ -67,7 +70,8 @@ def test_a_reversal_and_a_withdrawal_that_together_overdraw_cannot_both_succeed(
         schema_app, [reverse(s, deposit_id, "rev-1"), withdraw(s, 70, "w-1")]
     )
 
-    done = [r for r in results if isinstance(r, (ReversalView, service.PostedTransaction))]
+    posted = ReversalView | service.PostedTransaction
+    done = [r for r in results if isinstance(r, posted)]
     refused = [r for r in results if isinstance(r, service.SavingsError)]
     assert len(done) == 1 and len(refused) == 1
     assert isinstance(refused[0], service.Conflict)

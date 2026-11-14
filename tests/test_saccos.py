@@ -30,13 +30,16 @@ def clean_tables(app):
 
 def make_user(email, owner=False):
     db.session.add(
-        User(email=email, password_hash=hash_password(PASSWORD), is_platform_owner=owner)
+        User(
+            email=email, password_hash=hash_password(PASSWORD), is_platform_owner=owner
+        )
     )
     db.session.commit()
 
 
 def login_body(client, email):
-    resp = client.post("/api/v1/auth/login", json={"email": email, "password": PASSWORD})
+    payload = {"email": email, "password": PASSWORD}
+    resp = client.post("/api/v1/auth/login", json=payload)
     return resp.get_json()
 
 
@@ -73,7 +76,8 @@ def test_refresh_token_is_not_accepted_as_access_token(client):
 @pytest.mark.parametrize("method", ["get", "post"])
 def test_ordinary_user_is_403(client, method):
     make_user(USER)
-    resp = getattr(client, method)(URL, headers=bearer(client, USER), json={"name": "X"})
+    headers = bearer(client, USER)
+    resp = getattr(client, method)(URL, headers=headers, json={"name": "X"})
     assert resp.status_code == 403
 
 
