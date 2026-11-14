@@ -1,11 +1,13 @@
-"""Auth endpoints: register, login, refresh, logout."""
+"""Auth endpoints: register, login, refresh, logout, change-password, logout-all."""
 
 import re
 
-from flask import jsonify, request
+from flask import g, jsonify, request
 from sqlalchemy.exc import IntegrityError, OperationalError
 
 from app import auth_bp
+from app.auth import account
+from app.auth.guards import access_token_required
 from app.auth.limits import login_limit, register_limit, write_limit
 from app.auth.lockout import check_lockout, record_failed_login, reset_failed_logins
 from app.auth.passwords import hash_password, validate_password, verify_password
@@ -175,3 +177,35 @@ def logout():
         return jsonify(message="Logged out.")
 
     return _with_refresh_token(revoke)
+
+
+@auth_bp.post("/change-password")
+@login_limit
+@access_token_required
+def change_password():
+    data = _body()
+    current, new = _password(data.get("current_password")), _password(
+        data.get("new_password")
+    )
+    if current is None:
+        return _error(
+            f"current_password is required (max {MAX_PASSWORD_LENGTH} characters).",
+            400,
+        )
+    if new is None:
+        return _error(
+            f"new_password is required (max {MAX_PASSWORD_LENGTH} characters).", 400
+        )
+    try:
+        account.change_password(g.user.id, current, new)
+    except account.AccountError as exc:
+        return _error(exc.message, exc.status)
+    return jsonify(message="Password changed. Sign in again.")
+
+
+@auth_bp.post("/logout-all")
+@write_limit
+@access_token_required
+def logout_all():
+    account.logout_all(g.user.id)
+    return jsonify(message="Logged out everywhere.")

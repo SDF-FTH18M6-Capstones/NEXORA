@@ -84,22 +84,34 @@ DATABASE_URL=postgresql+psycopg://postgres:YOUR_PASSWORD@localhost:5432/nexora_d
 TEST_DATABASE_URL=postgresql+psycopg://postgres:YOUR_PASSWORD@localhost:5432/nexora_test
 ```
 
+Create the tables and load demo data (run from the repo root, with the virtualenv active):
+
+```bash
+cd backend && flask --app app db upgrade && cd ..
+python backend/scripts/seed.py
+```
+
+`seed.py` refuses to run unless the database name ends in `_dev`, and it is safe to run twice. It prints the seeded emails and roles; every seeded user shares one fake development password, defined at the top of the script.
+
 Run the API:
 
 ```bash
+cd backend
 python app.py
 ```
 
-The API runs on <http://localhost:5000>.
+The API runs on <http://localhost:5000>. Frontend developers: see [`docs/frontend-handoff.md`](docs/frontend-handoff.md).
 
 ### Running the tests
 
 From the repo root, with the virtualenv active:
 
 ```bash
-pytest              # everyday tests (nexora_test)
-pytest -m schema    # migration tests (nexora_schema_test, slower)
+pytest -m "schema or not schema"   # everything: what CI runs
+ruff check backend/app tests       # lint
 ```
+
+Plain `pytest` skips the schema tests (ledger, balances, reversals); `pytest -m schema` runs only those. The backend needs a database on `localhost`, so run the tests with `backend/.env` filled in.
 
 The schema tests drop and rebuild their whole database, so they use their own
 `<TEST_DATABASE_URL name minus _test>_schema_test` database (`nexora_schema_test`).
@@ -139,6 +151,8 @@ Secrets are **never committed**. Only `.env.example` files are tracked; each dev
 | `TRUSTED_PROXIES` | backend | Number of reverse proxies in front (0 = none) |
 | `RATELIMIT_STORAGE_URI` | backend | `memory://` locally, `redis://...` in production |
 | `FLASK_DEBUG`  | backend  | `1` enables Flask debug mode         |
+| `APP_ENV` | backend | `development` (default) or `production`. Production refuses to start with debug on, `memory://` rate limits, a short or placeholder `SECRET_KEY`, or a `*` origin |
+| `CORS_ORIGINS` | backend | Exact browser origins allowed to call the API, comma-separated (e.g. `http://localhost:5173`). Empty = no cross-origin access |
 
 If your database password contains special characters (`@`, `#`, `/`, `:`), URL-encode them (for example `@` becomes `%40`).
 
@@ -165,8 +179,10 @@ If your database password contains special characters (`@`, `#`, `/`, `:`), URL-
 
 ## Status
 
-- [x] Repository cloned, feature branches created
-- [x] Flask skeleton with `/api/health` endpoint
-- [x] React + Vite skeleton
-- [x] PostgreSQL connection verified
-- [ ] Frontend connected to backend (planned for Day 2)
+- [x] Move 1: project skeleton, schema, migrations
+- [x] Move 2: auth (register, login, rotating refresh tokens, lockout), SACCOs, members, tenant guard
+- [x] Move 3: savings accounts, deposits, withdrawals, reversals, ledger, audit log, admin reports
+- [x] Move 4: security headers, CORS and rate limits, production checks, seed script, savings and audit read endpoints, change-password and logout-all
+- [ ] Move 4 remainder: one error format, OpenAPI spec, red-team pass
+- [ ] Loans (waiting for the interest decision)
+- [ ] Frontend connected to backend

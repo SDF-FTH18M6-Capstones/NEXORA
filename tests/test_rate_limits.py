@@ -8,6 +8,7 @@ import pytest
 
 from app import create_app
 from app.auth.limits import (
+    LOGIN_LIMIT,
     MONEY_LIMIT,
     READ_LIMIT,
     WRITE_LIMIT,
@@ -79,3 +80,21 @@ def test_each_route_has_its_own_allowance(limited):
     _exhaust(limited, "get", "/api/v1/saccos/1", READ_LIMIT)
     # A different read route is untouched by that route's counter.
     assert limited.get("/api/v1/savings/accounts/me").status_code != 429
+
+
+def test_change_password_shares_the_login_limit(limited):
+    codes = [
+        limited.post("/api/v1/auth/change-password", json={}).status_code
+        for _ in range(per_minute(LOGIN_LIMIT) + 1)
+    ]
+    assert codes[-1] == 429
+    assert 429 not in codes[:-1]
+
+
+def test_logout_all_is_an_ordinary_write(limited):
+    codes = [
+        limited.post("/api/v1/auth/logout-all").status_code
+        for _ in range(per_minute(WRITE_LIMIT) + 1)
+    ]
+    assert codes[-1] == 429
+    assert 429 not in codes[:-1]

@@ -20,3 +20,17 @@ def platform_owner_required(view):
         return view(*args, **kwargs)
 
     return wrapper
+
+
+def access_token_required(view):
+    """Any signed-in user. Sets g.user. No SACCO or suspension check, on purpose."""
+
+    @wraps(view)
+    def wrapper(*args, **kwargs):
+        try:
+            g.user = current_user()
+        except AccessDenied as exc:
+            return jsonify(error=exc.message), exc.status
+        return view(*args, **kwargs)
+
+    return wrapper

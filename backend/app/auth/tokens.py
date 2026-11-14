@@ -6,10 +6,11 @@ from datetime import UTC, datetime, timedelta
 
 import jwt
 from flask import current_app
-from sqlalchemy import update
+from sqlalchemy import select, update
 
 from app.extensions import db
 from app.models.refresh_token import RefreshToken
+from app.models.user import User
 
 ALGORITHM = "HS256"
 # A spent token replayed within this window is a double submit, not theft.
@@ -72,6 +73,12 @@ def create_refresh_token(user_id: int) -> str:
     return token
 
 
+def lock_user(user_id: int) -> None:
+    """Hold the user's row until commit. Rotation, logout-all and change-password
+    all take it first, so a rotation cannot mint a token after a sweep ran."""
+    db.session.execute(select(User.id).where(User.id == user_id).with_for_update())
+
+
 def rotate_refresh_token(token: str) -> tuple[int, str]:
     """Spend a refresh token and return (user_id, new_refresh_token). Commits.
 
@@ -80,7 +87,9 @@ def rotate_refresh_token(token: str) -> tuple[int, str]:
     probably copied, so all of that user's refresh tokens are revoked.
     """
     payload = _decode(token, "refresh")
-    user_id, now = int(payload["sub"]), _now()
+    user_id = int(payload["sub"])
+    lock_user(user_id)
+    now = _now()
     live = RefreshToken.revoked_at.is_(None)
 
     spent = db.session.execute(
