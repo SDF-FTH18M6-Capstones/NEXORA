@@ -162,6 +162,8 @@ def test_audit_bad_input_is_400(schema_app):
         "?per_page=abc",
         "?per_page=-1",
         "?action=" + "a" * 101,
+        "?action=%00",
+        "?action=a%00b",
     )
     for query in bad:
         resp = client.get(url + query, headers=auth(s.admin))
