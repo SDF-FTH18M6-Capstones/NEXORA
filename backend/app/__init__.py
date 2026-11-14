@@ -92,6 +92,7 @@ def create_app(config_class=Config):
         user,
     )
     from app.saccos import routes as saccos_routes  # noqa: F401
+    from app.savings import accounts as savings_accounts  # noqa: F401
     from app.savings import history as savings_history  # noqa: F401
     from app.savings import routes as savings_routes  # noqa: F401
     init_limiter(app)
