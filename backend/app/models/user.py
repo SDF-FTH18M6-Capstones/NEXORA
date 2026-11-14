@@ -28,6 +28,16 @@ class User(db.Model):
     locked_until: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    # Carried in every access token. Bumped on change-password and logout-all, so
+    # tokens issued before either stop working at once.
+    token_version: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+    # Set when the owner proves they control the address. A SACCO admin can only
+    # add a verified user, so registering someone else's email gets an attacker nothing.
+    email_verified_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )

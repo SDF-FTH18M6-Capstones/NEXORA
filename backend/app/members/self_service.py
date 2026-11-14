@@ -8,10 +8,12 @@ change; role, status, SACCO and platform-owner flags are refused outright.
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 
+from app.auth import verification
 from app.auth.lockout import check_lockout, record_failed_login, reset_failed_logins
 from app.auth.passwords import verify_password
 from app.auth.routes import EMAIL_RE, MAX_EMAIL_LENGTH, MAX_PASSWORD_LENGTH
 from app.extensions import db
+from app.mail import send_safely
 from app.models.membership import SaccoMembership
 from app.models.user import User
 
@@ -114,11 +116,15 @@ def update_profile(user_id: int, data: dict) -> dict:
 
     if email != user.email:
         user.email = email
+        user.email_verified_at = None  # the new address has to be proved again
         try:
+            db.session.flush()  # the unique email index answers here
+            token = verification.issue(user)
             db.session.commit()
         except IntegrityError as exc:  # unique index on lower(email)
             db.session.rollback()
             raise ProfileError("Email is already registered.", 409) from exc
+        send_safely(user.email, token)
     else:
         db.session.commit()
     return _profile(user)

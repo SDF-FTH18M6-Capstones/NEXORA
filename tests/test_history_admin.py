@@ -21,7 +21,8 @@ ADMIN = "/api/v1/admin"
 
 
 def auth(user):
-    return {"Authorization": f"Bearer {create_access_token(user.id)}"}
+    token = create_access_token(user.id, user.token_version)
+    return {"Authorization": f"Bearer {token}"}
 
 
 def history_url(account_id):
@@ -59,6 +60,7 @@ def add_member(s, role=MembershipRole.MEMBER, with_account=True):
 
     class Added:
         id = user_id
+        token_version = 0
 
     Added.account_id = account_id
     return Added

@@ -153,7 +153,25 @@ curl -s -X POST $API/auth/change-password -H "Authorization: Bearer $ACCESS" \
 
 - `change-password` revokes **all** refresh tokens, so after a 200 send the user to the login page. A wrong `current_password` is 401 `Invalid email or password.` and counts as a failed login (five in a row lock the account). A new password that is too short, contains the email, or equals the current one is 400, with a message you can show.
 - `logout-all` works even when the user's SACCO is suspended.
-- **Access tokens cannot be revoked.** After logout-all or a password change, an access token that was already issued still works until it expires (up to 15 minutes). Drop it on the client at once.
+- After logout-all or a password change, **every access token issued before it stops working at once** (401 `Invalid or expired token.`), including the one that made the call. Clear the tokens on the client and send the user to the login page.
+
+### Verifying an email address
+
+`register` emails a link (valid 24 hours) to the address. The link should open a frontend page that reads `token` from the URL and calls:
+
+```bash
+curl -s -X POST $API/auth/verify-email -H "Content-Type: application/json" \
+  -d '{"token":"<token from the link>"}'
+# {"message": "Email verified."}   (400 if the link is wrong, used or expired)
+
+curl -s -X POST $API/auth/resend-verification -H "Content-Type: application/json" \
+  -d '{"email":"sam@example.com"}'
+# Always 200, whether or not the address exists, so it cannot be used to find accounts.
+```
+
+- Login does **not** need a verified address. What needs it: a SACCO admin can only add a user who has verified their email (otherwise 409 `That user has not verified their email yet.`). Tell new users to verify before asking an admin to add them.
+- Changing the email with `PATCH /members/me` marks the new address unverified and emails a new link.
+- Locally the link is printed in the API's log (`MAIL_BACKEND=log`); seeded users are already verified. `FRONTEND_URL` in `backend/.env` sets where the link points.
 
 ### What 401, 423 and 429 mean
 
@@ -211,7 +229,7 @@ Successful responses have no envelope: you get the resource (or a named list suc
 
 ## 5. Idempotency and safe retries
 
-Every deposit, withdrawal and reversal accepts a `reference`: your idempotency key. It is unique per SACCO, 1 to 64 characters from letters, digits and `. _ : -`. **Always send one.** If you leave it out the server invents one, and then a retry would post the money twice.
+Every deposit, withdrawal and reversal accepts a `reference`: your idempotency key. It is unique per SACCO, 1 to 64 characters from letters, digits and `. _ : -`. **It is required**: a deposit, withdrawal or reversal without one is 400 `reference is required.`, because a retry could not be made safe.
 
 Make one reference per user action (for example `crypto.randomUUID()`), and keep it for the life of that action, including every retry.
 
@@ -419,7 +437,9 @@ All paths are under `/api/v1` unless noted. "Auth" is a Bearer access token.
 | Method and path | Who | Purpose |
 |---|---|---|
 | `GET /api/health` (no `/v1`) | anyone | API and database status |
-| `POST /auth/register` | anyone | Create a user |
+| `POST /auth/register` | anyone | Create a user and email a verification link |
+| `POST /auth/verify-email` | anyone | Confirm an address with the emailed token |
+| `POST /auth/resend-verification` | anyone | Send a new link (always 200) |
 | `POST /auth/login` | anyone | Get tokens |
 | `POST /auth/refresh` | refresh token | Rotate tokens |
 | `POST /auth/logout` | refresh token | Revoke one refresh token |

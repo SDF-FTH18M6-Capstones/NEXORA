@@ -164,6 +164,10 @@ def add_member(sacco_id):
     # cannot discover the owner's address. The owner never needs a membership.
     if target is None or target.is_platform_owner:
         return error_response(404, "No registered user with that email.")
+    # Whoever registered an address may not be its owner. Only a user who has
+    # opened the emailed link can be given access to a SACCO.
+    if target.email_verified_at is None:
+        return error_response(409, "That user has not verified their email yet.")
     membership = SaccoMembership(
         user_id=target.id, sacco_id=sacco_id, role=role, status=status
     )

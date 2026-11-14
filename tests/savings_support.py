@@ -58,7 +58,7 @@ def release_session(schema_app):
 
 def _ref(obj):
     # Plain ids only: ORM objects expire on commit and cannot cross threads.
-    return SimpleNamespace(id=obj.id)
+    return SimpleNamespace(id=obj.id, token_version=getattr(obj, "token_version", 0))
 
 
 class Setup:

@@ -20,6 +20,8 @@ def production_app(**overrides):
         "SECRET_KEY": "p" * 40,
         "RATELIMIT_STORAGE_URI": "redis://localhost:6390/0",
         "CORS_ORIGINS": "https://app.example",
+        "MAIL_BACKEND": "smtp",
+        "MAIL_SERVER": "smtp.example",
     }
     values.update(overrides)
     return type("Production", (TestConfig,), values)
@@ -143,6 +145,8 @@ def test_debug_mode_stops_a_production_start(monkeypatch):
             ".env.example placeholder",
         ),
         ({"CORS_ORIGINS": "https://app.example,*"}, r"\*"),
+        ({"MAIL_BACKEND": "log"}, "MAIL_BACKEND"),
+        ({"MAIL_SERVER": ""}, "MAIL_SERVER"),
     ],
 )
 def test_an_unsafe_setting_stops_a_production_start(overrides, message):

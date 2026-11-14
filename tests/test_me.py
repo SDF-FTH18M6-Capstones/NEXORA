@@ -6,6 +6,8 @@ a wrong password on an email change counts toward the login lockout, and the
 response never holds another member's data.
 """
 
+from datetime import UTC, datetime
+
 import pytest
 from sqlalchemy import text
 
@@ -40,7 +42,12 @@ def clean_tables(app):
 
 
 def make_user(email, owner=False):
-    user = User(email=email, password_hash=PASSWORD_HASH, is_platform_owner=owner)
+    user = User(
+        email=email,
+        password_hash=PASSWORD_HASH,
+        is_platform_owner=owner,
+        email_verified_at=datetime.now(UTC),
+    )
     db.session.add(user)
     db.session.commit()
     return user
@@ -63,7 +70,8 @@ def make_membership(user, sacco, role=MembershipRole.MEMBER):
 
 
 def auth(user):
-    return {"Authorization": f"Bearer {create_access_token(user.id)}"}
+    token = create_access_token(user.id, user.token_version)
+    return {"Authorization": f"Bearer {token}"}
 
 
 def suspend(sacco):

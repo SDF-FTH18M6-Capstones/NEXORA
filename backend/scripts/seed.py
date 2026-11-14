@@ -62,6 +62,8 @@ def seed(app, require_dev=True):
     """Create the demo data and return [{email, role, sacco}, ...]."""
     from sqlalchemy import func, select
 
+    from datetime import UTC, datetime
+
     from app.auth.passwords import hash_password, validate_password
     from app.extensions import db
     from app.ledger import reversals
@@ -93,6 +95,7 @@ def seed(app, require_dev=True):
                 email=email,
                 password_hash=hash_password(DEV_PASSWORD),
                 is_platform_owner=owner,
+                email_verified_at=datetime.now(UTC),
             )
             db.session.add(user)
             db.session.flush()

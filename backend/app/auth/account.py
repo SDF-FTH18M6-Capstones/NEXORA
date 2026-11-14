@@ -32,8 +32,15 @@ class AccountError(Exception):
         self.status = status
 
 
-def _revoke_all_refresh_tokens(user_id: int) -> None:
-    """Set revoked_at on every unrevoked refresh token. The caller commits."""
+def _revoke_all_sessions(user_id: int) -> None:
+    """Revoke every refresh token and kill every access token already issued.
+
+    The caller holds the user row lock and commits.
+    """
+    bump = User.token_version + 1
+    db.session.execute(
+        update(User).where(User.id == user_id).values(token_version=bump)
+    )
     db.session.execute(
         update(RefreshToken)
         .where(RefreshToken.user_id == user_id, RefreshToken.revoked_at.is_(None))
@@ -76,7 +83,7 @@ def change_password(user_id: int, current: str, new: str) -> None:
 
     user.password_hash = hash_password(new)
     reset_failed_logins(user)
-    _revoke_all_refresh_tokens(user.id)
+    _revoke_all_sessions(user.id)
     audit_log.record(None, user.id, "auth.password_change", f"user:{user.id}")
     db.session.commit()
 
@@ -84,6 +91,6 @@ def change_password(user_id: int, current: str, new: str) -> None:
 def logout_all(user_id: int) -> None:
     """Revoke every refresh token of the caller. Never refused for a suspension."""
     lock_user(user_id)
-    _revoke_all_refresh_tokens(user_id)
+    _revoke_all_sessions(user_id)
     audit_log.record(None, user_id, "auth.logout_all", f"user:{user_id}")
     db.session.commit()

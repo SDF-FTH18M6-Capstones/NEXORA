@@ -33,6 +33,16 @@ class Config:
     # (e.g. http://localhost:5173). Empty means no cross-origin access at all.
     CORS_ORIGINS = os.environ.get("CORS_ORIGINS", "")
 
+    # Email. "log" prints the verification link to the log (development only);
+    # "smtp" sends it. FRONTEND_URL is where the link points.
+    MAIL_BACKEND = os.environ.get("MAIL_BACKEND", "log").strip().lower() or "log"
+    MAIL_FROM = os.environ.get("MAIL_FROM", "no-reply@nexora.local")
+    MAIL_SERVER = os.environ.get("MAIL_SERVER", "")
+    MAIL_PORT = int(os.environ.get("MAIL_PORT", "587"))
+    MAIL_USERNAME = os.environ.get("MAIL_USERNAME", "")
+    MAIL_PASSWORD = os.environ.get("MAIL_PASSWORD", "")
+    FRONTEND_URL = os.environ.get("FRONTEND_URL", "http://localhost:5173")
+
     TESTING = False
 
 

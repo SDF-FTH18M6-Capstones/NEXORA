@@ -57,7 +57,7 @@ def join(user_id, sacco_id, role, status=MembershipStatus.ACTIVE):
 
 
 def auth(user_id):
-    return {"Authorization": f"Bearer {create_access_token(user_id)}"}
+    return {"Authorization": f"Bearer {create_access_token(user_id, 0)}"}
 
 
 def person(sacco_id, role, status=MembershipStatus.ACTIVE):

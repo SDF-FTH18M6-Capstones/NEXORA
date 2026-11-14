@@ -77,10 +77,10 @@ Every resource route lives under `/api/v1`. The prefix is set in one place, `API
 ### Authentication: access and rotating refresh tokens
 
 - JWT (HS256, signed with `SECRET_KEY`), not server-side sessions. Passwords are hashed with Argon2.
-- **Access token**: 15 minutes, sent as `Authorization: Bearer <token>`. It is not stored and cannot be revoked, so it stays valid until it expires.
+- **Access token**: 15 minutes, sent as `Authorization: Bearer <token>`. It carries the user's `token_version`; every request compares it with `users.token_version`, so a password change or logout-all (which bump it) kills all earlier access tokens at once.
 - **Refresh token**: 7 days. Only its id (`jti`) is stored, in `refresh_tokens`. Every refresh spends the old token and issues a new one (rotation). A spent token replayed after more than 10 seconds is treated as stolen and every refresh token of that user is revoked. Replays inside 10 seconds are refused but do not revoke the rest (double submit).
 - **Lockout**: 5 failed logins lock the account for 15 minutes (423). The lock is checked before the password, so a locked account never reveals whether a guess was right. A wrong current password in `change-password` counts as a failed login, with the same lockout.
-- **Ending sessions**: `logout` revokes one refresh token. `logout-all` and a successful `change-password` revoke all of the user's refresh tokens. A password change then needs a new sign-in. Access tokens already issued still work for up to 15 minutes.
+- **Ending sessions**: `logout` revokes one refresh token. `logout-all` and a successful `change-password` revoke all of the user's refresh tokens. Both also bump `token_version`, so every access token already issued stops working immediately, and the user signs in again.
 - **Suspended SACCOs**: a user whose SACCOs are all suspended cannot log in or refresh (423). `logout-all` and `change-password` still work for them, so nobody is trapped in a session.
 - Files: `app/auth/` (`routes.py`, `tokens.py`, `lockout.py`, `account.py`, `suspension.py`).
 
@@ -126,13 +126,31 @@ Actions in use: `savings.open`, `savings.deposit`, `savings.withdrawal`, `saving
 - Status codes in use: 200, 201, 400, 401, 403, 404, 409, 423 (locked or suspended), 429, 500. The table is in [`frontend-handoff.md`](frontend-handoff.md).
 - `docs/api-conventions.md` was written before these decisions. Where it differs (the `success` envelope, 422), this section wins.
 
+### Email verification
+
+- `register` creates the user unverified and emails a single-use link (24 hours). Only the token's SHA-256 is stored (`email_verifications`). Opening it sets `users.email_verified_at`.
+- Login does not need it. **A SACCO admin can only add a verified user**, so someone who registers an address they do not own cannot be attached to a SACCO. Changing the email resets it.
+- Mail goes through `app/mail.py`: `MAIL_BACKEND=log` locally, `smtp` in production (the app refuses to start in production otherwise).
+- Known limit: an attacker can still register an address first, so the real owner then sees "Email is already registered". Account recovery, when built, is the fix.
+
 ### CORS and rate limits
 
 - **Rate limits** (Flask-Limiter, per client IP): `login`, `register` and `change-password` allow 5 requests per minute; the sixth gets 429. Counters live in memory locally; set `RATELIMIT_STORAGE_URI` to Redis in production so all workers share them. Behind a reverse proxy set `TRUSTED_PROXIES` to the number of proxies, or every client shares the proxy's address.
 - Every other route has a class limit: reads 120 per minute, ordinary writes 30, money movements (deposit, withdraw, reversal) 20.
 - **CORS**: `CORS_ORIGINS` lists the exact allowed origins (empty by default: no cross-origin access). Credentials are off; the wildcard is never sent. See "CORS" in [`frontend-handoff.md`](frontend-handoff.md).
 
+## Before deploying
+
+The production guards only run when `APP_ENV=production`, and the default is `development`, so a deploy that forgets the variable runs unguarded (no HSTS, in-memory rate limits). Check each of these on the host:
+
+- `APP_ENV=production`
+- `SECRET_KEY` of 32+ random characters (not the example)
+- `DATABASE_URL`, `CORS_ORIGINS` (exact frontend origin), `FRONTEND_URL`
+- `RATELIMIT_STORAGE_URI` pointing at Redis, and `TRUSTED_PROXIES` set to the real proxy count
+- `MAIL_BACKEND=smtp` with `MAIL_SERVER`, `MAIL_FROM` and credentials
+- `FLASK_DEBUG` unset, HTTPS in front, `flask db upgrade` run, a working `/api/health`
+
 ## 8. Still Open
 
 - **Loans.** Waiting for the interest decision (rate, simple or compound, who sets it). No loan tables or routes exist.
-- **Access-token revocation.** Not planned: 15 minutes is the accepted window after a password change or logout-all.
+- **Account recovery.** There is no forgot-password flow yet; it would reuse the email link mechanism below.

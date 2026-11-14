@@ -210,11 +210,29 @@ def test_success_revokes_every_refresh_token_of_the_user(client):
     assert refresh(client, fresh["refresh_token"]).status_code == 200
 
 
-def test_an_access_token_already_issued_still_works_until_it_expires(client):
-    # Documented behaviour: access tokens are not revocable (15 minutes).
+def test_an_access_token_issued_before_either_action_stops_working(client):
     tokens = logged_in(client)
+    me = client.get("/api/v1/members/me", headers=bearer(tokens))
+    assert me.status_code != 401
     assert change(client, tokens).status_code == 200
-    assert logout_all(client, tokens).status_code == 200
+    stale = client.get("/api/v1/members/me", headers=bearer(tokens))
+    assert stale.status_code == 401
+
+    fresh = login(client, password=NEW).get_json()
+    assert client.get("/api/v1/members/me", headers=bearer(fresh)).status_code != 401
+    assert logout_all(client, fresh).status_code == 200
+    assert client.get("/api/v1/members/me", headers=bearer(fresh)).status_code == 401
+
+
+def test_a_token_without_a_version_is_refused(client, app):
+    from app.auth import tokens as token_module
+
+    user_id = logged_in(client) and the_user().id
+    with app.app_context():
+        lifetime = app.config["ACCESS_TOKEN_EXPIRES"]
+        old = token_module._encode(user_id, "access", lifetime)[0]
+    resp = client.get("/api/v1/members/me", headers={"Authorization": f"Bearer {old}"})
+    assert resp.status_code == 401
 
 
 def test_success_resets_the_failure_count(client):
@@ -288,7 +306,9 @@ def test_logout_all_revokes_only_that_users_tokens(client):
 def test_logout_all_twice_is_fine(client):
     tokens = logged_in(client)
     assert logout_all(client, tokens).status_code == 200
-    assert logout_all(client, tokens).status_code == 200
+    # The first call also killed this access token; signing in again works.
+    assert logout_all(client, tokens).status_code == 401
+    assert logout_all(client, login(client).get_json()).status_code == 200
     assert len(audit_rows("auth.logout_all")) == 2
 
 
