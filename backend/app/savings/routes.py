@@ -97,3 +97,6 @@ def deposit(account_id: int):
 @savings_bp.post("/accounts/<int:account_id>/withdrawals")
 def withdraw(account_id: int):
     return _post_money(account_id, service.withdraw)
+
+# Reversals live in the ledger package; importing it attaches its route here.
+from app.ledger import routes as _ledger_routes  # noqa: E402,F401
