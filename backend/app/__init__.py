@@ -74,7 +74,9 @@ def create_app(config_class=Config):
     from app.saccos import routes as saccos_routes  # noqa: F401
     from app.savings import routes as savings_routes  # noqa: F401
     from app.admin import routes as admin_routes  # noqa: F401
-
+    # The ledger and history routes import from the savings routes, so they come after.
+    from app.ledger import routes as ledger_routes  # noqa: F401
+    from app.savings import history as savings_history  # noqa: F401
     init_limiter(app)
 
     for blueprint in BLUEPRINTS:
