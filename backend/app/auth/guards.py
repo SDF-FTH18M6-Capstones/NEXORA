@@ -2,8 +2,9 @@
 
 from functools import wraps
 
-from flask import g, jsonify
+from flask import g
 
+from app.errors import error_response
 from app.security.tenant import AccessDenied, current_user
 
 
@@ -13,9 +14,9 @@ def platform_owner_required(view):
         try:
             user = current_user()
         except AccessDenied as exc:
-            return jsonify(error=exc.message), exc.status
+            return error_response(exc.status, exc.message)
         if not user.is_platform_owner:
-            return jsonify(error="Platform owner access required."), 403
+            return error_response(403, "Platform owner access required.")
         g.user = user
         return view(*args, **kwargs)
 
@@ -30,7 +31,7 @@ def access_token_required(view):
         try:
             g.user = current_user()
         except AccessDenied as exc:
-            return jsonify(error=exc.message), exc.status
+            return error_response(exc.status, exc.message)
         return view(*args, **kwargs)
 
     return wrapper

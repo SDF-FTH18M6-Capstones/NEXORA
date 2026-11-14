@@ -168,7 +168,7 @@ def test_ids_outside_the_database_range_are_a_clean_404_not_a_500(
         f"{BASE}/{sacco_id}", headers=headers, json={"name": "X"}
     )
     assert resp.status_code == 404
-    assert resp.get_json() == {"error": "Not found."}
+    assert resp.get_json()["error"]["message"] == "Not found."
 
 
 def test_missing_sacco_is_404_for_the_platform_owner(client):
@@ -210,7 +210,7 @@ def test_suspended_sacco_blocks_its_admin_but_not_the_platform_owner(client):
     sacco_id = make_sacco(status=SaccoStatus.SUSPENDED)
     resp = client.get(f"{BASE}/{sacco_id}", headers=person(sacco_id, ADMIN))
     assert resp.status_code == 423
-    assert resp.get_json() == {"error": SUSPENDED_MESSAGE}
+    assert resp.get_json()["error"]["message"] == SUSPENDED_MESSAGE
     owner = auth(make_user(owner=True))
     assert client.get(f"{BASE}/{sacco_id}", headers=owner).status_code == 200
 

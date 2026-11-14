@@ -2,7 +2,7 @@
 
 ## 1. Purpose
 
-This document establishes the proposed communication standards
+This document establishes the communication standards
 between the React frontend and Flask backend.
 
 All developers must follow the agreed API conventions.
@@ -50,44 +50,54 @@ Use:
 | PATCH | Partially update a resource |
 | DELETE | Delete a resource where permitted |
 
-## 5. Standard Success Response
+## 5. Success Responses
 
-Proposed format:
+Success bodies are plain JSON with no envelope: the resource itself, or an
+object such as `{"accounts": [...]}` or a page (`page`, `per_page`, and the
+list). Creating something answers 201. A money route called again with a
+`reference` it has already posted answers 200 with the original entry.
 
-    {
-      "success": true,
-      "message": "Request completed successfully",
-      "data": {}
-    }
+## 6. Error Responses
 
-## 6. Standard Error Response
+Every error, on every route, has this body:
 
-Proposed format:
+    { "error": { "code": "not_found", "message": "Not found." } }
 
-    {
-      "success": false,
-      "message": "Request failed",
-      "errors": {
-        "field": ["Validation error"]
-      }
-    }
+`code` is for programs and comes from the status. `message` is for people and
+may be shown as is. Both are always present; there is nothing else in the body.
+The helper is `error_response(status, message)` in `backend/app/errors.py`; no
+route builds an error body by hand.
 
-Responses must not expose passwords, secrets,
-database credentials or internal stack traces.
+| Status | `code` |
+|---|---|
+| 400 | `validation_error` |
+| 401 | `unauthorized` |
+| 403 | `forbidden` |
+| 404 | `not_found` |
+| 405 | `method_not_allowed` |
+| 409 | `conflict` |
+| 413 | `payload_too_large` |
+| 423 | `locked` (a locked account or a suspended SACCO) |
+| 429 | `rate_limited` |
+| 500 | `internal_error` |
+
+Responses never expose passwords, secrets, database details or stack traces.
 
 ## 7. HTTP Status Codes
 
 | Status | Meaning |
 |---|---|
-| 200 | Successful request |
+| 200 | Successful request, or a replayed money request |
 | 201 | Resource created |
-| 204 | Successful request with no response body |
-| 400 | Invalid request |
-| 401 | Authentication required |
-| 403 | Permission denied |
-| 404 | Resource not found |
-| 409 | Resource conflict |
-| 422 | Validation failure, if adopted |
+| 400 | Invalid request. **Every validation error is 400; the API never returns 422.** |
+| 401 | Missing, invalid or expired token, or wrong credentials |
+| 403 | Authenticated, but the role or membership does not allow it |
+| 404 | Not found, **including another SACCO's record** (never 403, so ids cannot be probed) |
+| 405 | Method not allowed |
+| 409 | Conflicts with current state: duplicate email or name, reused reference, insufficient funds, reversing a reversal |
+| 413 | Request body too large |
+| 423 | Account locked after failed logins, or the SACCO is suspended |
+| 429 | Rate limit exceeded |
 | 500 | Internal server error |
 
 ## 8. Request Validation
@@ -107,11 +117,12 @@ database credentials or internal stack traces.
 - SACCO-level access restrictions must be enforced server-side.
 - Authentication credentials must never be exposed in responses.
 
-The authentication mechanism is pending team agreement.
+Authentication is a short-lived access token in the `Authorization: Bearer`
+header plus a rotating refresh token (see `architecture.md`).
 
 ## 10. Financial API Rules
 
-- Monetary values must use decimal-safe handling.
+- Money is an integer in minor units (KES: 100 = 1.00). No floats, no decimals.
 - Financial operations must use database transactions.
 - Prevent duplicate financial operations where applicable.
 - Use unique transaction references where required.
@@ -120,14 +131,9 @@ The authentication mechanism is pending team agreement.
 
 ## 11. Pagination and Filtering
 
-Collection endpoints should support pagination.
-
-Proposed query parameters:
-
-    ?page=1&per_page=20
-
-Filtering and sorting parameters must be documented
-for each endpoint when introduced.
+Collection endpoints take `page` (from 1, default 1) and `per_page` (default
+20, capped at 100). A value that is not a whole number, or is below 1, is a 400.
+Filters are documented per endpoint in `openapi.yaml`.
 
 ## 12. API Documentation and Testing
 
@@ -138,15 +144,6 @@ for each endpoint when introduced.
 - Test endpoints before merging changes.
 - Review API changes with affected frontend and backend developers.
 
-## 13. Decisions Requiring Team Approval
+## 13. Approval
 
-- Final authentication mechanism.
-- Final response envelope.
-- Pagination defaults and maximum page size.
-- Whether HTTP 422 will be used for validation errors.
-- Final endpoint naming and resource structure.
-
-## 14. Approval
-
-These conventions are proposed for team review.
-They become the agreed API standard after team approval.
+Agreed in Move 4. Change them only with the team.

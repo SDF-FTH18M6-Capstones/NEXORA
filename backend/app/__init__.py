@@ -11,6 +11,7 @@ from werkzeug.routing import IntegerConverter
 
 from app.auth.limits import init_limiter
 from app.cors import init_cors
+from app.errors import error_response
 from app.extensions import db, migrate
 from config import Config
 
@@ -59,9 +60,13 @@ class IdConverter(IntegerConverter):
 
 def _json_http_error(exc: HTTPException):
     """Every HTTP error (404, 405, 413, ...) answers in the API's JSON shape."""
+    if exc.code == 429:
+        message = "Too many requests. Try again later."
+    else:
+        message = "Not found." if exc.code == 404 else f"{exc.name}."
+    body, status = error_response(exc.code or 500, message)
     response = exc.get_response()
-    message = "Not found." if exc.code == 404 else f"{exc.name}."
-    response.data = jsonify(error=message).data
+    response.data = body.data
     response.content_type = "application/json"
     return response
 
@@ -70,7 +75,7 @@ def _json_server_error(exc: Exception):
     """Anything unexpected answers in the API's JSON shape, with no details."""
     app = current_app
     app.logger.exception("Unhandled error", exc_info=exc)
-    return jsonify(error="Internal error."), 500
+    return error_response(500, "Internal error.")
 
 
 def create_app(config_class=Config):

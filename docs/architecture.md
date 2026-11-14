@@ -121,7 +121,7 @@ Actions in use: `savings.open`, `savings.deposit`, `savings.withdrawal`, `saving
 
 ### Error format and the 400 decision
 
-- Every error, including 404, 405 and 500, is JSON: `{"error": "message"}`. There is no `success` / `data` envelope; successful responses return the resource itself. Messages never include details such as stack traces or SQL.
+- Every error, including 404, 405 and 500, is JSON: `{"error": {"code": "not_found", "message": "Not found."}}`; the code table is in [`api-conventions.md`](api-conventions.md). There is no `success` / `data` envelope; successful responses return the resource itself. Messages never include details such as stack traces or SQL.
 - **Validation errors are 400. We do not use 422.** One code for "your request is wrong" keeps the frontend simple. 409 is for conflicts with current state (duplicate email, reused reference, insufficient funds, reversing a reversal).
 - Status codes in use: 200, 201, 400, 401, 403, 404, 409, 423 (locked or suspended), 429, 500. The table is in [`frontend-handoff.md`](frontend-handoff.md).
 - `docs/api-conventions.md` was written before these decisions. Where it differs (the `success` envelope, 422), this section wins.

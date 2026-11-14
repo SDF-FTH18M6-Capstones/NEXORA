@@ -26,7 +26,7 @@ from test_auth_routes import (  # noqa: F401  (clean_tables is an autouse fixtur
 
 NEW = "a-brand-new-passphrase"
 OTHER_EMAIL = "other@example.com"
-INVALID = {"error": "Invalid email or password."}
+INVALID = {"error": {"code": "unauthorized", "message": "Invalid email or password."}}
 
 
 def bearer(tokens):
@@ -71,7 +71,7 @@ def live_tokens(user_id):
 def test_no_token_is_401(client, path):
     resp = client.post(f"/api/v1/auth/{path}", json={})
     assert resp.status_code == 401
-    assert resp.get_json() == {"error": "Authentication required."}
+    assert resp.get_json()["error"]["message"] == "Authentication required."
 
 
 @pytest.mark.parametrize("path", ["change-password", "logout-all"])
@@ -141,7 +141,7 @@ def test_bad_new_passwords_are_400(client, new, fragment):
     tokens = logged_in(client)
     resp = change(client, tokens, new=new)
     assert resp.status_code == 400
-    assert fragment in resp.get_json()["error"]
+    assert fragment in resp.get_json()["error"]["message"]
     assert verify_password(PASSWORD, the_user().password_hash)
     assert live_tokens(the_user().id) == 1
     assert audit_rows("auth.password_change") == []
@@ -324,7 +324,7 @@ def test_change_password_shares_logins_limit_of_five_per_minute(app):
         tokens = logged_in(app.test_client())  # the shared app has limits off
         codes = [change(client, tokens, current=WRONG).status_code for _ in range(6)]
         assert 429 not in codes[:5] and codes[5] == 429
-        assert change(client, tokens).get_json()["error"]
+        assert change(client, tokens).get_json()["error"]["message"]
     finally:
         limiter.reset()
         limiter.enabled = False

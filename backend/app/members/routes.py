@@ -10,8 +10,9 @@ from sqlalchemy.exc import IntegrityError
 
 from app import members_bp, saccos_bp
 from app.auth.limits import read_limit, write_limit
-from app.auth.routes import _body, _error
+from app.auth.routes import _body
 from app.auth.suspension import check_sacco_not_suspended
+from app.errors import error_response
 from app.extensions import db
 from app.members import self_service
 from app.members.schemas import InvalidMember, parse_create_member, parse_update_member
@@ -22,7 +23,7 @@ from app.security.tenant import AccessDenied, current_user, sacco_scoped
 
 
 def _me_error(message: str, status: int):
-    return jsonify({"error": message}), status
+    return error_response(status, message)
 
 
 def _me_user() -> tuple[User | None, tuple | None]:
@@ -35,9 +36,9 @@ def _me_user() -> tuple[User | None, tuple | None]:
     try:
         user = current_user()
     except AccessDenied as exc:
-        return None, _me_error(exc.message, exc.status)
+        return None, error_response(exc.status, exc.message)
     if message := check_sacco_not_suspended(user):
-        return None, _me_error(message, 423)
+        return None, error_response(423, message)
     return user, None
 
 
@@ -56,7 +57,7 @@ def get_me():
     try:
         return jsonify(self_service.get_profile(user.id))
     except self_service.ProfileError as exc:
-        return _me_error(exc.message, exc.status)
+        return error_response(exc.status, exc.message)
 
 
 @members_bp.patch("/me")
@@ -67,11 +68,11 @@ def patch_me():
         return error
     body = request.get_json(silent=True)
     if not isinstance(body, dict):
-        return _me_error("A JSON object is required.", 400)
+        return error_response(400, "A JSON object is required.")
     try:
         return jsonify(self_service.update_profile(user.id, body))
     except self_service.ProfileError as exc:
-        return _me_error(exc.message, exc.status)
+        return error_response(exc.status, exc.message)
 
 
 # ---------------------------------------------------------------------------
@@ -139,7 +140,7 @@ def list_members(sacco_id):
 def get_member(sacco_id, membership_id):
     rows = _members(sacco_id, membership_id)
     if not rows:
-        return _error("Member not found.", 404)
+        return error_response(404, "Member not found.")
     return jsonify(_member_json(*rows[0]))
 
 
@@ -151,16 +152,18 @@ def add_member(sacco_id):
     try:
         email, role, status = parse_create_member(_body())
     except InvalidMember as exc:
-        return _error(str(exc), 400)
+        return error_response(400, str(exc))
     if role is ADMIN and not owner:
-        return _error("Only the platform owner can add a SACCO administrator.", 403)
+        return error_response(
+            403, "Only the platform owner can add a SACCO administrator."
+        )
     target = db.session.execute(
         select(User).where(User.email == email)
     ).scalar_one_or_none()
     # The platform owner gets the same answer as an unknown email, so an admin
     # cannot discover the owner's address. The owner never needs a membership.
     if target is None or target.is_platform_owner:
-        return _error("No registered user with that email.", 404)
+        return error_response(404, "No registered user with that email.")
     membership = SaccoMembership(
         user_id=target.id, sacco_id=sacco_id, role=role, status=status
     )
@@ -169,7 +172,7 @@ def add_member(sacco_id):
         db.session.flush()  # assigns the id the audit row points at
     except IntegrityError:  # unique (user_id, sacco_id)
         db.session.rollback()
-        return _error("That user is already a member of this SACCO.", 409)
+        return error_response(409, "That user is already a member of this SACCO.")
     _audit(membership, "member.add")
     db.session.commit()
     return jsonify(_member_json(membership, target.email)), 201
@@ -182,17 +185,19 @@ def update_member(sacco_id, membership_id):
     try:
         changes = parse_update_member(_body())
     except InvalidMember as exc:
-        return _error(str(exc), 400)
+        return error_response(400, str(exc))
     rows = _members(sacco_id, membership_id, lock=True)
     if not rows:
         db.session.rollback()
-        return _error("Member not found.", 404)
+        return error_response(404, "Member not found.")
     membership, email = rows[0]
     # An admin cannot touch an admin row (their own included) or create one.
     touches_admin = membership.role is ADMIN or changes.get("role") is ADMIN
     if touches_admin and not g.access.user.is_platform_owner:
         db.session.rollback()
-        return _error("Only the platform owner can change SACCO administrators.", 403)
+        return error_response(
+            403, "Only the platform owner can change SACCO administrators."
+        )
     if all(getattr(membership, f) is v for f, v in changes.items()):
         body = _member_json(membership, email)
         db.session.rollback()  # nothing changed; release the lock

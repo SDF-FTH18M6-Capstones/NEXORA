@@ -316,4 +316,4 @@ def test_unexpected_errors_answer_in_json(schema_app, monkeypatch):
     schema_app.config["PROPAGATE_EXCEPTIONS"] = False
     resp = schema_app.test_client().get(summary_url(s.sacco.id), headers=auth(s.admin))
     assert resp.status_code == 500
-    assert resp.get_json() == {"error": "Internal error."}
+    assert resp.get_json()["error"]["message"] == "Internal error."

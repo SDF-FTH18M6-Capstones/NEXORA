@@ -55,7 +55,7 @@ def _exhaust(client, method, path, limit):
 def test_reads_allow_120_a_minute(limited, path):
     codes = _exhaust(limited, "get", path, READ_LIMIT)
     assert codes[-1] == 429
-    assert limited.get(path).get_json()["error"]
+    assert limited.get(path).get_json()["error"]["message"]
 
 
 def test_writes_allow_30_a_minute(limited):

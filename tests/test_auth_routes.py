@@ -147,7 +147,7 @@ def test_wrong_and_unknown_logins_are_identical_401s(client):
     assert (
         wrong.get_json()
         == unknown.get_json()
-        == {"error": "Invalid email or password."}
+        == {"error": {"code": "unauthorized", "message": "Invalid email or password."}}
     )
 
 
@@ -359,7 +359,7 @@ def test_suspended_sacco_blocks_login_and_issues_no_token(client, role):
     join_sacco(SaccoStatus.SUSPENDED, role)
     resp = login(client)
     assert resp.status_code == 423
-    assert resp.get_json() == {"error": SUSPENDED_MESSAGE}
+    assert resp.get_json()["error"]["message"] == SUSPENDED_MESSAGE
     assert db.session.query(RefreshToken).count() == 0
 
 
@@ -387,9 +387,8 @@ def test_an_inactive_membership_does_not_keep_a_suspended_user_logged_in(client)
 def test_suspension_is_not_revealed_to_a_wrong_password(client):
     register(client)
     join_sacco(SaccoStatus.SUSPENDED)
-    assert login(client, password=WRONG).get_json() == {
-        "error": "Invalid email or password."
-    }
+    body = login(client, password=WRONG).get_json()
+    assert body["error"]["message"] == "Invalid email or password."
 
 
 def test_suspending_a_sacco_cuts_off_sessions_already_open(client):
@@ -423,7 +422,8 @@ def test_sixth_request_in_a_minute_is_429(limited_client, path):
         for _ in range(6)
     ]
     assert codes[-1] == 429 and 429 not in codes[:-1]
-    assert post(limited_client, path, email=EMAIL, password=WRONG).get_json()["error"]
+    limited = post(limited_client, path, email=EMAIL, password=WRONG)
+    assert limited.get_json()["error"]["message"]
 
 
 def test_rate_limit_does_not_touch_refresh(limited_client):

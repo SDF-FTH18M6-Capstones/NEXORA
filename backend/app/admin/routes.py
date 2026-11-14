@@ -8,6 +8,7 @@ from app import admin_bp
 from app.admin import audit, reports
 from app.audit.log import MAX_ACTION_LENGTH
 from app.auth.limits import read_limit
+from app.errors import error_response
 from app.models.membership import MembershipRole
 from app.savings.accounts import list_sacco_accounts
 from app.savings.history import page_params
@@ -61,9 +62,9 @@ def sacco_summary(sacco_id: int):
     try:
         start, end = _date_param("from"), _date_param("to")
     except ValueError:
-        return jsonify({"error": "Dates must look like 2026-01-31."}), 400
+        return error_response(400, "Dates must look like 2026-01-31.")
     if start and end and start > end:
-        return jsonify({"error": "'from' must not be after 'to'."}), 400
+        return error_response(400, "'from' must not be after 'to'.")
     return jsonify(reports.sacco_summary(sacco_id, start, end))
 
 
@@ -74,7 +75,7 @@ def member_activity(sacco_id: int):
     try:
         page, per_page = page_params()
     except ValueError as exc:
-        return jsonify({"error": str(exc)}), 400
+        return error_response(400, str(exc))
     return jsonify(
         members=reports.member_activity(sacco_id, page, per_page),
         page=page,
@@ -89,7 +90,7 @@ def sacco_accounts(sacco_id: int):
     try:
         page, per_page = page_params()
     except ValueError as exc:
-        return jsonify({"error": str(exc)}), 400
+        return error_response(400, str(exc))
     accounts, total = list_sacco_accounts(sacco_id, page, per_page)
     return jsonify(accounts=accounts, page=page, per_page=per_page, total=total)
 
@@ -101,7 +102,7 @@ def sacco_audit(sacco_id: int):
     try:
         action, start, end, page, per_page = _audit_filters()
     except ValueError as exc:
-        return jsonify({"error": str(exc)}), 400
+        return error_response(400, str(exc))
     return jsonify(audit.list_audit(sacco_id, action, start, end, page, per_page))
 
 
@@ -111,12 +112,12 @@ def platform_audit():
     try:
         user = current_user()
     except AccessDenied as exc:
-        return jsonify({"error": exc.message}), exc.status
+        return error_response(exc.status, exc.message)
     if not user.is_platform_owner:
-        return jsonify({"error": "You are not allowed to do this."}), 403
+        return error_response(403, "You are not allowed to do this.")
     try:
         action, start, end, page, per_page = _audit_filters()
         sacco_id = _sacco_id_param()
     except ValueError as exc:
-        return jsonify({"error": str(exc)}), 400
+        return error_response(400, str(exc))
     return jsonify(audit.list_audit(sacco_id, action, start, end, page, per_page))

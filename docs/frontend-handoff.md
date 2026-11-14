@@ -161,17 +161,30 @@ curl -s -X POST $API/auth/change-password -H "Authorization: Bearer $ACCESS" \
 |---|---|---|
 | **401** | Access token missing, expired or invalid. Refresh once, then retry; if refresh fails, go to login. | Wrong email or password (same message for both). |
 | **423** | The user's SACCO is **suspended**: `This SACCO account is suspended. Contact the platform owner.` Show that message; refreshing will not help. | Either the SACCO is suspended (same message), or the account is **locked**: `Account temporarily locked. Try again later.` Five wrong passwords lock it for 15 minutes, even for the right password. |
-| **429** | Rate limit. Wait and try again. | **5 requests per minute per IP** on login, register and change-password; 120/min on reads, 30/min on ordinary writes, 20/min on deposits, withdrawals and reversals. Body: `{"error": "Too Many Requests."}`. A parallel login for the same account can also answer 429 (`Another attempt is in progress…`). |
+| **429** | Rate limit. Wait and try again. | **5 requests per minute per IP** on login, register and change-password; 120/min on reads, 30/min on ordinary writes, 20/min on deposits, withdrawals and reversals. Body: `{"error": {"code": "rate_limited", "message": "Too many requests. Try again later."}}`. A parallel login for the same account can also answer 429 (`Another attempt is in progress…`). |
 
 While developing, avoid logging in on every page reload or hot reload: five logins a minute is all you get. Log in once and keep the tokens.
 
 ## 4. Conventions
 
-**Error format.** Every error is JSON with one field, and the HTTP status is what you branch on:
+**Error format.** Every error, on every route, has this body. Branch on `code` (or the HTTP status), show `message`:
 
 ```json
-{"error": "amount must be a whole number of minor units."}
+{"error": {"code": "validation_error", "message": "amount must be a whole number of minor units."}}
 ```
+
+| Status | `code` |
+|---|---|
+| 400 | `validation_error` |
+| 401 | `unauthorized` |
+| 403 | `forbidden` |
+| 404 | `not_found` |
+| 405 | `method_not_allowed` |
+| 409 | `conflict` |
+| 413 | `payload_too_large` |
+| 423 | `locked` |
+| 429 | `rate_limited` |
+| 500 | `internal_error` |
 
 Successful responses have no envelope: you get the resource (or a named list such as `{"accounts": [...]}`) directly.
 
@@ -186,7 +199,7 @@ Successful responses have no envelope: you get the resource (or a named list suc
 | 409 | Conflict with current state: email taken, `Insufficient funds.`, reference reused for a different request, reversing something already reversed. |
 | 423 | Locked or suspended (see above). |
 | 429 | Too many requests. |
-| 500 | Server bug. Body is `{"error": "Internal error."}`. |
+| 500 | Server bug. Body is `{"error": {"code": "internal_error", "message": "Internal error."}}`. |
 
 **Pagination.** List endpoints take `?page=1&per_page=20`. `page` starts at 1, `per_page` defaults to 20 and is capped at 100. A zero, negative or non-numeric value is 400. Responses repeat `page` and `per_page`; most also return `total` (`member-activity` does not, so keep paging until a page comes back shorter than `per_page`).
 

@@ -7,13 +7,14 @@ from flask import jsonify, request
 
 from app import savings_bp
 from app.auth.limits import money_limit, write_limit
+from app.errors import error_response
 from app.savings import service
 from app.savings.validation import InvalidRequest, parse_money, parse_open_account
 from app.security.tenant import AccessDenied, current_user
 
 
 def _error(message: str, status: int):
-    return jsonify({"error": message}), status
+    return error_response(status, message)
 
 
 def _body() -> dict:
@@ -36,13 +37,13 @@ def signed_in(view):
         try:
             user_id = current_user().id
         except AccessDenied:
-            return _error("Authentication required.", 401)
+            return error_response(401, "Authentication required.")
         try:
             return view(user_id, *args, **kwargs)
         except InvalidRequest as exc:
-            return _error(str(exc), 400)
+            return error_response(400, str(exc))
         except service.SavingsError as exc:
-            return _error(exc.message, exc.status)
+            return error_response(exc.status, exc.message)
 
     return wrapper
 
