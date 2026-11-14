@@ -1,4 +1,4 @@
-﻿"""Seed a development database with demo SACCOs, users and money movements.
+"""Seed a development database with demo SACCOs, users and money movements.
 
 Run from the repo root:  python backend/scripts/seed.py
 

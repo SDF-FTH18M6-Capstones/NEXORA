@@ -1,4 +1,4 @@
-﻿"""Read-only queries over the audit trail. Every query filters by sacco_id
+"""Read-only queries over the audit trail. Every query filters by sacco_id
 when one is given; the platform route passes None to read across SACCOs.
 
 There are no write helpers here by design: audit_logs is append-only in the
