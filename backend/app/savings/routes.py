@@ -100,3 +100,4 @@ def withdraw(account_id: int):
 
 # Reversals live in the ledger package; importing it attaches its route here.
 from app.ledger import routes as _ledger_routes  # noqa: E402,F401
+from app.savings import history as _history  # noqa: E402,F401
