@@ -2,7 +2,7 @@
 import os
 
 import psycopg
-from flask import Blueprint, Flask, current_app, jsonify
+from flask import Blueprint, Flask, current_app, jsonify, request
 from sqlalchemy.engine import make_url
 from sqlalchemy.exc import ArgumentError
 from werkzeug.exceptions import HTTPException
@@ -10,6 +10,7 @@ from werkzeug.middleware.proxy_fix import ProxyFix
 from werkzeug.routing import IntegerConverter
 
 from app.auth.limits import init_limiter
+from app.cors import init_cors
 from app.extensions import db, migrate
 from config import Config
 
@@ -24,6 +25,21 @@ members_bp = Blueprint("members", __name__, url_prefix="/members")
 
 BLUEPRINTS = (auth_bp, saccos_bp, savings_bp, admin_bp, members_bp)
 MAX_ID = 2**31 - 1  # ids are 32-bit integers in Postgres
+
+PRODUCTION = "production"
+# Only these two values are meaningful. Anything else is a typo that would
+# silently switch the production guards off.
+APP_ENVS = ("development", PRODUCTION)
+# From .env.example: a secret that must never reach production.
+EXAMPLE_SECRET_KEY = "replace-with-a-long-random-string"
+DEBUG_VALUES = {"1", "true", "yes", "on"}
+HSTS = "max-age=31536000; includeSubDomains"
+SECURITY_HEADERS = (
+    ("X-Content-Type-Options", "nosniff"),
+    ("X-Frame-Options", "DENY"),
+    ("Referrer-Policy", "no-referrer"),
+    ("Cache-Control", "no-store"),
+)
 
 
 class IdConverter(IntegerConverter):
@@ -96,6 +112,8 @@ def create_app(config_class=Config):
     from app.savings import history as savings_history  # noqa: F401
     from app.savings import routes as savings_routes  # noqa: F401
     init_limiter(app)
+    init_cors(app)
+    _install_security_headers(app)
 
     for blueprint in BLUEPRINTS:
         prefix = f"{API_PREFIX}{blueprint.url_prefix}"
@@ -138,3 +156,54 @@ def _check_required_settings(app):
             f"Missing settings: {', '.join(missing)}. "
             "Set them in your .env file or shell."
         )
+
+    app_env = str(app.config.get("APP_ENV") or "development").strip().lower()
+    if app_env not in APP_ENVS:
+        raise RuntimeError(
+            f'APP_ENV must be "development" or "production", not {app_env!r}.'
+        )
+    if app_env == PRODUCTION:
+        _check_production_settings(app)
+
+
+def _check_production_settings(app):
+    """Refuse to start in production with a setting that is only safe locally."""
+    debug = str(os.environ.get("FLASK_DEBUG", "")).strip().lower()
+    if app.config.get("DEBUG") or debug in DEBUG_VALUES:
+        raise RuntimeError(
+            "FLASK_DEBUG must be off when APP_ENV=production; debug mode "
+            "exposes the interactive debugger."
+        )
+
+    if str(app.config.get("RATELIMIT_STORAGE_URI") or "").startswith("memory://"):
+        raise RuntimeError(
+            "RATELIMIT_STORAGE_URI must not use memory:// when APP_ENV=production; "
+            "per-process counters multiply every client's allowance per worker."
+        )
+
+    secret = str(app.config.get("SECRET_KEY") or "")
+    if len(secret) < 32 or secret == EXAMPLE_SECRET_KEY:
+        raise RuntimeError(
+            "SECRET_KEY must be at least 32 characters and must not be the "
+            ".env.example placeholder when APP_ENV=production."
+        )
+
+    if "*" in str(app.config.get("CORS_ORIGINS") or ""):
+        raise RuntimeError(
+            "CORS_ORIGINS must list exact origins; '*' is not allowed when "
+            "APP_ENV=production."
+        )
+
+
+def _install_security_headers(app):
+    """Every /api/ response is uncacheable and un-frameable; HSTS in production."""
+
+    @app.after_request
+    def set_security_headers(response):
+        if not request.path.startswith("/api/"):
+            return response
+        for name, value in SECURITY_HEADERS:
+            response.headers[name] = value
+        if app.config.get("APP_ENV") == PRODUCTION:
+            response.headers["Strict-Transport-Security"] = HSTS
+        return response

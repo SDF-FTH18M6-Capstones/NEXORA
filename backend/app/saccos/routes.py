@@ -14,6 +14,7 @@ from sqlalchemy.exc import IntegrityError
 
 from app import saccos_bp
 from app.auth.guards import platform_owner_required
+from app.auth.limits import read_limit, write_limit
 from app.auth.routes import _body, _error, _text
 from app.extensions import db
 from app.models.audit import AuditLog
@@ -68,6 +69,7 @@ def _sacco_json(sacco: Sacco) -> dict:
 
 
 @saccos_bp.post("")
+@write_limit
 @platform_owner_required
 def create_sacco():
     data = _body()
@@ -91,6 +93,7 @@ def create_sacco():
 
 
 @saccos_bp.get("")
+@read_limit
 @platform_owner_required
 def list_saccos():
     saccos = db.session.query(Sacco).order_by(Sacco.id).all()
@@ -114,24 +117,28 @@ def _set_status(sacco_id: int, status: SaccoStatus, action: str):
 
 
 @saccos_bp.post("/<int:sacco_id>/activate")
+@write_limit
 @platform_owner_required
 def activate_sacco(sacco_id):
     return _set_status(sacco_id, SaccoStatus.ACTIVE, "sacco.activate")
 
 
 @saccos_bp.post("/<int:sacco_id>/deactivate")
+@write_limit
 @platform_owner_required
 def deactivate_sacco(sacco_id):
     return _set_status(sacco_id, SaccoStatus.SUSPENDED, "sacco.deactivate")
 
 
 @saccos_bp.get("/<int:sacco_id>")
+@read_limit
 @sacco_scoped()
 def get_sacco(sacco_id):
     return jsonify(_sacco_json(g.access.sacco))
 
 
 @saccos_bp.patch("/<int:sacco_id>")
+@write_limit
 @sacco_scoped()
 def update_sacco(sacco_id):
     """Rename the SACCO. `name` is the only editable field.

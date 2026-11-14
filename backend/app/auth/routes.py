@@ -6,7 +6,7 @@ from flask import jsonify, request
 from sqlalchemy.exc import IntegrityError, OperationalError
 
 from app import auth_bp
-from app.auth.limits import login_limit, register_limit
+from app.auth.limits import login_limit, register_limit, write_limit
 from app.auth.lockout import check_lockout, record_failed_login, reset_failed_logins
 from app.auth.passwords import hash_password, validate_password, verify_password
 from app.auth.suspension import check_sacco_not_suspended
@@ -154,6 +154,7 @@ def _with_refresh_token(action):
 
 
 @auth_bp.post("/refresh")
+@write_limit
 def refresh():
     def rotate(token):
         user_id, new_token = rotate_refresh_token(token)
@@ -167,6 +168,7 @@ def refresh():
 
 
 @auth_bp.post("/logout")
+@write_limit
 def logout():
     def revoke(token):
         revoke_refresh_token(token)
