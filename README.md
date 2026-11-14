@@ -186,6 +186,7 @@ If your database password contains special characters (`@`, `#`, `/`, `:`), URL-
 - [x] Move 3: savings accounts, deposits, withdrawals, reversals, ledger, audit log, admin reports
 - [x] Move 4: security headers, CORS and rate limits, production checks, seed script, savings and audit read endpoints, change-password and logout-all
 - [x] Move 4 hardening: one error format, access-token revocation, email verification, required `reference`
-- [ ] Move 4 remainder: OpenAPI spec, final sign-off
+- [x] OpenAPI spec for every route (`docs/openapi.yaml`)
+- [ ] Move 4 remainder: final sign-off
 - [ ] Loans (waiting for the interest decision)
 - [ ] Frontend connected to backend
