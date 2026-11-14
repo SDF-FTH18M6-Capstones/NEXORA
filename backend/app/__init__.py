@@ -2,7 +2,7 @@
 import os
 
 import psycopg
-from flask import Blueprint, Flask, jsonify
+from flask import Blueprint, Flask, current_app, jsonify
 from sqlalchemy.engine import make_url
 from sqlalchemy.exc import ArgumentError
 from werkzeug.exceptions import HTTPException
@@ -50,6 +50,13 @@ def _json_http_error(exc: HTTPException):
     return response
 
 
+def _json_server_error(exc: Exception):
+    """Anything unexpected answers in the API's JSON shape, with no details."""
+    app = current_app
+    app.logger.exception("Unhandled error", exc_info=exc)
+    return jsonify(error="Internal error."), 500
+
+
 def create_app(config_class=Config):
     app = Flask(__name__)
     app.config.from_object(config_class)
@@ -62,25 +69,36 @@ def create_app(config_class=Config):
 
     app.url_map.converters["int"] = IdConverter
     app.register_error_handler(HTTPException, _json_http_error)
+    app.register_error_handler(Exception, _json_server_error)
     db.init_app(app)
     migrate.init_app(app, db)
 
     # Import models so Alembic's autogenerate can see every table.
-    from app.models import audit, ledger, membership, refresh_token, sacco, savings, user  # noqa: F401
+    from app.admin import routes as admin_routes  # noqa: F401
 
     # Importing the routes attaches them to auth_bp.
     from app.auth import routes  # noqa: F401
-    from app.members import routes as members_routes  # noqa: F401
-    from app.saccos import routes as saccos_routes  # noqa: F401
-    from app.savings import routes as savings_routes  # noqa: F401
-    from app.admin import routes as admin_routes  # noqa: F401
+
     # The ledger and history routes import from the savings routes, so they come after.
     from app.ledger import routes as ledger_routes  # noqa: F401
+    from app.members import routes as members_routes  # noqa: F401
+    from app.models import (  # noqa: F401
+        audit,
+        ledger,
+        membership,
+        refresh_token,
+        sacco,
+        savings,
+        user,
+    )
+    from app.saccos import routes as saccos_routes  # noqa: F401
     from app.savings import history as savings_history  # noqa: F401
+    from app.savings import routes as savings_routes  # noqa: F401
     init_limiter(app)
 
     for blueprint in BLUEPRINTS:
-        app.register_blueprint(blueprint, url_prefix=f"{API_PREFIX}{blueprint.url_prefix}")
+        prefix = f"{API_PREFIX}{blueprint.url_prefix}"
+        app.register_blueprint(blueprint, url_prefix=prefix)
 
     _register_health(app)
 
@@ -112,8 +130,10 @@ def _register_health(app):
 
 
 def _check_required_settings(app):
-    missing = [name for name in ("SECRET_KEY", "SQLALCHEMY_DATABASE_URI") if not app.config.get(name)]
+    required = ("SECRET_KEY", "SQLALCHEMY_DATABASE_URI")
+    missing = [name for name in required if not app.config.get(name)]
     if missing:
         raise RuntimeError(
-            f"Missing settings: {', '.join(missing)}. Set them in your .env file or shell."
+            f"Missing settings: {', '.join(missing)}. "
+            "Set them in your .env file or shell."
         )

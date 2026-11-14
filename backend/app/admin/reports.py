@@ -21,9 +21,10 @@ from app.models.user import User
 def _bounds(start: date | None, end: date | None):
     """Inclusive date range as [lo, hi) datetimes in UTC, either may be None."""
     lo = datetime.combine(start, time.min, tzinfo=UTC) if start else None
+    # date.max has no next day: leave the upper end open instead of overflowing.
     hi = (
         datetime.combine(end + timedelta(days=1), time.min, tzinfo=UTC)
-        if end
+        if end and end < date.max
         else None
     )
     return lo, hi
@@ -84,8 +85,8 @@ def sacco_summary(sacco_id: int, start: date | None, end: date | None) -> dict:
     }
 
 
-def member_activity(sacco_id: int) -> list[dict]:
-    """Per account holder: transaction count and last transaction time."""
+def member_activity(sacco_id: int, page: int, per_page: int) -> list[dict]:
+    """Per account holder: transaction count and last transaction time, paged."""
     rows = db.session.execute(
         select(
             SaccoMembership.id,
@@ -110,13 +111,15 @@ def member_activity(sacco_id: int) -> list[dict]:
         )
         .group_by(SaccoMembership.id, User.email, SavingsAccount.id)
         .order_by(SaccoMembership.id)
+        .limit(per_page)
+        .offset((page - 1) * per_page)
     ).all()
     return [
         {
             "membership_id": m_id,
             "email": email,
             "account_id": acc_id,
-            "transaction_count": int(count),
+            "transaction_count": count,
             "last_transaction_at": last.isoformat() if last else None,
         }
         for m_id, email, acc_id, count, last in rows

@@ -7,6 +7,7 @@ from flask import jsonify, request
 from app import admin_bp
 from app.admin import reports
 from app.models.membership import MembershipRole
+from app.savings.history import page_params
 from app.security.tenant import ADMIN_ONLY, sacco_scoped
 
 REPORT_ROLES = (*ADMIN_ONLY, MembershipRole.STAFF)
@@ -34,4 +35,12 @@ def sacco_summary(sacco_id: int):
 @admin_bp.get("/saccos/<int:sacco_id>/reports/member-activity")
 @sacco_scoped(REPORT_ROLES)
 def member_activity(sacco_id: int):
-    return jsonify(members=reports.member_activity(sacco_id))
+    try:
+        page, per_page = page_params()
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+    return jsonify(
+        members=reports.member_activity(sacco_id, page, per_page),
+        page=page,
+        per_page=per_page,
+    )

@@ -8,29 +8,32 @@ from flask import jsonify, request
 from sqlalchemy import func, select
 
 from app import savings_bp
-from app.auth.suspension import SUSPENDED_MESSAGE
 from app.extensions import db
 from app.models.ledger import Transaction
-from app.models.membership import MembershipRole, MembershipStatus, SaccoMembership
-from app.models.sacco import Sacco, SaccoStatus
+from app.models.membership import MembershipRole
 from app.models.savings import SavingsAccount
-from app.security.tenant import AccessDenied, current_user
+from app.security.tenant import AccessDenied, current_user, sacco_access
 
 DEFAULT_PER_PAGE = 20
 MAX_PER_PAGE = 100
+MAX_PAGE = 1_000_000
 
 
-def _int_param(name: str, default: int) -> int:
-    raw = request.args.get(name)
-    if raw is None:
-        return default
-    try:
-        value = int(raw)
-    except ValueError:
-        raise ValueError(f"{name} must be a whole number.") from None
-    if value < 1:
-        raise ValueError(f"{name} must be 1 or more.")
-    return value
+def _whole(name: str, default: int, top: int | None = None) -> int:
+    raw = request.args.get(name, str(default))
+    if not (raw.isascii() and raw.isdecimal() and int(raw) >= 1):
+        raise ValueError(f"{name} must be a whole number of 1 or more.")
+    return min(int(raw), top) if top else int(raw)
+
+
+def page_params() -> tuple[int, int]:
+    """(page, per_page) from the query string. ValueError if either is unusable.
+
+    per_page is capped at MAX_PER_PAGE. page is capped too, so the offset stays
+    far inside what the database accepts.
+    """
+    page = _whole("page", 1, MAX_PAGE)
+    return page, _whole("per_page", DEFAULT_PER_PAGE, MAX_PER_PAGE)
 
 
 def _open_account(user, account_id: int) -> SavingsAccount:
@@ -38,27 +41,10 @@ def _open_account(user, account_id: int) -> SavingsAccount:
     account = db.session.get(SavingsAccount, account_id)
     if account is None:
         raise AccessDenied("Not found.", 404)
-    if user.is_platform_owner:
-        return account
-
-    membership = db.session.execute(
-        select(SaccoMembership).where(
-            SaccoMembership.user_id == user.id,
-            SaccoMembership.sacco_id == account.sacco_id,
-        )
-    ).scalar_one_or_none()
-    if membership is None:
-        raise AccessDenied("Not found.", 404)  # another SACCO: never 403
-    if membership.status is not MembershipStatus.ACTIVE:
-        raise AccessDenied("You are not allowed to do this.", 403)
-    if (
-        membership.role is MembershipRole.MEMBER
-        and account.membership_id != membership.id
-    ):
+    access = sacco_access(user, account.sacco_id, tuple(MembershipRole))
+    mine = access.membership
+    if mine and mine.role is MembershipRole.MEMBER and account.membership_id != mine.id:
         raise AccessDenied("Not found.", 404)  # someone else's account
-    sacco = db.session.get(Sacco, account.sacco_id)
-    if sacco.status is SaccoStatus.SUSPENDED:
-        raise AccessDenied(SUSPENDED_MESSAGE, 423)
     return account
 
 
@@ -66,7 +52,7 @@ def _tx_json(tx: Transaction) -> dict:
     return {
         "id": tx.id,
         "type": tx.type.value,
-        "amount": int(tx.amount),
+        "amount": tx.amount,
         "reference": tx.reference,
         "created_at": tx.created_at.isoformat(),
         "reverses_id": tx.reverses_id,
@@ -81,8 +67,7 @@ def account_history(account_id: int):
     except AccessDenied as exc:
         return jsonify({"error": exc.message}), exc.status
     try:
-        page = _int_param("page", 1)
-        per_page = min(_int_param("per_page", DEFAULT_PER_PAGE), MAX_PER_PAGE)
+        page, per_page = page_params()
     except ValueError as exc:
         return jsonify({"error": str(exc)}), 400
 

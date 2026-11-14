@@ -16,6 +16,7 @@ from sqlalchemy.exc import IntegrityError
 from app.audit import log as audit_log
 from app.auth.suspension import SUSPENDED_MESSAGE
 from app.extensions import db
+from app.ledger.service import lock_account
 from app.models.ledger import Transaction, TransactionType
 from app.models.membership import MembershipRole, MembershipStatus, SaccoMembership
 from app.models.sacco import Sacco, SaccoStatus
@@ -116,12 +117,6 @@ def _require_sacco_active(sacco_id: int) -> None:
         raise Suspended(SUSPENDED_MESSAGE)
 
 
-def _audit(sacco_id: int, actor_user_id: int, action: str, target: str) -> None:
-    # One writer for the audit trail (Neo's audit/log.py). The row joins this
-    # transaction, so the money movement and its audit entry land together.
-    audit_log.record(sacco_id, actor_user_id, action, target)
-
-
 @_atomic
 def open_account(user_id: int, membership_id: int) -> AccountView:
     target = db.session.get(SaccoMembership, membership_id)
@@ -141,7 +136,9 @@ def open_account(user_id: int, membership_id: int) -> AccountView:
             raise Conflict("This member already has a savings account.") from exc
         raise
     db.session.refresh(account)
-    _audit(account.sacco_id, user_id, "savings.open", f"savings_account:{account.id}")
+    audit_log.record(
+        account.sacco_id, user_id, "savings.open", f"savings_account:{account.id}"
+    )
     view = AccountView(
         account.id,
         account.membership_id,
@@ -165,12 +162,7 @@ def _post(
     # Lock the account row. A second request for this account waits here until
     # the first commits, then reads the new balance, so two withdrawals that
     # together exceed the balance cannot both succeed.
-    account = db.session.execute(
-        select(SavingsAccount)
-        .where(SavingsAccount.id == account_id)
-        .with_for_update()
-        .execution_options(populate_existing=True)
-    ).scalar_one()
+    account = lock_account(account_id)
 
     _require_sacco_active(account.sacco_id)
     holder = db.session.get(SaccoMembership, account.membership_id)
@@ -192,7 +184,7 @@ def _post(
             kind,
             amount,
         )
-        if not same:
+        if not same or existing.reverses_id is not None:
             raise Conflict("That reference was already used for a different request.")
         view = PostedTransaction(
             existing.id,
@@ -231,7 +223,7 @@ def _post(
     db.session.refresh(tx)
     db.session.refresh(account)
 
-    _audit(
+    audit_log.record(
         account.sacco_id,
         user_id,
         f"savings.{kind.value}",
