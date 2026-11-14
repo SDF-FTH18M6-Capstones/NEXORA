@@ -58,6 +58,12 @@ def test_reads_allow_120_a_minute(limited, path):
     assert limited.get(path).get_json()["error"]["message"]
 
 
+def test_health_is_a_read(limited):
+    """Each call opens a database connection, so it is limited like a read."""
+    codes = _exhaust(limited, "get", "/api/health", READ_LIMIT)
+    assert codes[-1] == 429
+
+
 def test_writes_allow_30_a_minute(limited):
     codes = _exhaust(limited, "post", "/api/v1/saccos", WRITE_LIMIT)
     assert codes[-1] == 429

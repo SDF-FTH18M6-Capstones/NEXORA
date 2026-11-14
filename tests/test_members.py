@@ -268,6 +268,14 @@ def test_adding_an_unknown_email_is_404(client, world):
     assert resp.status_code == 404
 
 
+@pytest.mark.parametrize("email", ["\ud800@example.com", "a\x00@example.com"])
+def test_an_email_the_database_cannot_store_is_400(client, world, email):
+    resp = client.post(
+        collection(world.sacco), headers=auth(world.admin), json={"email": email}
+    )
+    assert resp.status_code == 400
+
+
 def test_adding_the_same_user_twice_is_409(client, world):
     resp = client.post(
         collection(world.sacco),

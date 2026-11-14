@@ -9,7 +9,7 @@ from werkzeug.exceptions import HTTPException
 from werkzeug.middleware.proxy_fix import ProxyFix
 from werkzeug.routing import IntegerConverter
 
-from app.auth.limits import init_limiter
+from app.auth.limits import init_limiter, read_limit
 from app.cors import init_cors
 from app.errors import error_response
 from app.extensions import db, migrate
@@ -131,6 +131,7 @@ def create_app(config_class=Config):
 
 def _register_health(app):
     @app.get("/api/health")
+    @read_limit  # each call opens a database connection
     def health():
         database_url = os.getenv("DATABASE_URL")
 

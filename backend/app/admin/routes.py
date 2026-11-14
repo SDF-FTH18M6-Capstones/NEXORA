@@ -39,6 +39,8 @@ def _audit_filters():
     action = request.args.get("action") or None
     if action and len(action) > MAX_ACTION_LENGTH:
         raise ValueError(f"action cannot exceed {MAX_ACTION_LENGTH} characters.")
+    if action and "\x00" in action:  # Postgres text cannot hold NUL
+        raise ValueError("action must be plain text.")
     page, per_page = page_params()
     return action, start, end, page, per_page
 

@@ -284,3 +284,30 @@ def test_the_admin_list_of_a_suspended_sacco_is_423(schema_app):
     suspend(s.sacco.id)
     resp = schema_app.test_client().get(list_url(s.sacco.id), headers=auth(s.admin))
     assert resp.status_code == 423
+
+
+def test_foreign_and_missing_ids_answer_with_the_same_404_body(schema_app):
+    """Money routes must not tell another SACCO's id from one that does not exist."""
+    s = Setup(balance=500)
+    outsider = Setup()
+    client = schema_app.test_client()
+    headers = auth(outsider.admin)
+
+    def bodies(foreign_id, missing_id, send):
+        foreign, missing = send(foreign_id), send(missing_id)
+        assert foreign.status_code == missing.status_code == 404
+        assert foreign.get_json() == missing.get_json()
+
+    def open_for(membership_id):
+        body = {"membership_id": membership_id}
+        return client.post(f"{SAVINGS}/accounts", json=body, headers=headers)
+
+    def deposit_to(account_id):
+        return client.post(
+            f"{SAVINGS}/accounts/{account_id}/deposits",
+            json={"amount": 100, "reference": "probe-1"},
+            headers=headers,
+        )
+
+    bodies(s.member_membership.id, 2_000_000_000, open_for)
+    bodies(s.account.id, 2_000_000_000, deposit_to)

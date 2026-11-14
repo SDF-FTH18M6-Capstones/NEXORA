@@ -22,6 +22,10 @@ def _options(enum_class) -> str:
 
 def _email(value) -> str:
     email = value.strip().lower() if isinstance(value, str) else ""
+    try:
+        email.encode()  # a lone surrogate cannot be stored
+    except UnicodeEncodeError:
+        email = ""
     valid = (
         email
         and len(email) <= MAX_EMAIL_LENGTH

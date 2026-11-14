@@ -121,7 +121,7 @@ def _require_sacco_active(sacco_id: int) -> None:
 def open_account(user_id: int, membership_id: int) -> AccountView:
     target = db.session.get(SaccoMembership, membership_id)
     if target is None:
-        raise NotFound("Membership not found.")
+        raise NotFound("Not found.")
     _actor(user_id, target.sacco_id)
     _require_sacco_active(target.sacco_id)
     if target.status is not MembershipStatus.ACTIVE:
@@ -156,7 +156,7 @@ def _post(
 ) -> PostedTransaction:
     account = db.session.get(SavingsAccount, account_id)
     if account is None:
-        raise NotFound("Savings account not found.")
+        raise NotFound("Not found.")
     actor = _actor(user_id, account.sacco_id)
 
     # Lock the account row. A second request for this account waits here until
