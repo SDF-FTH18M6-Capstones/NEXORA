@@ -2,7 +2,6 @@
 """Ledger balance and reversal tests (Move 3)."""
 
 import pytest
-from savings_support import Setup, release_session, schema_app  # noqa: F401
 from sqlalchemy import text
 
 from app.auth.tokens import create_access_token
@@ -11,6 +10,7 @@ from app.ledger import reversals
 from app.models.audit import AuditLog
 from app.savings import service
 from app.savings.balance import ledger_balance, verify_balance
+from savings_support import Setup, release_session, schema_app  # noqa: F401
 
 pytestmark = pytest.mark.schema
 

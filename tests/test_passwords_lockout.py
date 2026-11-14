@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from app.auth.lockout import (
     check_lockout,
@@ -8,7 +8,7 @@ from app.auth.lockout import (
 from app.auth.passwords import hash_password, validate_password, verify_password
 from app.models.user import User
 
-T0 = datetime(2026, 11, 13, 9, 0, tzinfo=timezone.utc)
+T0 = datetime(2026, 11, 13, 9, 0, tzinfo=UTC)
 
 
 def make_user():
@@ -66,7 +66,7 @@ def test_attempts_restart_after_lock_expires():
 
 def test_check_lockout_works_with_default_clock_and_aware_column_value():
     u = make_user()
-    u.locked_until = datetime.now(timezone.utc) + timedelta(minutes=5)
+    u.locked_until = datetime.now(UTC) + timedelta(minutes=5)
     assert check_lockout(u) is True
-    u.locked_until = datetime.now(timezone.utc) - timedelta(minutes=5)
+    u.locked_until = datetime.now(UTC) - timedelta(minutes=5)
     assert check_lockout(u) is False

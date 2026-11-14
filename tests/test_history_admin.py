@@ -1,10 +1,9 @@
 # ruff: noqa: F811  (pytest fixtures imported from savings_support)
 """Transaction history and admin report tests (Move 3)."""
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
-from savings_support import Setup, release_session, schema_app  # noqa: F401
 
 from app.auth.tokens import create_access_token
 from app.extensions import db
@@ -13,6 +12,7 @@ from app.models.membership import MembershipRole, SaccoMembership
 from app.models.sacco import Sacco, SaccoStatus
 from app.models.user import User
 from app.savings import service
+from savings_support import Setup, release_session, schema_app  # noqa: F401
 
 pytestmark = pytest.mark.schema
 
@@ -200,7 +200,7 @@ def test_summary_leaves_out_reversed_entries(schema_app):
 
 def test_summary_date_range_filters_totals_not_balance(schema_app):
     s = Setup(balance=1000)
-    old = (datetime.now(timezone.utc) - timedelta(days=2)).date().isoformat()
+    old = (datetime.now(UTC) - timedelta(days=2)).date().isoformat()
     body = (
         schema_app.test_client()
         .get(
@@ -270,8 +270,10 @@ def test_member_activity_excludes_other_saccos_and_blocks_members(schema_app):
     resp = client.get(activity_url(s.sacco.id), headers=auth(s.admin))
     ids = [m["account_id"] for m in resp.get_json()["members"]]
     assert ids == [s.account.id] and other.account.id not in ids
-    assert client.get(activity_url(s.sacco.id), headers=auth(s.member)).status_code == 403
-    assert client.get(activity_url(s.sacco.id), headers=auth(other.admin)).status_code == 404
+    member_resp = client.get(activity_url(s.sacco.id), headers=auth(s.member))
+    assert member_resp.status_code == 403
+    other_resp = client.get(activity_url(s.sacco.id), headers=auth(other.admin))
+    assert other_resp.status_code == 404
 
 
 def test_huge_page_is_not_a_server_error(schema_app):

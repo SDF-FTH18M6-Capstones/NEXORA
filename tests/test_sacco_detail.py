@@ -178,7 +178,8 @@ def test_missing_sacco_is_404_for_the_platform_owner(client):
 
 def test_user_with_no_membership_is_404(client):
     sacco_id = make_sacco()
-    assert client.get(f"{BASE}/{sacco_id}", headers=auth(make_user())).status_code == 404
+    resp = client.get(f"{BASE}/{sacco_id}", headers=auth(make_user()))
+    assert resp.status_code == 404
 
 
 @pytest.mark.parametrize("role", [STAFF, MEMBER])
@@ -360,7 +361,8 @@ def test_suspended_sacco_admin_cannot_rename(client):
 
 def test_patch_with_a_non_numeric_id_is_404(client):
     headers = auth(make_user(owner=True))
-    assert client.patch(f"{BASE}/abc", headers=headers, json={"name": "X"}).status_code == 404
+    resp = client.patch(f"{BASE}/abc", headers=headers, json={"name": "X"})
+    assert resp.status_code == 404
 
 
 @pytest.mark.parametrize(

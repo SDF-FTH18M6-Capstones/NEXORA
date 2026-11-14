@@ -13,7 +13,6 @@ cross-SACCO 404. This file adds what it does not:
 """
 
 import pytest
-from savings_support import Setup, release_session, schema_app  # noqa: F401
 from sqlalchemy import text
 
 from app.audit import log as audit_log
@@ -24,6 +23,7 @@ from app.models.audit import AuditLog
 from app.savings import service
 from app.savings.balance import verify_balance
 from app.savings.validation import MAX_TRANSACTION_AMOUNT
+from savings_support import Setup, release_session, schema_app  # noqa: F401
 
 pytestmark = pytest.mark.schema
 

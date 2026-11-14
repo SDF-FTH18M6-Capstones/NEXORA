@@ -1,7 +1,7 @@
 from pathlib import Path
 
-import pytest
 import psycopg
+import pytest
 from flask_migrate import downgrade, upgrade
 from sqlalchemy import inspect, text
 from sqlalchemy.engine import make_url
@@ -38,14 +38,20 @@ def _schema_test_url():
     url = make_url(TestConfig.SQLALCHEMY_DATABASE_URI)
     name = url.database or ""
     if not name.endswith("_test"):
-        raise RuntimeError("TEST_DATABASE_URL must point at a database whose name ends in _test.")
+        raise RuntimeError(
+            "TEST_DATABASE_URL must point at a database whose name ends in _test."
+        )
     return url.set(database=f"{name[: -len('_test')]}_schema_test")
 
 
 def _ensure_database(url):
     """Create the schema-test database if it does not exist yet."""
     admin = TestConfig.SQLALCHEMY_DATABASE_URI
-    dsn = make_url(admin).set(drivername="postgresql").render_as_string(hide_password=False)
+    dsn = (
+        make_url(admin)
+        .set(drivername="postgresql")
+        .render_as_string(hide_password=False)
+    )
     with psycopg.connect(dsn, autocommit=True) as conn:
         exists = conn.execute(
             "SELECT 1 FROM pg_database WHERE datname = %s", (url.database,)
@@ -62,7 +68,8 @@ def schema_app():
     except psycopg.Error as exc:
         pytest.fail(
             f"Could not create database {url.database!r}. Create it once with: "
-            f"psql -U postgres -c 'CREATE DATABASE {url.database} OWNER {url.username};'  ({exc})"
+            f"psql -U postgres -c 'CREATE DATABASE {url.database} "
+            f"OWNER {url.username};'  ({exc})"
         )
 
     class SchemaConfig(TestConfig):
@@ -81,8 +88,8 @@ def schema_app():
 def session(schema_app):
     yield db.session
     db.session.rollback()
-    
-    
+
+
 # Helpers
 
 def make_user(s):
@@ -107,7 +114,9 @@ def make_membership(s, user, sacco, role=MembershipRole.MEMBER):
 
 
 def make_savings(s, membership, sacco, balance=0):
-    acc = SavingsAccount(membership_id=membership.id, sacco_id=sacco.id, balance=balance)
+    acc = SavingsAccount(
+        membership_id=membership.id, sacco_id=sacco.id, balance=balance
+    )
     s.add(acc)
     s.flush()
     return acc
@@ -136,7 +145,7 @@ def make_ledger_row(s, amount=100):
     return post(s, acc, TransactionType.DEPOSIT, amount)
 
 
-# Constraint tests 
+# Constraint tests
 
 def test_negative_balance_rejected(session):
     sacco = make_sacco(session)
@@ -271,7 +280,9 @@ def test_blank_audit_action_rejected(session):
 
 def test_negative_failed_login_count_rejected(session):
     with pytest.raises(IntegrityError):
-        session.add(User(email="neg@example.com", password_hash="x", failed_login_count=-1))
+        session.add(
+            User(email="neg@example.com", password_hash="x", failed_login_count=-1)
+        )
         session.flush()
 
 
@@ -309,7 +320,8 @@ def test_reversal_must_mirror_the_original_and_works_once(session):
 
 def test_reversal_cannot_cross_accounts(session):
     tx = make_ledger_row(session, amount=100)
-    other = session.get(SavingsAccount, make_ledger_row(session, amount=100).savings_account_id)
+    other_id = make_ledger_row(session, amount=100).savings_account_id
+    other = session.get(SavingsAccount, other_id)
     with pytest.raises(IntegrityError):
         post(session, other, TransactionType.WITHDRAWAL, 100, reverses_id=tx.id)
 
@@ -317,7 +329,10 @@ def test_reversal_cannot_cross_accounts(session):
 def test_inactive_membership_cannot_post(session):
     tx = make_ledger_row(session)
     acc = session.get(SavingsAccount, tx.savings_account_id)
-    session.execute(text("UPDATE sacco_memberships SET status = 'inactive' WHERE id = :m"), {"m": acc.membership_id})
+    session.execute(
+        text("UPDATE sacco_memberships SET status = 'inactive' WHERE id = :m"),
+        {"m": acc.membership_id},
+    )
     with pytest.raises(IntegrityError):
         post(session, acc, TransactionType.DEPOSIT, 5)
 
@@ -327,7 +342,13 @@ def test_actor_must_belong_to_the_same_sacco(session):
     acc = session.get(SavingsAccount, tx.savings_account_id)
     outsider = make_membership(session, make_user(session), make_sacco(session))
     with pytest.raises(IntegrityError):
-        post(session, acc, TransactionType.DEPOSIT, 5, created_by_membership_id=outsider.id)
+        post(
+            session,
+            acc,
+            TransactionType.DEPOSIT,
+            5,
+            created_by_membership_id=outsider.id,
+        )
 
 
 def test_sacco_currency_must_be_a_three_letter_code(session):

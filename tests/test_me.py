@@ -250,7 +250,13 @@ def test_get_returns_only_the_callers_own_profile(client, world):
 def test_the_response_has_no_secrets_or_flags(client, world):
     body = client.get(ME, headers=auth(world["sam"])).get_json()
     assert set(body) == {"id", "email", "created_at", "memberships"}
-    for field in ("password_hash", "locked_until", "failed_login_count", "is_platform_owner"):
+    sensitive = (
+        "password_hash",
+        "locked_until",
+        "failed_login_count",
+        "is_platform_owner",
+    )
+    for field in sensitive:
         assert field not in str(body)
 
 

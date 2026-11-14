@@ -20,7 +20,8 @@ def app():
     uri = application.config["SQLALCHEMY_DATABASE_URI"]
     if not (make_url(uri).database or "").endswith("_test"):
         raise RuntimeError(
-            "Refusing to run tests: the database name must end in _test. Check TEST_DATABASE_URL."
+            "Refusing to run tests: the database name must end in _test. "
+            "Check TEST_DATABASE_URL."
         )
 
     with application.app_context():
