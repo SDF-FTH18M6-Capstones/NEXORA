@@ -73,6 +73,7 @@ def create_app(config_class=Config):
     from app.members import routes as members_routes  # noqa: F401
     from app.saccos import routes as saccos_routes  # noqa: F401
     from app.savings import routes as savings_routes  # noqa: F401
+    from app.admin import routes as admin_routes  # noqa: F401
 
     init_limiter(app)
 
