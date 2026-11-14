@@ -9,6 +9,7 @@ from sqlalchemy import func, select
 
 from app import savings_bp
 from app.auth.limits import read_limit
+from app.errors import error_response
 from app.extensions import db
 from app.models.ledger import Transaction
 from app.models.membership import MembershipRole
@@ -67,11 +68,11 @@ def account_history(account_id: int):
         user = current_user()
         account = _open_account(user, account_id)
     except AccessDenied as exc:
-        return jsonify({"error": exc.message}), exc.status
+        return error_response(exc.status, exc.message)
     try:
         page, per_page = page_params()
     except ValueError as exc:
-        return jsonify({"error": str(exc)}), 400
+        return error_response(400, str(exc))
 
     where = Transaction.savings_account_id == account.id
     total = db.session.execute(

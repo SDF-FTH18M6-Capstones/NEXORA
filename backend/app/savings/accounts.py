@@ -10,6 +10,7 @@ from sqlalchemy import func, select
 
 from app import savings_bp
 from app.auth.limits import read_limit
+from app.errors import error_response
 from app.extensions import db
 from app.models.membership import MembershipStatus, SaccoMembership
 from app.models.sacco import Sacco, SaccoStatus
@@ -59,7 +60,7 @@ def my_accounts():
     try:
         user = current_user()
     except AccessDenied as exc:
-        return jsonify({"error": exc.message}), exc.status
+        return error_response(exc.status, exc.message)
     accounts = (
         db.session.execute(
             select(SavingsAccount)
@@ -84,5 +85,5 @@ def get_account(account_id: int):
     try:
         account = _open_account(current_user(), account_id)
     except AccessDenied as exc:
-        return jsonify({"error": exc.message}), exc.status
+        return error_response(exc.status, exc.message)
     return jsonify(_account_json(account))

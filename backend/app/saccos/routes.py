@@ -15,7 +15,8 @@ from sqlalchemy.exc import IntegrityError
 from app import saccos_bp
 from app.auth.guards import platform_owner_required
 from app.auth.limits import read_limit, write_limit
-from app.auth.routes import _body, _error, _text
+from app.auth.routes import _body, _text
+from app.errors import error_response
 from app.extensions import db
 from app.models.audit import AuditLog
 from app.models.sacco import Sacco, SaccoStatus
@@ -76,9 +77,9 @@ def create_sacco():
     name = _clean_name(data.get("name"))
     currency = (_text(data.get("currency", "KES")) or "").strip().upper()
     if name is None:
-        return _error(NAME_RULE, 400)
+        return error_response(400, NAME_RULE)
     if not CURRENCY_RE.fullmatch(currency):
-        return _error("Currency must be a 3-letter code such as KES.", 400)
+        return error_response(400, "Currency must be a 3-letter code such as KES.")
 
     sacco = Sacco(name=name, currency=currency)
     db.session.add(sacco)
@@ -86,7 +87,7 @@ def create_sacco():
         db.session.flush()  # assigns the id the audit row points at
     except IntegrityError:  # unique index on lower(btrim(name))
         db.session.rollback()
-        return _error(DUPLICATE_NAME, 409)
+        return error_response(409, DUPLICATE_NAME)
     _audit(sacco, g.user.id, "sacco.create")
     db.session.commit()
     return jsonify(_sacco_json(sacco)), 201
@@ -107,7 +108,7 @@ def _set_status(sacco_id: int, status: SaccoStatus, action: str):
     ).scalar_one_or_none()
     if sacco is None:
         db.session.rollback()
-        return _error("Not found.", 404)
+        return error_response(404, "Not found.")
     if sacco.status is not status:
         sacco.status = status
         _audit(sacco, g.user.id, action)
@@ -148,10 +149,10 @@ def update_sacco(sacco_id):
     """
     data = _body()
     if not data or set(data) != {"name"}:
-        return _error('Send only "name".', 400)
+        return error_response(400, 'Send only "name".')
     name = _clean_name(data["name"])
     if name is None:
-        return _error(NAME_RULE, 400)
+        return error_response(400, NAME_RULE)
 
     # Lock the row so two renames cannot overlap: the second waits, then sees the
     # first one's name, so each audit row records the name it really replaced.
@@ -173,5 +174,5 @@ def update_sacco(sacco_id):
         db.session.commit()  # the rename and its audit row, or neither
     except IntegrityError:  # unique index on lower(btrim(name))
         db.session.rollback()
-        return _error(DUPLICATE_NAME, 409)
+        return error_response(409, DUPLICATE_NAME)
     return jsonify(_sacco_json(sacco))

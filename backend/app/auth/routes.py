@@ -19,6 +19,7 @@ from app.auth.tokens import (
     revoke_refresh_token,
     rotate_refresh_token,
 )
+from app.errors import error_response
 from app.extensions import db
 from app.models.user import User
 
@@ -31,7 +32,7 @@ _DUMMY_HASH = hash_password("not-a-real-password")
 
 
 def _error(message: str, status: int):
-    return jsonify({"error": message}), status
+    return error_response(status, message)
 
 
 def _body() -> dict:
@@ -81,13 +82,13 @@ def register():
     data = _body()
     email, password = _email(data.get("email")), _password(data.get("password"))
     if email is None:
-        return _error("A valid email is required.", 400)
+        return error_response(400, "A valid email is required.")
     if password is None:
-        return _error(
-            f"Password is required (max {MAX_PASSWORD_LENGTH} characters).", 400
+        return error_response(
+            400, f"Password is required (max {MAX_PASSWORD_LENGTH} characters)."
         )
     if problem := validate_password(password, email):
-        return _error(problem, 400)
+        return error_response(400, problem)
 
     user = User(email=email, password_hash=hash_password(password))
     db.session.add(user)
@@ -95,7 +96,7 @@ def register():
         db.session.commit()
     except IntegrityError:  # unique index on lower(email)
         db.session.rollback()
-        return _error("Email is already registered.", 409)
+        return error_response(409, "Email is already registered.")
     return jsonify(id=user.id, email=user.email), 201
 
 
@@ -105,7 +106,7 @@ def login():
     data = _body()
     email, password = _email(data.get("email")), _password(data.get("password"))
     if email is None or password is None:
-        return _error("Invalid email or password.", 401)
+        return error_response(401, "Invalid email or password.")
 
     # One attempt per account at a time: a parallel one is turned away at once, so
     # guesses cannot dodge the failure counter or pile up holding connections.
@@ -120,7 +121,7 @@ def login():
         db.session.rollback()
         if exc.orig.sqlstate != "55P03":  # lock_not_available
             raise
-        return _error("Another attempt is in progress. Try again shortly.", 429)
+        return error_response(429, "Another attempt is in progress. Try again shortly.")
     # Lockout comes before the password, so a locked account never reveals
     # whether the guess was right.
     locked = user is not None and check_lockout(user)
@@ -129,17 +130,17 @@ def login():
 
     if locked:
         db.session.rollback()
-        return _error("Account temporarily locked. Try again later.", 423)
+        return error_response(423, "Account temporarily locked. Try again later.")
     if not (usable and valid):
         if user:
             record_failed_login(user)
         db.session.commit()
-        return _error("Invalid email or password.", 401)
+        return error_response(401, "Invalid email or password.")
 
     reset_failed_logins(user)
     if message := check_sacco_not_suspended(user):
         db.session.commit()
-        return _error(message, 423)
+        return error_response(423, message)
     refresh_token = create_refresh_token(user.id)
     db.session.commit()
     return _tokens(user.id, refresh_token)
@@ -148,11 +149,11 @@ def login():
 def _with_refresh_token(action):
     token = _body().get("refresh_token")
     if not isinstance(token, str) or not token:
-        return _error("refresh_token is required.", 400)
+        return error_response(400, "refresh_token is required.")
     try:
         return action(token)
     except TokenError:
-        return _error("Invalid or expired refresh token.", 401)
+        return error_response(401, "Invalid or expired refresh token.")
 
 
 @auth_bp.post("/refresh")
@@ -163,7 +164,7 @@ def refresh():
         # A suspension must also cut off sessions that were already open.
         if message := check_sacco_not_suspended(db.session.get(User, user_id)):
             revoke_refresh_token(new_token)
-            return _error(message, 423)
+            return error_response(423, message)
         return _tokens(user_id, new_token)
 
     return _with_refresh_token(rotate)
@@ -188,18 +189,17 @@ def change_password():
         data.get("new_password")
     )
     if current is None:
-        return _error(
-            f"current_password is required (max {MAX_PASSWORD_LENGTH} characters).",
-            400,
+        return error_response(
+            400, f"current_password is required (max {MAX_PASSWORD_LENGTH} characters)."
         )
     if new is None:
-        return _error(
-            f"new_password is required (max {MAX_PASSWORD_LENGTH} characters).", 400
+        return error_response(
+            400, f"new_password is required (max {MAX_PASSWORD_LENGTH} characters)."
         )
     try:
         account.change_password(g.user.id, current, new)
     except account.AccountError as exc:
-        return _error(exc.message, exc.status)
+        return error_response(exc.status, exc.message)
     return jsonify(message="Password changed. Sign in again.")
 
 

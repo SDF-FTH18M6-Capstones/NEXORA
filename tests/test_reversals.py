@@ -121,7 +121,7 @@ def test_the_endpoint_refuses_a_reversal_of_a_reversal(schema_app):
         reversal_url(reversed_id), json={"reference": "r2"}, headers=auth(s.admin)
     )
     assert resp.status_code == 409
-    assert resp.get_json()["error"] == REVERSAL_OF_REVERSAL
+    assert resp.get_json()["error"]["message"] == REVERSAL_OF_REVERSAL
     assert ledger_rows(s.account.id) == [
         (original.id, "deposit", 200, None),
         (reversed_id, "withdrawal", 200, original.id),
@@ -268,21 +268,23 @@ def test_the_kept_messages_are_still_the_ones_clients_see(schema_app):
     whole = client.post(
         deposit_url(s), json={"amount": 1.5, "reference": "d1"}, headers=headers
     )
-    assert whole.get_json()["error"] == "amount must be a whole number of minor units."
+    assert whole.get_json()["error"]["message"] == (
+        "amount must be a whole number of minor units."
+    )
 
     over = client.post(
         deposit_url(s),
         json={"amount": MAX_TRANSACTION_AMOUNT + 1, "reference": "d2"},
         headers=headers,
     )
-    assert over.get_json()["error"] == (
+    assert over.get_json()["error"]["message"] == (
         f"amount cannot exceed {MAX_TRANSACTION_AMOUNT}."
     )
 
     zero = client.post(
         deposit_url(s), json={"amount": 0, "reference": "d3"}, headers=headers
     )
-    assert zero.get_json()["error"] == "amount must be greater than zero."
+    assert zero.get_json()["error"]["message"] == "amount must be greater than zero."
 
 
 def test_the_maximum_is_accepted_and_stays_an_integer(schema_app):

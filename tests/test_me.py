@@ -130,7 +130,7 @@ def test_a_suspended_saccos_member_is_423_with_an_old_token(client, world, metho
         json={"email": "new@example.com", "current_password": PASSWORD},
     )
     assert response.status_code == 423
-    assert response.get_json() == {"error": SUSPENDED_MESSAGE}
+    assert response.get_json()["error"]["message"] == SUSPENDED_MESSAGE
 
 
 def test_a_suspended_refusal_changes_nothing(client, world):

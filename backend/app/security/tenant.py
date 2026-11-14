@@ -15,11 +15,12 @@ exact SACCO. A SACCO id in the URL is never trusted on its own.
 from dataclasses import dataclass
 from functools import wraps
 
-from flask import g, jsonify, request
+from flask import g, request
 from sqlalchemy import select
 
 from app.auth.suspension import SUSPENDED_MESSAGE
 from app.auth.tokens import TokenError, decode_access_token
+from app.errors import error_response
 from app.extensions import db
 from app.models.membership import MembershipRole, MembershipStatus, SaccoMembership
 from app.models.sacco import Sacco, SaccoStatus
@@ -98,7 +99,7 @@ def sacco_scoped(roles=ADMIN_ONLY):
             try:
                 g.access = sacco_access(current_user(), kwargs["sacco_id"], roles)
             except AccessDenied as exc:
-                return jsonify({"error": exc.message}), exc.status
+                return error_response(exc.status, exc.message)
             return view(*args, **kwargs)
 
         return wrapper

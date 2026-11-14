@@ -251,13 +251,14 @@ def test_out_of_range_status_change_is_a_json_404(client, owner, action, bad_id)
     assert create_sacco(client, owner) == 1  # so "01" would hit a real row
     resp = client.post(f"{URL}/{bad_id}/{action}", headers=owner)
     assert resp.status_code == 404
-    assert resp.get_json() == {"error": "Not found."}
+    assert resp.get_json()["error"]["message"] == "Not found."
 
 
 def test_unknown_routes_and_wrong_methods_answer_in_json(client):
     resp = client.get("/api/v1/nope")
-    assert (resp.status_code, resp.get_json()) == (404, {"error": "Not found."})
+    assert resp.status_code == 404
+    assert resp.get_json() == {"error": {"code": "not_found", "message": "Not found."}}
     resp = client.delete(URL)
     assert resp.status_code == 405
-    assert resp.get_json() == {"error": "Method Not Allowed."}
+    assert resp.get_json()["error"]["message"] == "Method Not Allowed."
     assert "GET" in resp.headers["Allow"]

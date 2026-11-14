@@ -2,9 +2,10 @@
 
 from urllib.parse import urlsplit
 
-from flask import jsonify
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
+
+from app.errors import error_response
 
 LOGIN_LIMIT = "5 per minute"
 REGISTER_LIMIT = "5 per minute"
@@ -17,9 +18,9 @@ MONEY_LIMIT = "20 per minute"
 
 def rate_limit_response(request_limit):
     """Return a clean JSON response when a client exceeds a limit."""
-    response = jsonify(error="Too many requests. Try again later.")
-    response.status_code = 429
-    return response
+    body, status = error_response(429, "Too many requests. Try again later.")
+    body.status_code = status
+    return body
 
 
 limiter = Limiter(

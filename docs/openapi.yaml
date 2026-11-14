@@ -5,7 +5,7 @@ info:
   description: >
     Backend API for multi-tenant SACCO management. Every resource route is served
     under /api/v1 (see docs/api-conventions.md); the health check is unversioned.
-    Error bodies are {"error": "message"}.
+    Error bodies are {"error": {"code": "not_found", "message": "Not found."}}.
 servers:
   - url: http://localhost:5000
 components:
