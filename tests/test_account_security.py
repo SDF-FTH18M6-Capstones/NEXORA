@@ -361,3 +361,31 @@ def test_a_refresh_in_flight_cannot_outlive_logout_all(app, client, monkeypatch)
 
     assert result["resp"].status_code == 200
     assert live_tokens(user_id) == 0
+
+
+def test_change_password_reads_the_row_after_the_lock(client, monkeypatch):
+    """A password changed after the guard loaded the user must not be bypassed."""
+    from sqlalchemy import text
+
+    from app.auth import account
+    from app.auth.passwords import hash_password
+
+    tokens_ = logged_in(client)
+    real_lock = account.db.session.execute
+    swapped = {}
+
+    def swap_then_execute(stmt, *a, **kw):
+        # Runs at the lock: another request has just committed a new password.
+        if not swapped and "FOR UPDATE" in str(stmt):
+            with db.engine.begin() as conn:
+                conn.execute(
+                    text("UPDATE users SET password_hash = :h WHERE email = :e"),
+                    {"h": hash_password("someone-elses-new-pass"), "e": EMAIL},
+                )
+            swapped["done"] = True
+        return real_lock(stmt, *a, **kw)
+
+    monkeypatch.setattr(account.db.session, "execute", swap_then_execute, raising=False)
+    resp = change(client, tokens_)  # still sends the OLD password
+    monkeypatch.undo()
+    assert resp.status_code == 401

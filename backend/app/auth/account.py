@@ -48,8 +48,13 @@ def change_password(user_id: int, current: str, new: str) -> None:
     lockout, and a locked account is refused before the password is looked at.
     """
     # Locked for the whole request, so parallel guesses cannot dodge the counter.
+    # populate_existing: the request guard already loaded this user, and without it
+    # the lock would hand back the old password hash and failure counter.
     user = db.session.execute(
-        select(User).where(User.id == user_id).with_for_update()
+        select(User)
+        .where(User.id == user_id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
     ).scalar_one_or_none()
     if user is None:
         raise AccountError("Invalid or expired token.", 401)
