@@ -129,10 +129,10 @@ Actions in use: `savings.open`, `savings.deposit`, `savings.withdrawal`, `saving
 ### CORS and rate limits
 
 - **Rate limits** (Flask-Limiter, per client IP): `login`, `register` and `change-password` allow 5 requests per minute; the sixth gets 429. Counters live in memory locally; set `RATELIMIT_STORAGE_URI` to Redis in production so all workers share them. Behind a reverse proxy set `TRUSTED_PROXIES` to the number of proxies, or every client shares the proxy's address.
-- **CORS**: the API does not send CORS headers yet. See "CORS" in [`frontend-handoff.md`](frontend-handoff.md) for what that means for the frontend today.
+- Every other route has a class limit: reads 120 per minute, ordinary writes 30, money movements (deposit, withdraw, reversal) 20.
+- **CORS**: `CORS_ORIGINS` lists the exact allowed origins (empty by default: no cross-origin access). Credentials are off; the wildcard is never sent. See "CORS" in [`frontend-handoff.md`](frontend-handoff.md).
 
 ## 8. Still Open
 
 - **Loans.** Waiting for the interest decision (rate, simple or compound, who sets it). No loan tables or routes exist.
-- **CORS.** The API sends no CORS headers (section 7). Until it does, a browser app needs a dev proxy.
 - **Access-token revocation.** Not planned: 15 minutes is the accepted window after a password change or logout-all.

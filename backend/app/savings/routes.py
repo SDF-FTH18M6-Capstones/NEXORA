@@ -6,6 +6,7 @@ from functools import wraps
 from flask import jsonify, request
 
 from app import savings_bp
+from app.auth.limits import money_limit, write_limit
 from app.savings import service
 from app.savings.validation import InvalidRequest, parse_money, parse_open_account
 from app.security.tenant import AccessDenied, current_user
@@ -53,6 +54,7 @@ def _no_store(response):
 
 
 @savings_bp.post("/accounts")
+@write_limit
 @signed_in
 def open_account(user_id: int):
     account = service.open_account(user_id, parse_open_account(_body()))
@@ -67,12 +69,14 @@ def _post_money(user_id: int, account_id: int, action):
 
 
 @savings_bp.post("/accounts/<int:account_id>/deposits")
+@money_limit
 @signed_in
 def deposit(user_id: int, account_id: int):
     return _post_money(user_id, account_id, service.deposit)
 
 
 @savings_bp.post("/accounts/<int:account_id>/withdrawals")
+@money_limit
 @signed_in
 def withdraw(user_id: int, account_id: int):
     return _post_money(user_id, account_id, service.withdraw)

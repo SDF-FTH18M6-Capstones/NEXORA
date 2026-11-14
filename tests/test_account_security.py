@@ -328,3 +328,36 @@ def test_change_password_shares_logins_limit_of_five_per_minute(app):
     finally:
         limiter.reset()
         limiter.enabled = False
+
+
+# ---------- refresh racing logout-all ----------
+
+
+def test_a_refresh_in_flight_cannot_outlive_logout_all(app, client, monkeypatch):
+    """logout-all arrives while a refresh has spent its token but not committed."""
+    import threading
+    import time
+
+    from app.auth import tokens
+
+    tokens_ = logged_in(client)
+    user_id = the_user().id
+    real_create = tokens.create_refresh_token
+    result = {}
+
+    def sweep():
+        result["resp"] = logout_all(app.test_client(), tokens_)
+
+    def slow_create(uid):
+        worker = threading.Thread(target=sweep)
+        worker.start()
+        time.sleep(0.5)  # the sweep must be waiting on the user's row by now
+        result["worker"] = worker
+        return real_create(uid)
+
+    monkeypatch.setattr(tokens, "create_refresh_token", slow_create)
+    assert refresh(client, tokens_["refresh_token"]).status_code == 200
+    result["worker"].join(5)
+
+    assert result["resp"].status_code == 200
+    assert live_tokens(user_id) == 0

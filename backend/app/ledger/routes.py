@@ -3,12 +3,14 @@
 from flask import jsonify
 
 from app import savings_bp
+from app.auth.limits import money_limit
 from app.ledger import reversals
 from app.savings.routes import _body, _json, signed_in
 from app.savings.validation import parse_reference
 
 
 @savings_bp.post("/transactions/<int:transaction_id>/reversals")
+@money_limit
 @signed_in
 def reverse(user_id: int, transaction_id: int):
     reference = parse_reference(_body().get("reference"))

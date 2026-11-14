@@ -12,6 +12,7 @@ from sqlalchemy import select, update
 from app.audit import log as audit_log
 from app.auth.lockout import check_lockout, record_failed_login, reset_failed_logins
 from app.auth.passwords import hash_password, validate_password, verify_password
+from app.auth.tokens import lock_user
 from app.extensions import db
 from app.models.refresh_token import RefreshToken
 from app.models.user import User
@@ -77,6 +78,7 @@ def change_password(user_id: int, current: str, new: str) -> None:
 
 def logout_all(user_id: int) -> None:
     """Revoke every refresh token of the caller. Never refused for a suspension."""
+    lock_user(user_id)
     _revoke_all_refresh_tokens(user_id)
     audit_log.record(None, user_id, "auth.logout_all", f"user:{user_id}")
     db.session.commit()

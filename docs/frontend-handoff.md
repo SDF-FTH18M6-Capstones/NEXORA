@@ -161,7 +161,7 @@ curl -s -X POST $API/auth/change-password -H "Authorization: Bearer $ACCESS" \
 |---|---|---|
 | **401** | Access token missing, expired or invalid. Refresh once, then retry; if refresh fails, go to login. | Wrong email or password (same message for both). |
 | **423** | The user's SACCO is **suspended**: `This SACCO account is suspended. Contact the platform owner.` Show that message; refreshing will not help. | Either the SACCO is suspended (same message), or the account is **locked**: `Account temporarily locked. Try again later.` Five wrong passwords lock it for 15 minutes, even for the right password. |
-| **429** | Rate limit. Wait and try again. | **5 requests per minute per IP** on login, register and change-password. Body: `{"error": "Too Many Requests."}`. A parallel login for the same account can also answer 429 (`Another attempt is in progress…`). |
+| **429** | Rate limit. Wait and try again. | **5 requests per minute per IP** on login, register and change-password; 120/min on reads, 30/min on ordinary writes, 20/min on deposits, withdrawals and reversals. Body: `{"error": "Too Many Requests."}`. A parallel login for the same account can also answer 429 (`Another attempt is in progress…`). |
 
 While developing, avoid logging in on every page reload or hot reload: five logins a minute is all you get. Log in once and keep the tokens.
 
@@ -387,27 +387,17 @@ curl -s $API/saccos -H "Authorization: Bearer $ACCESS"
 
 ## 7. CORS
 
-**The API does not send CORS headers yet, and there is no `CORS_ORIGINS` setting.** `curl` is not affected, but a browser app on `http://localhost:5173` that calls `http://localhost:5000` directly will be blocked by the browser.
+The API answers cross-origin browser calls only for origins listed in the `CORS_ORIGINS` setting in `backend/.env`: a comma-separated list of exact origins, for example:
 
-Until CORS is added to the API, use Vite's dev proxy. In `frontend/vite.config.js` (a shared file: agree the change with the team first):
-
-```js
-import react from '@vitejs/plugin-react'
-import { defineConfig } from 'vite'
-
-export default defineConfig({
-  plugins: [react()],
-  server: {
-    proxy: {
-      '/api': 'http://localhost:5000',
-    },
-  },
-})
+```
+CORS_ORIGINS=http://localhost:5173
 ```
 
-Then call **relative** URLs from the app (`fetch('/api/v1/auth/login', ...)`). The browser sees the same origin, so no CORS is involved. Checked: with this config and both servers running, `curl http://localhost:5173/api/health` returns the API's health response. This works for development only; production needs CORS or a reverse proxy.
-
-When CORS support is added, this section is where its setting and the allowed frontend origins belong.
+- Default is empty: no cross-origin access. Restart the API after changing it.
+- The origin must match exactly (scheme, host, port). `*` is never sent, and the API refuses to start in production if the list contains `*`.
+- Allowed methods: `GET, POST, PATCH, OPTIONS`. Allowed request headers: `Authorization, Content-Type`. Preflight answers are cached for 600 seconds.
+- Credentials are off: send the token in the `Authorization` header, not in cookies. Do not set `credentials: 'include'`.
+- Every `/api/` response carries `Cache-Control: no-store`, so do not rely on browser caching of API data.
 
 ## 8. Endpoint list
 

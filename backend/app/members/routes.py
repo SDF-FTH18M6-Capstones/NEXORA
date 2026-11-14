@@ -9,6 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 
 from app import members_bp, saccos_bp
+from app.auth.limits import read_limit, write_limit
 from app.auth.routes import _body, _error
 from app.auth.suspension import check_sacco_not_suspended
 from app.extensions import db
@@ -47,6 +48,7 @@ def _me_no_store(response):
 
 
 @members_bp.get("/me")
+@read_limit
 def get_me():
     user, error = _me_user()
     if error:
@@ -58,6 +60,7 @@ def get_me():
 
 
 @members_bp.patch("/me")
+@write_limit
 def patch_me():
     user, error = _me_user()
     if error:
@@ -124,12 +127,14 @@ def _members(sacco_id: int, membership_id: int | None = None, lock: bool = False
 
 
 @saccos_bp.get("/<int:sacco_id>/members")
+@read_limit
 @sacco_scoped()
 def list_members(sacco_id):
     return jsonify(members=[_member_json(*row) for row in _members(sacco_id)])
 
 
 @saccos_bp.get("/<int:sacco_id>/members/<int:membership_id>")
+@read_limit
 @sacco_scoped()
 def get_member(sacco_id, membership_id):
     rows = _members(sacco_id, membership_id)
@@ -139,6 +144,7 @@ def get_member(sacco_id, membership_id):
 
 
 @saccos_bp.post("/<int:sacco_id>/members")
+@write_limit
 @sacco_scoped()
 def add_member(sacco_id):
     owner = g.access.user.is_platform_owner
@@ -170,6 +176,7 @@ def add_member(sacco_id):
 
 
 @saccos_bp.patch("/<int:sacco_id>/members/<int:membership_id>")
+@write_limit
 @sacco_scoped()
 def update_member(sacco_id, membership_id):
     try:
