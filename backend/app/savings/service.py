@@ -13,9 +13,9 @@ from datetime import datetime
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 
+from app.audit import log as audit_log
 from app.auth.suspension import SUSPENDED_MESSAGE
 from app.extensions import db
-from app.models.audit import AuditLog
 from app.models.ledger import Transaction, TransactionType
 from app.models.membership import MembershipRole, MembershipStatus, SaccoMembership
 from app.models.sacco import Sacco, SaccoStatus
@@ -117,13 +117,9 @@ def _require_sacco_active(sacco_id: int) -> None:
 
 
 def _audit(sacco_id: int, actor_user_id: int, action: str, target: str) -> None:
-    # Same transaction as the money movement: both happen or neither does.
-    # Neo's audit/log.py will own this; call it from here once it is merged.
-    db.session.add(
-        AuditLog(
-            sacco_id=sacco_id, actor_id=actor_user_id, action=action, target=target
-        )
-    )
+    # One writer for the audit trail (Neo's audit/log.py). The row joins this
+    # transaction, so the money movement and its audit entry land together.
+    audit_log.record(sacco_id, actor_user_id, action, target)
 
 
 @_atomic
