@@ -34,7 +34,9 @@ class SavingsAccount(db.Model):
             ["sacco_memberships.id", "sacco_memberships.sacco_id"],
             name="fk_savings_membership_sacco",
         ),
-        CheckConstraint("balance >= 0", name="ck_savings_accounts_balance_non_negative"),
+        CheckConstraint(
+            "balance >= 0", name="ck_savings_accounts_balance_non_negative"
+        ),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)

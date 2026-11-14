@@ -272,3 +272,46 @@ def test_member_activity_excludes_other_saccos_and_blocks_members(schema_app):
     assert ids == [s.account.id] and other.account.id not in ids
     assert client.get(activity_url(s.sacco.id), headers=auth(s.member)).status_code == 403
     assert client.get(activity_url(s.sacco.id), headers=auth(other.admin)).status_code == 404
+
+
+def test_huge_page_is_not_a_server_error(schema_app):
+    s = Setup(balance=100)
+    client = schema_app.test_client()
+    big = history_url(s.account.id) + "?page=99999999999999999999"
+    resp = client.get(big, headers=auth(s.admin))
+    assert resp.status_code == 200 and resp.get_json()["transactions"] == []
+    # Digits that are not plain ASCII are refused, so one page has one URL.
+    for query in ("?page=1_0", "?page=%EF%BC%91"):
+        got = client.get(history_url(s.account.id) + query, headers=auth(s.admin))
+        assert got.status_code == 400
+
+
+def test_summary_to_the_last_date_is_not_a_server_error(schema_app):
+    s = Setup(balance=100)
+    resp = schema_app.test_client().get(
+        summary_url(s.sacco.id) + "?to=9999-12-31", headers=auth(s.admin)
+    )
+    assert resp.status_code == 200
+
+
+def test_member_activity_is_paged(schema_app):
+    s = Setup(balance=100)
+    client = schema_app.test_client()
+    url = activity_url(s.sacco.id)
+    ok = client.get(url + "?per_page=1&page=1", headers=auth(s.admin))
+    assert ok.status_code == 200 and ok.get_json()["per_page"] == 1
+    assert len(ok.get_json()["members"]) <= 1
+    assert client.get(url + "?page=0", headers=auth(s.admin)).status_code == 400
+
+
+def test_unexpected_errors_answer_in_json(schema_app, monkeypatch):
+    s = Setup(balance=100)
+
+    def boom(*args, **kwargs):
+        raise RuntimeError("secret detail")
+
+    monkeypatch.setattr("app.admin.routes.reports.sacco_summary", boom)
+    schema_app.config["PROPAGATE_EXCEPTIONS"] = False
+    resp = schema_app.test_client().get(summary_url(s.sacco.id), headers=auth(s.admin))
+    assert resp.status_code == 500
+    assert resp.get_json() == {"error": "Internal error."}

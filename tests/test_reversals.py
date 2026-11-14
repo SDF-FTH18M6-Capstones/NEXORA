@@ -301,3 +301,28 @@ def test_the_maximum_is_accepted_and_stays_an_integer(schema_app):
     assert type(body["amount"]) is int
     assert body["balance"] == MAX_TRANSACTION_AMOUNT
     assert type(body["balance"]) is int
+
+
+def test_a_reference_used_by_a_reversal_cannot_be_replayed_as_a_deposit(schema_app):
+    s = Setup(balance=100)
+    w = service.withdraw(s.admin.id, s.account.id, 100, "w-once")
+    reversals.reverse_transaction(s.admin.id, w.id, "rv-once")
+    with pytest.raises(service.Conflict):
+        service.deposit(s.admin.id, s.account.id, 100, "rv-once")
+
+
+def test_database_refuses_a_reversal_of_a_reversal(schema_app):
+    s = Setup(balance=100)
+    w = service.withdraw(s.admin.id, s.account.id, 100, "w-db")
+    rev = reversals.reverse_transaction(s.admin.id, w.id, "rv-db")
+    with pytest.raises(Exception, match="a reversal cannot be reversed"):
+        db.session.execute(
+            text(
+                "INSERT INTO transactions (sacco_id, savings_account_id, type, "
+                "reference, created_by_membership_id, reverses_id, amount) "
+                "VALUES (:s, :a, 'withdrawal', 'raw', :m, :r, 100)"
+            ),
+            {"s": s.sacco.id, "a": s.account.id,
+             "m": s.admin_membership.id, "r": rev.id},
+        )
+    db.session.rollback()

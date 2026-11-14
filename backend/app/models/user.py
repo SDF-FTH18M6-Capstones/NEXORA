@@ -9,13 +9,16 @@ from app.extensions import db
 class User(db.Model):
     __tablename__ = "users"
     __table_args__ = (
-        CheckConstraint("failed_login_count >= 0", name="ck_users_failed_login_count_non_negative"),
+        CheckConstraint(
+            "failed_login_count >= 0", name="ck_users_failed_login_count_non_negative"
+        ),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     email: Mapped[str] = mapped_column(String(255), nullable=False)
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
-    # Set only by CLI or seed, never from a request. Do not infer owner from missing rows.
+    # Set only by CLI or seed, never from a request.
+    # Do not infer owner from missing rows.
     is_platform_owner: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, server_default="false"
     )

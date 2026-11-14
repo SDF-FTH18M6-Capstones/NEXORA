@@ -41,7 +41,9 @@ class Transaction(db.Model):
         ),
         UniqueConstraint("id", "sacco_id", name="uq_transactions_id_sacco"),
         # A retried request reuses its reference and cannot post twice.
-        UniqueConstraint("sacco_id", "reference", name="uq_transactions_sacco_reference"),
+        UniqueConstraint(
+            "sacco_id", "reference", name="uq_transactions_sacco_reference"
+        ),
         # The actor must belong to the same SACCO as the row.
         ForeignKeyConstraint(
             ["created_by_membership_id", "sacco_id"],

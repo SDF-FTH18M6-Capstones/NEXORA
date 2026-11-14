@@ -43,6 +43,11 @@ def parse_reference(value) -> str:
     return value
 
 
+def parse_open_account(body: dict) -> int:
+    """Returns the membership id the account is opened for."""
+    return parse_id(body.get("membership_id"), "membership_id")
+
+
 def parse_money(body: dict) -> tuple[int, str]:
     """Returns (amount, reference) for a deposit, a withdrawal or a reversal."""
     return parse_amount(body.get("amount")), parse_reference(body.get("reference"))

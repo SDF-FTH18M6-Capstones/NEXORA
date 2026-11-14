@@ -8,7 +8,9 @@ from app.extensions import db
 
 class AuditLog(db.Model):
     __tablename__ = "audit_logs"
-    __table_args__ = (CheckConstraint("btrim(action) <> ''", name="ck_audit_logs_action_not_blank"),)
+    __table_args__ = (
+        CheckConstraint("btrim(action) <> ''", name="ck_audit_logs_action_not_blank"),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     # Nullable: platform-owner actions are not tied to one SACCO.

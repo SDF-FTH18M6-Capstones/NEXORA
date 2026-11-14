@@ -16,9 +16,9 @@ Rules enforced here:
 from dataclasses import dataclass
 from datetime import datetime
 
-from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 
+from app.audit import log as audit_log
 from app.extensions import db
 from app.ledger import service as ledger
 from app.models.ledger import Transaction, TransactionType
@@ -88,14 +88,6 @@ def reverse_transaction(
             return view
         raise Conflict("This transaction has already been reversed.")
 
-    used = db.session.execute(
-        select(Transaction.id).where(
-            Transaction.sacco_id == account.sacco_id, Transaction.reference == reference
-        )
-    ).first()
-    if used is not None:
-        raise Conflict("That reference is already used.")
-
     entry = Transaction(
         sacco_id=account.sacco_id,
         savings_account_id=account.id,
@@ -118,7 +110,7 @@ def reverse_transaction(
     db.session.refresh(entry)
     db.session.refresh(account)
 
-    savings._audit(
+    audit_log.record(
         account.sacco_id,
         user_id,
         "savings.reverse",
