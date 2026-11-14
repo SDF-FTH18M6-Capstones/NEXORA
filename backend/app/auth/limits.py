@@ -8,6 +8,11 @@ from flask_limiter.util import get_remote_address
 
 LOGIN_LIMIT = "5 per minute"
 REGISTER_LIMIT = "5 per minute"
+# Three classes for everything past authentication. Reading is cheap, writing
+# costs a row, and moving money costs a ledger entry and a balance update.
+READ_LIMIT = "120 per minute"
+WRITE_LIMIT = "30 per minute"
+MONEY_LIMIT = "20 per minute"
 
 
 def rate_limit_response(request_limit):
@@ -25,6 +30,9 @@ limiter = Limiter(
 
 login_limit = limiter.limit(LOGIN_LIMIT)
 register_limit = limiter.limit(REGISTER_LIMIT)
+read_limit = limiter.limit(READ_LIMIT)
+write_limit = limiter.limit(WRITE_LIMIT)
+money_limit = limiter.limit(MONEY_LIMIT)
 
 
 def init_limiter(app):

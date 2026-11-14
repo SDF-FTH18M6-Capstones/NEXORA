@@ -26,6 +26,13 @@ class Config:
     LOCKOUT_THRESHOLD = 5
     LOCKOUT_DURATION = timedelta(minutes=15)
 
+    # "development" or "production". Production refuses the unsafe settings that
+    # are harmless locally; see _check_required_settings in app/__init__.py.
+    APP_ENV = os.environ.get("APP_ENV", "development").strip().lower() or "development"
+    # Exact browser origins allowed to call the API, comma-separated
+    # (e.g. http://localhost:5173). Empty means no cross-origin access at all.
+    CORS_ORIGINS = os.environ.get("CORS_ORIGINS", "")
+
     TESTING = False
 
 

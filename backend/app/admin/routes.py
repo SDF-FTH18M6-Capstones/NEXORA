@@ -7,6 +7,7 @@ from flask import jsonify, request
 from app import admin_bp
 from app.admin import audit, reports
 from app.audit.log import MAX_ACTION_LENGTH
+from app.auth.limits import read_limit
 from app.models.membership import MembershipRole
 from app.savings.accounts import list_sacco_accounts
 from app.savings.history import page_params
@@ -54,6 +55,7 @@ def _sacco_id_param() -> int | None:
 
 
 @admin_bp.get("/saccos/<int:sacco_id>/reports/summary")
+@read_limit
 @sacco_scoped(REPORT_ROLES)
 def sacco_summary(sacco_id: int):
     try:
@@ -66,6 +68,7 @@ def sacco_summary(sacco_id: int):
 
 
 @admin_bp.get("/saccos/<int:sacco_id>/reports/member-activity")
+@read_limit
 @sacco_scoped(REPORT_ROLES)
 def member_activity(sacco_id: int):
     try:
@@ -80,6 +83,7 @@ def member_activity(sacco_id: int):
 
 
 @admin_bp.get("/saccos/<int:sacco_id>/accounts")
+@read_limit
 @sacco_scoped(REPORT_ROLES)
 def sacco_accounts(sacco_id: int):
     try:
@@ -91,6 +95,7 @@ def sacco_accounts(sacco_id: int):
 
 
 @admin_bp.get("/saccos/<int:sacco_id>/audit")
+@read_limit
 @sacco_scoped(ADMIN_ONLY)  # SACCO admin or platform owner; staff get 403
 def sacco_audit(sacco_id: int):
     try:
@@ -101,6 +106,7 @@ def sacco_audit(sacco_id: int):
 
 
 @admin_bp.get("/audit")
+@read_limit
 def platform_audit():
     try:
         user = current_user()

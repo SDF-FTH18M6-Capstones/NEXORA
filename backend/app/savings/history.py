@@ -8,6 +8,7 @@ from flask import jsonify, request
 from sqlalchemy import func, select
 
 from app import savings_bp
+from app.auth.limits import read_limit
 from app.extensions import db
 from app.models.ledger import Transaction
 from app.models.membership import MembershipRole
@@ -60,6 +61,7 @@ def _tx_json(tx: Transaction) -> dict:
 
 
 @savings_bp.get("/accounts/<int:account_id>/transactions")
+@read_limit
 def account_history(account_id: int):
     try:
         user = current_user()

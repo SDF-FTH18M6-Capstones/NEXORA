@@ -9,6 +9,7 @@ from flask import jsonify
 from sqlalchemy import func, select
 
 from app import savings_bp
+from app.auth.limits import read_limit
 from app.extensions import db
 from app.models.membership import MembershipStatus, SaccoMembership
 from app.models.sacco import Sacco, SaccoStatus
@@ -53,6 +54,7 @@ def list_sacco_accounts(sacco_id: int, page: int, per_page: int):
 
 
 @savings_bp.get("/accounts/me")
+@read_limit
 def my_accounts():
     try:
         user = current_user()
@@ -77,6 +79,7 @@ def my_accounts():
 
 
 @savings_bp.get("/accounts/<int:account_id>")
+@read_limit
 def get_account(account_id: int):
     try:
         account = _open_account(current_user(), account_id)
