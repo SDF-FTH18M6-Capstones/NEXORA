@@ -145,7 +145,7 @@ Secrets are **never committed**. Only `.env.example` files are tracked; each dev
 
 | Variable       | Where    | Description                          |
 |----------------|----------|--------------------------------------|
-| `SECRET_KEY`   | backend  | Flask / token signing secret         |
+| `SECRET_KEY`   | backend  | Token signing secret, 32+ random characters (the app refuses to start with less) |
 | `DATABASE_URL` | backend  | PostgreSQL connection string         |
 | `TEST_DATABASE_URL` | backend | Test database; name must end in `_test` |
 | `TRUSTED_PROXIES` | backend | Number of reverse proxies in front (0 = none) |
@@ -185,7 +185,7 @@ If your database password contains special characters (`@`, `#`, `/`, `:`), URL-
 - [x] Move 2: auth (register, login, rotating refresh tokens, lockout), SACCOs, members, tenant guard
 - [x] Move 3: savings accounts, deposits, withdrawals, reversals, ledger, audit log, admin reports
 - [x] Move 4: security headers, CORS and rate limits, production checks, seed script, savings and audit read endpoints, change-password and logout-all
-- [x] Move 4 hardening: one error format, access-token revocation, email verification, required `reference`
+- [x] Move 4 hardening: one error format, access-token revocation, email verification, forgot-password, required `reference`, separation of duties
 - [x] OpenAPI spec for every route (`docs/openapi.yaml`)
 - [ ] Move 4 remainder: final sign-off
 - [ ] Loans (waiting for the interest decision)

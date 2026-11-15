@@ -157,3 +157,12 @@ def test_an_unsafe_setting_stops_a_production_start(overrides, message):
 def test_an_unknown_app_env_is_refused():
     with pytest.raises(RuntimeError, match="APP_ENV"):
         create_app(type("Typo", (TestConfig,), {"APP_ENV": "prod"}))
+
+
+@pytest.mark.parametrize("secret", ["short", "x" * 31])
+def test_a_short_secret_key_is_refused_in_every_environment(secret):
+    class Dev(TestConfig):
+        SECRET_KEY = secret
+
+    with pytest.raises(RuntimeError, match="at least 32"):
+        create_app(Dev)

@@ -72,6 +72,7 @@ def reverse_transaction(
     # Same lock as deposits and withdrawals, so a reversal and a withdrawal on
     # one account cannot interleave.
     account: SavingsAccount = ledger.lock_account(original.savings_account_id)
+    savings._require_not_own_account(actor, account)
     savings._require_sacco_active(account.sacco_id)
     holder = db.session.get(SaccoMembership, account.membership_id)
     if holder.status is not MembershipStatus.ACTIVE:

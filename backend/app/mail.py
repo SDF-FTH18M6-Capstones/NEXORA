@@ -1,4 +1,4 @@
-"""Outgoing email. Only the verification link is sent today.
+"""Outgoing email: the verification and password-reset links.
 
 MAIL_BACKEND=log writes the message to the application log (local development
 only; production refuses it). MAIL_BACKEND=smtp sends through MAIL_SERVER.
@@ -13,20 +13,32 @@ from flask import current_app
 log = logging.getLogger(__name__)
 
 
-def send_verification_email(to: str, token: str) -> None:
-    """Email the link that proves `to` belongs to the person who registered it."""
+MESSAGES = {
+    "verify": (
+        "Confirm your NEXORA email",
+        "verify-email",
+        "Confirm your email address for NEXORA by opening this link within 24 hours:",
+    ),
+    "reset": (
+        "Reset your NEXORA password",
+        "reset-password",
+        "Reset your NEXORA password by opening this link within 1 hour:",
+    ),
+}
+
+
+def send_link_email(to: str, token: str, purpose: str = "verify") -> None:
+    """Email a single-use link: verify an address, or reset a password."""
     config = current_app.config
-    link = f"{config['FRONTEND_URL'].rstrip('/')}/verify-email?token={token}"
-    body = (
-        "Confirm your email address for NEXORA by opening this link within "
-        f"24 hours:\n\n{link}\n\nIf you did not create an account, ignore this email."
-    )
+    subject, page, intro = MESSAGES[purpose]
+    link = f"{config['FRONTEND_URL'].rstrip('/')}/{page}?token={token}"
+    body = f"{intro}\n\n{link}\n\nIf you did not ask for this, ignore this email."
     backend = config["MAIL_BACKEND"]
     if backend == "log":
-        log.info("Verification email to %s: %s", to, link)
+        log.info("%s email to %s: %s", purpose, to, link)
         return
     message = EmailMessage()
-    message["Subject"] = "Confirm your NEXORA email"
+    message["Subject"] = subject
     message["From"] = config["MAIL_FROM"]
     message["To"] = to
     message.set_content(body)
@@ -37,9 +49,9 @@ def send_verification_email(to: str, token: str) -> None:
         smtp.send_message(message)
 
 
-def send_safely(to: str, token: str) -> None:
+def send_safely(to: str, token: str, purpose: str = "verify") -> None:
     """A mail outage must never fail the request that asked for the email."""
     try:
-        send_verification_email(to, token)
+        send_link_email(to, token, purpose)
     except Exception:
-        log.exception("Could not send the verification email")
+        log.exception("Could not send the %s email", purpose)

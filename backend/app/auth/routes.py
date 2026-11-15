@@ -116,6 +116,41 @@ def verify_email():
     return jsonify(message="Email verified.")
 
 
+@auth_bp.post("/forgot-password")
+@login_limit
+def forgot_password():
+    """Always the same answer, so it cannot be used to find registered emails."""
+    email = _email(_body().get("email"))
+    user = (
+        db.session.execute(select(User).where(User.email == email)).scalar_one_or_none()
+        if email
+        else None
+    )
+    if user is not None:
+        token = verification.issue(user, verification.RESET)
+        db.session.commit()
+        send_safely(user.email, token, "reset")
+    return jsonify(message="If that address has an account, a reset link was sent.")
+
+
+@auth_bp.post("/reset-password")
+@login_limit
+def reset_password():
+    data = _body()
+    token, new = _text(data.get("token")), _password(data.get("new_password"))
+    if not token or len(token) > 100:
+        return error_response(400, "This reset link is invalid or has expired.")
+    if new is None:
+        return error_response(
+            400, f"new_password is required (max {MAX_PASSWORD_LENGTH} characters)."
+        )
+    try:
+        account.reset_password(token, new)
+    except account.AccountError as exc:
+        return error_response(exc.status, exc.message)
+    return jsonify(message="Password reset. Sign in with the new password.")
+
+
 @auth_bp.post("/resend-verification")
 @login_limit
 def resend_verification():

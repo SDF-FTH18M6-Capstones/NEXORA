@@ -9,6 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 
 from app.auth import verification
+from app.auth.account import revoke_all_sessions
 from app.auth.lockout import check_lockout, record_failed_login, reset_failed_logins
 from app.auth.passwords import verify_password
 from app.auth.routes import EMAIL_RE, MAX_EMAIL_LENGTH, MAX_PASSWORD_LENGTH
@@ -120,6 +121,7 @@ def update_profile(user_id: int, data: dict) -> dict:
         try:
             db.session.flush()  # the unique email index answers here
             token = verification.issue(user)
+            revoke_all_sessions(user.id)  # whoever held a session signs in again
             db.session.commit()
         except IntegrityError as exc:  # unique index on lower(email)
             db.session.rollback()

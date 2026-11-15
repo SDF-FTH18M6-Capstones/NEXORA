@@ -164,6 +164,9 @@ def test_audit_bad_input_is_400(schema_app):
         "?action=" + "a" * 101,
         "?action=%00",
         "?action=a%00b",
+        "?from=20260101",  # one date form only
+        "?to=2026-W01-1",
+        "?from=２０２６-01-01",
     )
     for query in bad:
         resp = client.get(url + query, headers=auth(s.admin))

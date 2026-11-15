@@ -27,8 +27,8 @@ RESEND = "/api/v1/auth/resend-verification"
 def mailbox(monkeypatch):
     """Every verification email the app tries to send: (address, raw token)."""
     sent = []
-    def record(to, token):
-        sent.append((to, token))
+    def record(to, token, purpose="verify"):
+        sent.append((to, token) if purpose == "verify" else (to, token, purpose))
 
     monkeypatch.setattr("app.auth.routes.send_safely", record)
     monkeypatch.setattr("app.members.self_service.send_safely", record)
@@ -162,3 +162,9 @@ def test_changing_the_email_needs_the_new_address_proved(client, mailbox):
     assert resp.status_code == 200
     assert user("moved@example.com").email_verified_at is None
     assert mailbox[-1][0] == "moved@example.com"
+    # Whoever held a session before the change has to sign in again.
+    stale = {"Authorization": f"Bearer {tokens['access_token']}"}
+    assert client.get("/api/v1/members/me", headers=stale).status_code == 401
+    assert client.post(
+        "/api/v1/auth/refresh", json={"refresh_token": tokens["refresh_token"]}
+    ).status_code == 401

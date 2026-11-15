@@ -121,7 +121,7 @@ def test_500_internal_error_hides_details(app, client, monkeypatch):
 
 
 # Deliberately answers 200 to anything, so it cannot be used to find registered emails.
-ALWAYS_OK = {"/api/v1/auth/resend-verification"}
+ALWAYS_OK = {"/api/v1/auth/resend-verification", "/api/v1/auth/forgot-password"}
 
 
 def test_every_route_answers_errors_in_the_one_shape(app, client):

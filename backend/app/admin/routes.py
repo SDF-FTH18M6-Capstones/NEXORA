@@ -1,5 +1,6 @@
 """Admin report and audit endpoints, scoped by the tenant guard."""
 
+import re
 from datetime import date
 
 from flask import jsonify, request
@@ -22,7 +23,10 @@ def _date_param(name: str) -> date | None:
     raw = request.args.get(name)
     if raw is None or raw == "":
         return None
-    return date.fromisoformat(raw)  # YYYY-MM-DD
+    # fromisoformat also accepts 20260101 and 2026-W01-1; the API takes one form.
+    if not re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}", raw):
+        raise ValueError(raw)
+    return date.fromisoformat(raw)
 
 
 def _audit_filters():
