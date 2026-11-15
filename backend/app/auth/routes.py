@@ -7,6 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError, OperationalError
 
 from app import auth_bp
+from app.audit import log as audit_log
 from app.auth import account, verification
 from app.auth.guards import access_token_required
 from app.auth.limits import login_limit, register_limit, write_limit
@@ -126,8 +127,10 @@ def forgot_password():
         if email
         else None
     )
-    if user is not None:
+    if user and not verification.recently_issued(user, verification.RESET):
         token = verification.issue(user, verification.RESET)
+        target = f"user:{user.id}"
+        audit_log.record(None, user.id, "auth.password_reset_requested", target)
         db.session.commit()
         send_safely(user.email, token, "reset")
     return jsonify(message="If that address has an account, a reset link was sent.")
@@ -161,7 +164,11 @@ def resend_verification():
         if email
         else None
     )
-    if user is not None and user.email_verified_at is None:
+    if (
+        user is not None
+        and user.email_verified_at is None
+        and not verification.recently_issued(user, verification.VERIFY)
+    ):
         token = verification.issue(user)
         db.session.commit()
         send_safely(user.email, token)

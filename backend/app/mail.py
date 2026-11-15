@@ -6,6 +6,7 @@ only; production refuses it). MAIL_BACKEND=smtp sends through MAIL_SERVER.
 
 import logging
 import smtplib
+import threading
 from email.message import EmailMessage
 
 from flask import current_app
@@ -49,9 +50,26 @@ def send_link_email(to: str, token: str, purpose: str = "verify") -> None:
         smtp.send_message(message)
 
 
-def send_safely(to: str, token: str, purpose: str = "verify") -> None:
-    """A mail outage must never fail the request that asked for the email."""
+def _send_logged(to: str, token: str, purpose: str) -> None:
     try:
         send_link_email(to, token, purpose)
     except Exception:
         log.exception("Could not send the %s email", purpose)
+
+
+def send_safely(to: str, token: str, purpose: str = "verify") -> None:
+    """A mail outage must never fail the request that asked for the email.
+
+    SMTP goes out on a background thread: a request for a known address would
+    otherwise take visibly longer than one for an unknown address.
+    """
+    if current_app.config["MAIL_BACKEND"] != "smtp":
+        _send_logged(to, token, purpose)
+        return
+    app = current_app._get_current_object()
+
+    def work():
+        with app.app_context():
+            _send_logged(to, token, purpose)
+
+    threading.Thread(target=work, daemon=True).start()

@@ -42,6 +42,14 @@ def reset(client, token, password=NEW):
     return client.post(RESET, json={"token": token, "new_password": password})
 
 
+def age_links(seconds=120):
+    """Pretend every link was issued `seconds` ago, so the cooldown has passed."""
+    db.session.remove()
+    for row in db.session.execute(select(EmailVerification)).scalars():
+        row.created_at = datetime.now(UTC) - timedelta(seconds=seconds)
+    db.session.commit()
+
+
 def resets(mailbox):
     return [m for m in mailbox if m[2] == "reset"]
 
@@ -152,13 +160,60 @@ def test_a_verification_link_cannot_reset_a_password(client, monkeypatch):
     assert resp.status_code == 400
 
 
-def test_a_new_link_replaces_the_old_one(client, mailbox):
+def test_a_new_link_replaces_the_old_one_after_the_cooldown(client, mailbox):
     register(client)
     client.post(FORGOT, json={"email": EMAIL})
+    age_links()
     client.post(FORGOT, json={"email": EMAIL})
     first, second = (m[1] for m in resets(mailbox))
     assert reset(client, first).status_code == 400
     assert reset(client, second).status_code == 200
+
+
+def test_asking_again_within_a_minute_keeps_the_first_link(client, mailbox):
+    """Otherwise anyone could keep a victim's link dead and flood their inbox."""
+    register(client)
+    for _ in range(3):
+        assert client.post(FORGOT, json={"email": EMAIL}).status_code == 200
+    assert len(resets(mailbox)) == 1
+    assert reset(client, resets(mailbox)[0][1]).status_code == 200
+
+
+def test_a_link_issued_before_an_email_change_is_dead(client, mailbox):
+    tokens = logged_in(client)
+    client.post(FORGOT, json={"email": EMAIL})
+    old_link = resets(mailbox)[0][1]
+    resp = client.patch(
+        "/api/v1/members/me",
+        json={"email": "moved@example.com", "current_password": PASSWORD},
+        headers={"Authorization": f"Bearer {tokens['access_token']}"},
+    )
+    assert resp.status_code == 200
+    assert reset(client, old_link).status_code == 400
+
+
+def test_a_link_issued_before_a_password_change_is_dead(client, mailbox):
+    tokens = logged_in(client)
+    client.post(FORGOT, json={"email": EMAIL})
+    old_link = resets(mailbox)[0][1]
+    resp = client.post(
+        "/api/v1/auth/change-password",
+        json={"current_password": PASSWORD, "new_password": NEW},
+        headers={"Authorization": f"Bearer {tokens['access_token']}"},
+    )
+    assert resp.status_code == 200
+    assert reset(client, old_link).status_code == 400
+
+
+def test_a_request_for_a_link_is_audited(client, mailbox):
+    register(client)
+    client.post(FORGOT, json={"email": EMAIL})
+    client.post(FORGOT, json={"email": "nobody@example.com"})
+    db.session.remove()
+    rows = db.session.execute(
+        select(AuditLog).where(AuditLog.action == "auth.password_reset_requested")
+    ).scalars().all()
+    assert [r.actor_id for r in rows] == [user().id]
 
 
 def test_the_reset_is_audited_and_revokes_refresh_tokens(client, mailbox):

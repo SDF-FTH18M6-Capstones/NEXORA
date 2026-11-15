@@ -136,7 +136,8 @@ Actions in use: `savings.open`, `savings.deposit`, `savings.withdrawal`, `saving
 ### Account recovery
 
 - `forgot-password` always answers 200 and emails a 1-hour single-use link (`email_verifications`, purpose `reset`). `reset-password` sets the password, clears the lockout, marks the email verified, revokes every session (`token_version` bump plus all refresh tokens) and writes the audit row `auth.password_reset`.
-- Changing the email through `PATCH /members/me` also ends every session.
+- Changing the email through `PATCH /members/me` also ends every session. Any event that ends sessions (reset, change-password, logout-all, email change) also kills pending reset links, so an old link cannot outlive them.
+- Asking again within 60 seconds sends nothing new and keeps the first link, so nobody can keep a victim's link dead or flood their inbox. SMTP mail goes out on a background thread so a known and an unknown address take the same time. Requests are audited as `auth.password_reset_requested`.
 
 ### Decisions on known trade-offs
 

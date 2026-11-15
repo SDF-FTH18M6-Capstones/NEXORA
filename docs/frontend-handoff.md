@@ -186,6 +186,7 @@ curl -s -X POST $API/auth/reset-password -H "Content-Type: application/json" \
 ```
 
 - The link (valid 1 hour, works once) points to `FRONTEND_URL/reset-password?token=...`. Build that page: read `token`, ask for a new password, call `reset-password`, then send the user to login.
+- Asking again within 60 seconds does nothing (same 200); the first link stays valid. A password change, logout-all or email change kills pending reset links.
 - A weak password is 400 with a message and the link still works. A used, wrong or expired link is 400.
 - A reset ends every session, clears a lockout and verifies the email. **This is the way back for a user locked out by repeated wrong passwords**, so show a "Forgot password?" link on the 423 lock message.
 

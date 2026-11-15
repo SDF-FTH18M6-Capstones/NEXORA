@@ -36,8 +36,10 @@ class AccountError(Exception):
 def revoke_all_sessions(user_id: int) -> None:
     """Revoke every refresh token and kill every access token already issued.
 
-    The caller holds the user row lock and commits.
+    Pending reset links die with them, so an old link cannot outlive an email or
+    password change. The caller holds the user row lock and commits.
     """
+    verification.drop_reset_links(user_id)
     bump = User.token_version + 1
     db.session.execute(
         update(User).where(User.id == user_id).values(token_version=bump)
@@ -120,7 +122,6 @@ def reset_password(token: str, new: str) -> None:
     user.password_hash = hash_password(new)
     reset_failed_logins(user)
     user.email_verified_at = user.email_verified_at or datetime.now(UTC)
-    revoke_all_sessions(user.id)
-    db.session.delete(row)
+    revoke_all_sessions(user.id)  # also deletes this link
     audit_log.record(None, user.id, "auth.password_reset", f"user:{user.id}")
     db.session.commit()
