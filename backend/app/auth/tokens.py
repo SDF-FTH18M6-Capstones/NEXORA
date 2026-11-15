@@ -25,9 +25,12 @@ def _now() -> datetime:
     return datetime.now(UTC)
 
 
-def _encode(user_id: int, token_type: str, lifetime: timedelta) -> tuple[str, dict]:
+def _encode(
+    user_id: int, token_type: str, lifetime: timedelta, **claims
+) -> tuple[str, dict]:
     now = _now()
     payload = {
+        **claims,
         "sub": str(user_id),
         "type": token_type,
         "jti": uuid.uuid4().hex,
@@ -58,8 +61,10 @@ def _decode(token: str, expected_type: str) -> dict:
     return payload
 
 
-def create_access_token(user_id: int) -> str:
-    return _encode(user_id, "access", current_app.config["ACCESS_TOKEN_EXPIRES"])[0]
+def create_access_token(user_id: int, token_version: int) -> str:
+    """`tv` is checked against users.token_version on every request."""
+    lifetime = current_app.config["ACCESS_TOKEN_EXPIRES"]
+    return _encode(user_id, "access", lifetime, tv=token_version)[0]
 
 
 def decode_access_token(token: str) -> dict:

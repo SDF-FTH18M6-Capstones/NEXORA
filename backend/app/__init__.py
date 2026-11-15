@@ -200,6 +200,12 @@ def _check_production_settings(app):
             "APP_ENV=production."
         )
 
+    if app.config.get("MAIL_BACKEND") != "smtp" or not app.config.get("MAIL_SERVER"):
+        raise RuntimeError(
+            "MAIL_BACKEND must be smtp, with MAIL_SERVER set, when "
+            "APP_ENV=production; the log backend would print verification links."
+        )
+
 
 def _install_security_headers(app):
     """Every /api/ response is uncacheable and un-frameable; HSTS in production."""

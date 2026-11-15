@@ -1,7 +1,6 @@
 
 
 import re
-import uuid
 
 # Per-transaction ceiling, in minor units: 1,000,000.00 in a 2-decimal currency.
 MAX_TRANSACTION_AMOUNT = 100_000_000
@@ -33,9 +32,12 @@ def parse_amount(value) -> int:
 
 
 def parse_reference(value) -> str:
-    """The client's idempotency key. A retry reuses it and cannot post twice."""
+    """The client's idempotency key. A retry reuses it and cannot post twice.
+
+    Required: a request without one could not be retried safely.
+    """
     if value is None:
-        return uuid.uuid4().hex
+        raise InvalidRequest("reference is required.")
     if not isinstance(value, str) or not REFERENCE_RE.fullmatch(value):
         raise InvalidRequest(
             "reference must be 1 to 64 characters: letters, digits, . _ : -"

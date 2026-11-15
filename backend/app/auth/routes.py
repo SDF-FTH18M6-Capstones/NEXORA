@@ -3,10 +3,11 @@
 import re
 
 from flask import g, jsonify, request
+from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError, OperationalError
 
 from app import auth_bp
-from app.auth import account
+from app.auth import account, verification
 from app.auth.guards import access_token_required
 from app.auth.limits import login_limit, register_limit, write_limit
 from app.auth.lockout import check_lockout, record_failed_login, reset_failed_logins
@@ -21,6 +22,7 @@ from app.auth.tokens import (
 )
 from app.errors import error_response
 from app.extensions import db
+from app.mail import send_safely
 from app.models.user import User
 
 EMAIL_RE = re.compile(r"[^@\s]+@[^@\s]+\.[^@\s]+")
@@ -70,7 +72,9 @@ def _no_store(response):
 
 def _tokens(user_id: int, refresh_token: str):
     return jsonify(
-        access_token=create_access_token(user_id),
+        access_token=create_access_token(
+            user_id, db.session.get(User, user_id).token_version
+        ),
         refresh_token=refresh_token,
         token_type="Bearer",
     )
@@ -93,11 +97,40 @@ def register():
     user = User(email=email, password_hash=hash_password(password))
     db.session.add(user)
     try:
+        db.session.flush()
+        token = verification.issue(user)
         db.session.commit()
     except IntegrityError:  # unique index on lower(email)
         db.session.rollback()
         return error_response(409, "Email is already registered.")
+    send_safely(user.email, token)
     return jsonify(id=user.id, email=user.email), 201
+
+
+@auth_bp.post("/verify-email")
+@login_limit
+def verify_email():
+    token = _text(_body().get("token"))
+    if not token or len(token) > 100 or not verification.confirm(token):
+        return error_response(400, "This verification link is invalid or has expired.")
+    return jsonify(message="Email verified.")
+
+
+@auth_bp.post("/resend-verification")
+@login_limit
+def resend_verification():
+    """Always the same answer, so it cannot be used to find registered emails."""
+    email = _email(_body().get("email"))
+    user = (
+        db.session.execute(select(User).where(User.email == email)).scalar_one_or_none()
+        if email
+        else None
+    )
+    if user is not None and user.email_verified_at is None:
+        token = verification.issue(user)
+        db.session.commit()
+        send_safely(user.email, token)
+    return jsonify(message="If that address needs verifying, a new link was sent.")
 
 
 @auth_bp.post("/login")

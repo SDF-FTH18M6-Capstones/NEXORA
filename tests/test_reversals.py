@@ -31,7 +31,8 @@ REVERSAL_OF_REVERSAL = "A reversal cannot be reversed. Post a new entry instead.
 
 
 def auth(user):
-    return {"Authorization": f"Bearer {create_access_token(user.id)}"}
+    token = create_access_token(user.id, user.token_version)
+    return {"Authorization": f"Bearer {token}"}
 
 
 def deposit(s, amount, ref):

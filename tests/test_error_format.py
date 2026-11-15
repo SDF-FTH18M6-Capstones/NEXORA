@@ -120,11 +120,15 @@ def test_500_internal_error_hides_details(app, client, monkeypatch):
     assert "secret" not in resp.get_data(as_text=True)
 
 
+# Deliberately answers 200 to anything, so it cannot be used to find registered emails.
+ALWAYS_OK = {"/api/v1/auth/resend-verification"}
+
+
 def test_every_route_answers_errors_in_the_one_shape(app, client):
     """Walks the URL map, so a route added later without the helper is caught."""
     checked = 0
     for rule in app.url_map.iter_rules():
-        if rule.endpoint == "static" or rule.rule == "/api/health":
+        if rule.endpoint == "static" or rule.rule in ({"/api/health"} | ALWAYS_OK):
             continue
         method = next(m for m in sorted(rule.methods) if m not in ("HEAD", "OPTIONS"))
         path = rule.rule

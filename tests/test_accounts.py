@@ -41,7 +41,7 @@ def make_owner():
     db.session.commit()
     owner_id = owner.id
     db.session.remove()
-    return SimpleNamespace(id=owner_id)
+    return SimpleNamespace(id=owner_id, token_version=0)
 
 
 def join(user_id, sacco_id):
@@ -311,3 +311,16 @@ def test_foreign_and_missing_ids_answer_with_the_same_404_body(schema_app):
 
     bodies(s.member_membership.id, 2_000_000_000, open_for)
     bodies(s.account.id, 2_000_000_000, deposit_to)
+
+
+@pytest.mark.parametrize("suffix", ["deposits", "withdrawals"])
+@pytest.mark.parametrize("body", [{"amount": 100}, {"amount": 100, "reference": None}])
+def test_a_money_request_without_a_reference_is_400(schema_app, suffix, body):
+    """Without a reference a timed-out retry would post twice, so it is refused."""
+    s = Setup(balance=500)
+    resp = schema_app.test_client().post(
+        f"{SAVINGS}/accounts/{s.account.id}/{suffix}", json=body, headers=auth(s.admin)
+    )
+    assert resp.status_code == 400
+    assert resp.get_json()["error"]["message"] == "reference is required."
+    assert ledger_balance(s.account.id) == 500

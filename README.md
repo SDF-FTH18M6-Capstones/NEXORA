@@ -151,7 +151,9 @@ Secrets are **never committed**. Only `.env.example` files are tracked; each dev
 | `TRUSTED_PROXIES` | backend | Number of reverse proxies in front (0 = none) |
 | `RATELIMIT_STORAGE_URI` | backend | `memory://` locally, `redis://...` in production |
 | `FLASK_DEBUG`  | backend  | `1` enables Flask debug mode         |
-| `APP_ENV` | backend | `development` (default) or `production`. Production refuses to start with debug on, `memory://` rate limits, a short or placeholder `SECRET_KEY`, or a `*` origin |
+| `APP_ENV` | backend | `development` (default) or `production`. Production refuses to start with debug on, `memory://` rate limits, a short or placeholder `SECRET_KEY`, a `*` origin, or the `log` mail backend |
+| `MAIL_BACKEND`, `MAIL_SERVER`, `MAIL_PORT`, `MAIL_FROM`, `MAIL_USERNAME`, `MAIL_PASSWORD` | backend | Verification email. `log` (default) prints the link in the server log; production needs `smtp` and `MAIL_SERVER` |
+| `FRONTEND_URL` | backend | Where the verification link points (default `http://localhost:5173`) |
 | `CORS_ORIGINS` | backend | Exact browser origins allowed to call the API, comma-separated (e.g. `http://localhost:5173`). Empty = no cross-origin access |
 
 If your database password contains special characters (`@`, `#`, `/`, `:`), URL-encode them (for example `@` becomes `%40`).
@@ -183,6 +185,8 @@ If your database password contains special characters (`@`, `#`, `/`, `:`), URL-
 - [x] Move 2: auth (register, login, rotating refresh tokens, lockout), SACCOs, members, tenant guard
 - [x] Move 3: savings accounts, deposits, withdrawals, reversals, ledger, audit log, admin reports
 - [x] Move 4: security headers, CORS and rate limits, production checks, seed script, savings and audit read endpoints, change-password and logout-all
-- [ ] Move 4 remainder: one error format, OpenAPI spec, red-team pass
+- [x] Move 4 hardening: one error format, access-token revocation, email verification, required `reference`
+- [x] OpenAPI spec for every route (`docs/openapi.yaml`)
+- [ ] Move 4 remainder: final sign-off
 - [ ] Loans (waiting for the interest decision)
 - [ ] Frontend connected to backend

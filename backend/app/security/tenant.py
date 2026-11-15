@@ -51,11 +51,12 @@ def current_user() -> User:
     if scheme.lower() != "bearer" or not token:
         raise AccessDenied("Authentication required.", 401)
     try:
-        user_id = int(decode_access_token(token)["sub"])
+        payload = decode_access_token(token)
     except TokenError:
         raise AccessDenied("Invalid or expired token.", 401) from None
-    user = db.session.get(User, user_id)
-    if user is None:
+    user = db.session.get(User, int(payload["sub"]))
+    # A token issued before the last password change or logout-all is dead.
+    if user is None or payload.get("tv") != user.token_version:
         raise AccessDenied("Invalid or expired token.", 401)
     return user
 
