@@ -13,6 +13,10 @@ from app.models.refresh_token import RefreshToken
 from app.models.user import User
 
 ALGORITHM = "HS256"
+# Who issued a token and who it is for. A token signed with the same key for some
+# other service or purpose is refused.
+ISSUER = "nexora-api"
+AUDIENCE = "nexora"
 # A spent token replayed within this window is a double submit, not theft.
 REUSE_GRACE = timedelta(seconds=10)
 
@@ -31,6 +35,8 @@ def _encode(
     now = _now()
     payload = {
         **claims,
+        "iss": ISSUER,
+        "aud": AUDIENCE,
         "sub": str(user_id),
         "type": token_type,
         "jti": uuid.uuid4().hex,
@@ -46,7 +52,9 @@ def _decode(token: str, expected_type: str) -> dict:
             token,
             current_app.config["SECRET_KEY"],
             algorithms=[ALGORITHM],
-            options={"require": ["exp", "iat", "sub", "jti", "type"]},
+            issuer=ISSUER,
+            audience=AUDIENCE,
+            options={"require": ["exp", "iat", "sub", "jti", "type", "iss", "aud"]},
         )
         valid = (
             payload["type"] == expected_type

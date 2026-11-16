@@ -409,3 +409,28 @@ def test_change_password_reads_the_row_after_the_lock(client, monkeypatch):
     resp = change(client, tokens_)  # still sends the OLD password
     monkeypatch.undo()
     assert resp.status_code == 401
+
+
+@pytest.mark.parametrize(
+    "claims", [{"iss": "someone-else"}, {"aud": "another-service"}]
+)
+def test_a_token_for_another_issuer_or_audience_is_refused(app, client, claims):
+    from datetime import UTC, datetime, timedelta
+
+    import jwt
+
+    logged_in(client)
+    now = datetime.now(UTC)
+    payload = {
+        "sub": str(the_user().id),
+        "type": "access",
+        "jti": "a" * 32,
+        "iat": now,
+        "exp": now + timedelta(minutes=5),
+        "tv": 0,
+        "iss": "nexora-api",
+        "aud": "nexora",
+    } | claims
+    token = jwt.encode(payload, app.config["SECRET_KEY"], algorithm="HS256")
+    headers = {"Authorization": f"Bearer {token}"}
+    assert client.get("/api/v1/members/me", headers=headers).status_code == 401

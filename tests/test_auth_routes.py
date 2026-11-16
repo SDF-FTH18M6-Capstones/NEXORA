@@ -69,7 +69,14 @@ def parallel(app, n, fn):
 
 def forge(app, **claims):
     now = datetime.now(UTC)
-    base = {"sub": "1", "type": "refresh", "jti": "a" * 32, "iat": now}
+    base = {
+        "sub": "1",
+        "type": "refresh",
+        "jti": "a" * 32,
+        "iat": now,
+        "iss": "nexora-api",
+        "aud": "nexora",
+    }
     base |= {"exp": now + timedelta(days=1)} | claims
     return jwt.encode(base, app.config["SECRET_KEY"], algorithm="HS256")
 

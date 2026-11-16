@@ -110,6 +110,12 @@ def _actor(user_id: int, sacco_id: int) -> SaccoMembership:
     return actor
 
 
+def _require_not_own_account(actor: SaccoMembership, account) -> None:
+    """Nobody posts or reverses money on their own account (separation of duties)."""
+    if account.membership_id == actor.id:
+        raise Forbidden("You cannot post money on your own account.")
+
+
 def _require_sacco_active(sacco_id: int) -> None:
     # A suspension must also stop access tokens that were issued before it.
     sacco = db.session.get(Sacco, sacco_id)
@@ -164,6 +170,7 @@ def _post(
     # together exceed the balance cannot both succeed.
     account = lock_account(account_id)
 
+    _require_not_own_account(actor, account)
     _require_sacco_active(account.sacco_id)
     holder = db.session.get(SaccoMembership, account.membership_id)
     if holder.status is not MembershipStatus.ACTIVE:

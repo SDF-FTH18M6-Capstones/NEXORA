@@ -10,6 +10,7 @@ from datetime import UTC, datetime
 from sqlalchemy import select, update
 
 from app.audit import log as audit_log
+from app.auth import verification
 from app.auth.lockout import check_lockout, record_failed_login, reset_failed_logins
 from app.auth.passwords import hash_password, validate_password, verify_password
 from app.auth.tokens import lock_user
@@ -32,11 +33,13 @@ class AccountError(Exception):
         self.status = status
 
 
-def _revoke_all_sessions(user_id: int) -> None:
+def revoke_all_sessions(user_id: int) -> None:
     """Revoke every refresh token and kill every access token already issued.
 
-    The caller holds the user row lock and commits.
+    Pending reset links die with them, so an old link cannot outlive an email or
+    password change. The caller holds the user row lock and commits.
     """
+    verification.drop_reset_links(user_id)
     bump = User.token_version + 1
     db.session.execute(
         update(User).where(User.id == user_id).values(token_version=bump)
@@ -83,7 +86,7 @@ def change_password(user_id: int, current: str, new: str) -> None:
 
     user.password_hash = hash_password(new)
     reset_failed_logins(user)
-    _revoke_all_sessions(user.id)
+    revoke_all_sessions(user.id)
     audit_log.record(None, user.id, "auth.password_change", f"user:{user.id}")
     db.session.commit()
 
@@ -91,6 +94,34 @@ def change_password(user_id: int, current: str, new: str) -> None:
 def logout_all(user_id: int) -> None:
     """Revoke every refresh token of the caller. Never refused for a suspension."""
     lock_user(user_id)
-    _revoke_all_sessions(user_id)
+    revoke_all_sessions(user_id)
     audit_log.record(None, user_id, "auth.logout_all", f"user:{user_id}")
+    db.session.commit()
+
+
+def reset_password(token: str, new: str) -> None:
+    """Set a new password from an emailed link. `new` is already length-checked.
+
+    Owning the mailbox proves the address, so the user also becomes verified, and
+    the lockout counter is cleared: this is how someone locked out by repeated
+    guesses gets back in. Every session ends. The link is spent on success only.
+    """
+    row = verification.find(token, verification.RESET)
+    if row is None:
+        raise AccountError("This reset link is invalid or has expired.", 400)
+    user = db.session.execute(
+        select(User)
+        .where(User.id == row.user_id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    ).scalar_one()
+    if problem := validate_password(new, user.email):
+        db.session.rollback()
+        raise AccountError(problem, 400)
+
+    user.password_hash = hash_password(new)
+    reset_failed_logins(user)
+    user.email_verified_at = user.email_verified_at or datetime.now(UTC)
+    revoke_all_sessions(user.id)  # also deletes this link
+    audit_log.record(None, user.id, "auth.password_reset", f"user:{user.id}")
     db.session.commit()

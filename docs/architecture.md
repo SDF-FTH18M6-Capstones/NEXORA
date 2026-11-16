@@ -131,7 +131,21 @@ Actions in use: `savings.open`, `savings.deposit`, `savings.withdrawal`, `saving
 - `register` creates the user unverified and emails a single-use link (24 hours). Only the token's SHA-256 is stored (`email_verifications`). Opening it sets `users.email_verified_at`.
 - Login does not need it. **A SACCO admin can only add a verified user**, so someone who registers an address they do not own cannot be attached to a SACCO. Changing the email resets it.
 - Mail goes through `app/mail.py`: `MAIL_BACKEND=log` locally, `smtp` in production (the app refuses to start in production otherwise).
-- Known limit: an attacker can still register an address first, so the real owner then sees "Email is already registered". Account recovery, when built, is the fix.
+- Someone can still register an address they do not own first. That gets them nothing: they cannot be added to a SACCO unverified, and the real owner takes the account over with forgot-password (the reset link proves the mailbox and ends every session).
+
+### Account recovery
+
+- `forgot-password` always answers 200 and emails a 1-hour single-use link (`email_verifications`, purpose `reset`). `reset-password` sets the password, clears the lockout, marks the email verified, revokes every session (`token_version` bump plus all refresh tokens) and writes the audit row `auth.password_reset`.
+- Changing the email through `PATCH /members/me` also ends every session. Any event that ends sessions (reset, change-password, logout-all, email change) also kills pending reset links, so an old link cannot outlive them.
+- Asking again within 60 seconds sends nothing new and keeps the first link, so nobody can keep a victim's link dead or flood their inbox. SMTP mail goes out on a background thread so a known and an unknown address take the same time. Requests are audited as `auth.password_reset_requested`.
+
+### Decisions on known trade-offs
+
+- **Lockout is per account** (5 wrong passwords, 15 minutes). Anyone who knows an email can lock it out, which is the price of stopping guessing. Recovery is forgot-password, which also clears the lock.
+- **Email probing.** `register` answers 409 for a taken address, so existence can be found that way; the locked-account 423 and the admin add-member 404 add nothing beyond it. Not changed: a generic register answer would need a different sign-up flow.
+- **Separation of duties.** Nobody posts or reverses money on their own account (403).
+- **Tokens** carry `iss` and `aud`; the app refuses to start with a `SECRET_KEY` under 32 characters in any environment.
+- **Login 429 under parallel attempts** (`Another attempt is in progress`) stays: it is what stops guesses from racing the failure counter.
 
 ### CORS and rate limits
 
@@ -153,4 +167,3 @@ The production guards only run when `APP_ENV=production`, and the default is `de
 ## 8. Still Open
 
 - **Loans.** Waiting for the interest decision (rate, simple or compound, who sets it). No loan tables or routes exist.
-- **Account recovery.** There is no forgot-password flow yet; it would reuse the email link mechanism below.

@@ -32,6 +32,7 @@ PRODUCTION = "production"
 # silently switch the production guards off.
 APP_ENVS = ("development", PRODUCTION)
 # From .env.example: a secret that must never reach production.
+MIN_SECRET_LENGTH = 32
 EXAMPLE_SECRET_KEY = "replace-with-a-long-random-string"
 DEBUG_VALUES = {"1", "true", "yes", "on"}
 HSTS = "max-age=31536000; includeSubDomains"
@@ -163,6 +164,13 @@ def _check_required_settings(app):
             "Set them in your .env file or shell."
         )
 
+    if len(str(app.config.get("SECRET_KEY"))) < MIN_SECRET_LENGTH:
+        raise RuntimeError(
+            f"SECRET_KEY must be at least {MIN_SECRET_LENGTH} characters in every "
+            'environment. Generate one: python -c "import secrets; '
+            'print(secrets.token_urlsafe(48))"'
+        )
+
     app_env = str(app.config.get("APP_ENV") or "development").strip().lower()
     if app_env not in APP_ENVS:
         raise RuntimeError(
@@ -187,11 +195,10 @@ def _check_production_settings(app):
             "per-process counters multiply every client's allowance per worker."
         )
 
-    secret = str(app.config.get("SECRET_KEY") or "")
-    if len(secret) < 32 or secret == EXAMPLE_SECRET_KEY:
+    if str(app.config.get("SECRET_KEY") or "") == EXAMPLE_SECRET_KEY:
         raise RuntimeError(
-            "SECRET_KEY must be at least 32 characters and must not be the "
-            ".env.example placeholder when APP_ENV=production."
+            "SECRET_KEY must not be the .env.example placeholder when "
+            "APP_ENV=production."
         )
 
     if "*" in str(app.config.get("CORS_ORIGINS") or ""):

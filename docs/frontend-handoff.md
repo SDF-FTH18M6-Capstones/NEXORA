@@ -170,8 +170,25 @@ curl -s -X POST $API/auth/resend-verification -H "Content-Type: application/json
 ```
 
 - Login does **not** need a verified address. What needs it: a SACCO admin can only add a user who has verified their email (otherwise 409 `That user has not verified their email yet.`). Tell new users to verify before asking an admin to add them.
-- Changing the email with `PATCH /members/me` marks the new address unverified and emails a new link.
+- Changing the email with `PATCH /members/me` marks the new address unverified, emails a new link and **ends every session** (the response is 200, but the old tokens are dead: send the user to login).
 - Locally the link is printed in the API's log (`MAIL_BACKEND=log`); seeded users are already verified. `FRONTEND_URL` in `backend/.env` sets where the link points.
+
+### Forgot password
+
+```bash
+curl -s -X POST $API/auth/forgot-password -H "Content-Type: application/json" \
+  -d '{"email":"sam@example.com"}'
+# Always 200 {"message": "If that address has an account, a reset link was sent."}
+
+curl -s -X POST $API/auth/reset-password -H "Content-Type: application/json" \
+  -d '{"token":"<token from the link>","new_password":"a-new-passphrase"}'
+# 200 {"message": "Password reset. Sign in with the new password."}
+```
+
+- The link (valid 1 hour, works once) points to `FRONTEND_URL/reset-password?token=...`. Build that page: read `token`, ask for a new password, call `reset-password`, then send the user to login.
+- Asking again within 60 seconds does nothing (same 200); the first link stays valid. A password change, logout-all or email change kills pending reset links.
+- A weak password is 400 with a message and the link still works. A used, wrong or expired link is 400.
+- A reset ends every session, clears a lockout and verifies the email. **This is the way back for a user locked out by repeated wrong passwords**, so show a "Forgot password?" link on the 423 lock message.
 
 ### What 401, 423 and 429 mean
 
@@ -260,7 +277,7 @@ Status **200**, `"replayed": true`, same `id`, no second deposit. How to handle 
 
 Do not retry blindly on 4xx: fix the request first.
 
-Reversals work the same way: `POST /savings/transactions/<id>/reversals` with `{"reference": "..."}`. A reversal is a new opposite entry; an entry can be reversed once and a reversal cannot be reversed (409). Only admins and staff can post money or reversals.
+Reversals work the same way: `POST /savings/transactions/<id>/reversals` with `{"reference": "..."}`. A reversal is a new opposite entry; an entry can be reversed once and a reversal cannot be reversed (409). Only admins and staff can post money or reversals, and **nobody can post or reverse on their own account** (403 `You cannot post money on your own account.`).
 
 ## 6. Dashboard recipes
 
@@ -440,6 +457,8 @@ All paths are under `/api/v1` unless noted. "Auth" is a Bearer access token.
 | `POST /auth/register` | anyone | Create a user and email a verification link |
 | `POST /auth/verify-email` | anyone | Confirm an address with the emailed token |
 | `POST /auth/resend-verification` | anyone | Send a new link (always 200) |
+| `POST /auth/forgot-password` | anyone | Email a reset link (always 200) |
+| `POST /auth/reset-password` | anyone | Set a new password from the emailed token |
 | `POST /auth/login` | anyone | Get tokens |
 | `POST /auth/refresh` | refresh token | Rotate tokens |
 | `POST /auth/logout` | refresh token | Revoke one refresh token |

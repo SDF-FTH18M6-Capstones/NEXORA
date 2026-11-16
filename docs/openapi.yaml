@@ -22,7 +22,7 @@ info:
 
 
     **Auth:** `Authorization: Bearer <access_token>`. Access tokens last 15 minutes and stop working at
-    once after change-password or logout-all.'
+    once after change-password, reset-password, logout-all or an email change.'
 servers:
 - url: http://localhost:5000
 components:
@@ -82,7 +82,7 @@ components:
       schema:
         type: string
         format: date
-      description: Inclusive start date, YYYY-MM-DD. Must not be after `to`.
+      description: Inclusive start date, strictly YYYY-MM-DD (ASCII digits). Must not be after `to`.
     to:
       name: to
       in: query
@@ -784,6 +784,94 @@ paths:
                   type: string
               required:
               - email
+  /api/v1/auth/forgot-password:
+    post:
+      summary: Email a password-reset link
+      description: '**Who:** anyone
+
+
+        **Rate limit:** 5 per minute (per IP).
+
+
+        The link lasts 1 hour and replaces any earlier reset link. This is also how an account locked
+        by repeated wrong guesses is recovered.'
+      responses:
+        '200':
+          description: Always the same answer, whether or not the address has an account.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+        '429':
+          description: Rate limit exceeded (`rate_limited`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                email:
+                  type: string
+              required:
+              - email
+  /api/v1/auth/reset-password:
+    post:
+      summary: Set a new password from an emailed link
+      description: '**Who:** anyone holding the emailed token
+
+
+        **Rate limit:** 5 per minute (per IP).
+
+
+        The link works once. The new password follows the register rules. A successful reset also marks
+        the email verified, clears the lockout and revokes every session. A weak password is 400 and does
+        not spend the link. Writes the audit row `auth.password_reset`.'
+      responses:
+        '200':
+          description: Password reset. Every session ends; sign in with the new password.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+        '400':
+          description: Validation error (`validation_error`). Also bad paging or dates.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '429':
+          description: Rate limit exceeded (`rate_limited`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                token:
+                  type: string
+                  maxLength: 100
+                new_password:
+                  type: string
+                  maxLength: 128
+              required:
+              - token
+              - new_password
   /api/v1/members/me:
     get:
       summary: The caller's own profile
@@ -829,7 +917,8 @@ paths:
         Needs `current_password`. A wrong one is 403 and counts toward the lockout. Only `email` can change.'
       responses:
         '200':
-          description: Updated profile. The new address is unverified and a link is emailed.
+          description: Updated profile. The new address is unverified, a link is emailed, and every session
+            ends (sign in again).
           content:
             application/json:
               schema:
@@ -1646,7 +1735,8 @@ paths:
 
         `reference` is required. A new entry answers **201**; repeating the same reference with the same
         request answers **200** with `replayed: true`; the same reference with a different request is
-        409. Staff and admins post money, members cannot (403). Amounts are integers in minor units.'
+        409. Staff and admins post money, members cannot (403), and nobody may post on their own account
+        (403). Amounts are integers in minor units.'
       responses:
         '201':
           description: New entry.
@@ -1738,7 +1828,7 @@ paths:
         Insufficient funds is 409 `Insufficient funds.`. `reference` is required. A new entry answers
         **201**; repeating the same reference with the same request answers **200** with `replayed: true`;
         the same reference with a different request is 409. Staff and admins post money, members cannot
-        (403). Amounts are integers in minor units.'
+        (403), and nobody may post on their own account (403). Amounts are integers in minor units.'
       responses:
         '201':
           description: New entry.
@@ -1896,10 +1986,12 @@ paths:
         **Rate limit:** 20 per minute.
 
 
-        A reversal is a new opposite entry. An entry can be reversed once, and a reversal cannot be reversed
-        (409). `reference` is required. A new entry answers **201**; repeating the same reference with
-        the same request answers **200** with `replayed: true`; the same reference with a different request
-        is 409. Staff and admins post money, members cannot (403). Amounts are integers in minor units.'
+        A reversal is a new opposite entry; nobody may reverse an entry on their own account (403). An
+        entry can be reversed once, and a reversal cannot be reversed (409). `reference` is required.
+        A new entry answers **201**; repeating the same reference with the same request answers **200**
+        with `replayed: true`; the same reference with a different request is 409. Staff and admins post
+        money, members cannot (403), and nobody may post on their own account (403). Amounts are integers
+        in minor units.'
       responses:
         '201':
           description: The new opposite entry.
