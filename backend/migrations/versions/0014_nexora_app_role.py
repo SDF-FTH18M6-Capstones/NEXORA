@@ -4,7 +4,7 @@ Revision ID: 0014
 Revises: 0013
 Create Date: 2026-11-17 12:00:00.000000
 
-Section 1 (Neo). The application has been connecting as the database owner,
+Section 1. The application has been connecting as the database owner,
 which can do anything. This creates a separate role for it:
 
 * read and write on ordinary tables, so the app keeps working;
@@ -106,4 +106,32 @@ def downgrade():
     op.execute(f"REVOKE ALL ON ALL SEQUENCES IN SCHEMA public FROM {APP_ROLE}")
     op.execute(f"REVOKE ALL ON ALL TABLES IN SCHEMA public FROM {APP_ROLE}")
     op.execute(f"REVOKE ALL ON SCHEMA public FROM {APP_ROLE}")
-    op.execute(f"DROP ROLE IF EXISTS {APP_ROLE}")
+
+    # Roles are cluster-wide but grants are per database. Dropping the role from
+    # here would fail (and break the downgrade of every other database) as soon
+    # as it still holds privileges somewhere else -- a dev database, the test
+    # database. So the role is dropped only once this database was the last one
+    # using it; otherwise the grants above are all this migration owns, and the
+    # role itself is left for an operator to remove with DROP OWNED BY.
+    op.execute(
+        f"""
+        DO $$
+        BEGIN
+            IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '{APP_ROLE}')
+               AND NOT EXISTS (
+                   SELECT 1
+                   FROM pg_shdepend d
+                   JOIN pg_roles r ON r.oid = d.refobjid
+                   WHERE r.rolname = '{APP_ROLE}'
+                     AND d.dbid <> 0
+                     AND d.dbid <> (
+                         SELECT oid FROM pg_database WHERE datname = current_database()
+                     )
+               )
+            THEN
+                DROP ROLE {APP_ROLE};
+            END IF;
+        END
+        $$;
+        """
+    )
