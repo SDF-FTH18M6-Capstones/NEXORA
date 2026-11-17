@@ -22,6 +22,8 @@ from app.extensions import db
 class TransactionType(enum.Enum):
     DEPOSIT = "deposit"
     WITHDRAWAL = "withdrawal"
+    INTEREST = "interest"
+    FEE = "fee"
 
 
 class Transaction(db.Model):

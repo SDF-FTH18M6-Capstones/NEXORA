@@ -1,4 +1,4 @@
-"""Savings endpoints: open an account, deposit, withdraw."""
+"""Savings endpoints: open an account, deposit, withdraw, interest, fees."""
 
 from dataclasses import asdict
 from functools import wraps
@@ -43,7 +43,7 @@ def signed_in(view):
         except InvalidRequest as exc:
             return error_response(400, str(exc))
         except service.SavingsError as exc:
-            return error_response(exc.status, exc.message)
+            return error_response(exc.status, exc.message, code=exc.code)
 
     return wrapper
 
@@ -65,7 +65,6 @@ def open_account(user_id: int):
 def _post_money(user_id: int, account_id: int, action):
     amount, reference = parse_money(_body())
     tx = action(user_id, account_id, amount, reference)
-    # 201 for a new entry, 200 when a retried reference returns the original.
     return jsonify(_json(tx)), 200 if tx.replayed else 201
 
 
@@ -81,3 +80,17 @@ def deposit(user_id: int, account_id: int):
 @signed_in
 def withdraw(user_id: int, account_id: int):
     return _post_money(user_id, account_id, service.withdraw)
+
+
+@savings_bp.post("/accounts/<int:account_id>/interest")
+@money_limit
+@signed_in
+def interest(user_id: int, account_id: int):
+    return _post_money(user_id, account_id, service.post_interest)
+
+
+@savings_bp.post("/accounts/<int:account_id>/fees")
+@money_limit
+@signed_in
+def fee(user_id: int, account_id: int):
+    return _post_money(user_id, account_id, service.post_fee)
