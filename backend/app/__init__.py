@@ -105,8 +105,11 @@ def create_app(config_class=Config):
     from app.ledger import routes as ledger_routes  # noqa: F401
     from app.members import routes as members_routes  # noqa: F401
     from app.models import (  # noqa: F401
+        access,
         audit,
+        identity,
         ledger,
+        loan,
         membership,
         refresh_token,
         sacco,

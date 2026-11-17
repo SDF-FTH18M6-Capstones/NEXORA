@@ -60,9 +60,9 @@ def require_dev_database(app):
 
 def seed(app, require_dev=True):
     """Create the demo data and return [{email, role, sacco}, ...]."""
-    from sqlalchemy import func, select
-
     from datetime import UTC, datetime
+
+    from sqlalchemy import func, select
 
     from app.auth.passwords import hash_password, validate_password
     from app.extensions import db
@@ -76,6 +76,15 @@ def seed(app, require_dev=True):
 
     if require_dev:
         require_dev_database(app)
+
+    # Seeded memberships get their job-title role as a row in `membership_roles`,
+    # so `can()` answers from the same table as production data instead of using
+    # its legacy-column fallback.
+    JOB_TITLE = {
+        MembershipRole.SACCO_ADMIN: "circle_admin",
+        MembershipRole.STAFF: "secretary",
+        MembershipRole.MEMBER: "member",
+    }
 
     emails = [OWNER_EMAIL]
     for _, slug in SACCOS:
@@ -117,6 +126,25 @@ def seed(app, require_dev=True):
             return sacco_id
         return sacco.id
 
+    def grant_job_title(membership_id, role):
+        """Give a membership the role row its legacy enum implies, once."""
+        from app.models.access import MembershipRoleLink, Role
+
+        code = JOB_TITLE[role]
+        role_row = db.session.execute(
+            select(Role).where(Role.code == code)
+        ).scalar_one_or_none()
+        if role_row is None:
+            raise SystemExit(
+                f"Role {code!r} is missing from the database. Run "
+                "'flask --app app db upgrade' before seeding."
+            )
+        if db.session.get(MembershipRoleLink, (membership_id, role_row.id)) is None:
+            db.session.add(
+                MembershipRoleLink(membership_id=membership_id, role_id=role_row.id)
+            )
+            db.session.commit()
+
     def get_membership(user_id, sacco_id, role):
         found = db.session.execute(
             select(SaccoMembership).where(
@@ -130,8 +158,10 @@ def seed(app, require_dev=True):
             db.session.flush()
             membership_id = found.id
             db.session.commit()
-            return membership_id
-        return found.id
+        else:
+            membership_id = found.id
+        grant_job_title(membership_id, role)
+        return membership_id
 
     def get_account(admin_id, membership_id):
         account_id = db.session.execute(
