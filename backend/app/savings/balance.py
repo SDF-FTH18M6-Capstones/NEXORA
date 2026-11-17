@@ -14,6 +14,8 @@ from app.extensions import db
 from app.models.ledger import Transaction, TransactionType
 from app.models.savings import SavingsAccount
 
+CREDITS = (TransactionType.DEPOSIT, TransactionType.INTEREST)
+
 
 @dataclass(frozen=True)
 class BalanceCheck:
@@ -28,9 +30,9 @@ class BalanceCheck:
 
 
 def ledger_balance(account_id: int) -> int:
-    """Deposits minus withdrawals for one account, in minor units."""
+    """Credits (deposit, interest) minus debits (withdrawal, fee) in minor units."""
     signed = case(
-        (Transaction.type == TransactionType.DEPOSIT, Transaction.amount),
+        (Transaction.type.in_(CREDITS), Transaction.amount),
         else_=-Transaction.amount,
     )
     total = db.session.execute(

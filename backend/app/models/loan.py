@@ -65,6 +65,9 @@ class SaccoSettings(db.Model):
     join_code_ttl_minutes: Mapped[int] = mapped_column(
         Integer, nullable=False, default=15, server_default="15"
     )
+    required_approvals: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=2, server_default="2"
+    )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
@@ -82,6 +85,10 @@ class SaccoSettings(db.Model):
         CheckConstraint(
             "join_code_ttl_minutes > 0",
             name="ck_sacco_settings_ttl_positive",
+        ),
+        CheckConstraint(
+            "required_approvals >= 1",
+            name="ck_sacco_settings_required_approvals_positive",
         ),
     )
 
