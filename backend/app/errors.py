@@ -26,3 +26,46 @@ def error_response(status: int, message: str, code: str | None = None):
     """Return `(response, status)` in the API's error shape."""
     code = code or CODES.get(status, "error")
     return jsonify({"error": {"code": code, "message": message}}), status
+
+
+# ---------------------------------------------------------------------------
+# Named codes published in the work split (Section 1, Neo). Sections 2 and 3
+# raise these by name so a client can branch on `code` instead of parsing text.
+# A route adopts a named code by passing `code=` to `error_response`.
+# ---------------------------------------------------------------------------
+
+NOT_ALLOWED = "NOT_ALLOWED"
+NOT_FOUND = "NOT_FOUND"
+CODE_EXPIRED = "CODE_EXPIRED"
+CODE_USED = "CODE_USED"
+CODE_WRONG = "CODE_WRONG"
+PIN_LOCKED = "PIN_LOCKED"
+PIN_WRONG = "PIN_WRONG"
+LOAN_NEEDS_APPROVAL = "LOAN_NEEDS_APPROVAL"
+LOAN_SAME_OFFICER = "LOAN_SAME_OFFICER"
+DUPLICATE_REFERENCE = "DUPLICATE_REFERENCE"
+INSUFFICIENT_FUNDS = "INSUFFICIENT_FUNDS"
+
+# The status each named code is returned with, so nobody has to guess.
+INTERFACE_CODES: dict[str, int] = {
+    NOT_ALLOWED: 403,
+    NOT_FOUND: 404,
+    CODE_EXPIRED: 410,
+    CODE_USED: 409,
+    CODE_WRONG: 400,
+    PIN_LOCKED: 423,
+    PIN_WRONG: 401,
+    LOAN_NEEDS_APPROVAL: 409,
+    LOAN_SAME_OFFICER: 403,
+    DUPLICATE_REFERENCE: 409,
+    INSUFFICIENT_FUNDS: 409,
+}
+
+PUBLISHED_CODES = frozenset(INTERFACE_CODES)
+
+
+def interface_error(name: str, message: str):
+    """Return `(response, status)` for one of the published named codes."""
+    if name not in INTERFACE_CODES:
+        raise KeyError(f"Unknown published code: {name!r}")
+    return error_response(INTERFACE_CODES[name], message, code=name)
