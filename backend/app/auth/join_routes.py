@@ -1,0 +1,163 @@
+"""Join, set PIN, circle login. Section 2."""
+
+from datetime import UTC, datetime
+
+from flask import current_app, g, jsonify, request
+from itsdangerous import BadSignature, URLSafeTimedSerializer
+from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
+
+from app import auth_bp
+from app.auth.join import JoinError, check_code, normalize_phone
+from app.auth.limits import write_limit
+from app.auth.pin import PinError, check_pin, set_pin
+from app.errors import CODE_WRONG, error_response, interface_error
+from app.extensions import db
+from app.models.audit import AuditLog
+from app.models.identity import JoinCode, UserPhone
+from app.models.membership import MembershipStatus, SaccoMembership
+from app.security.tenant import AccessDenied, current_user
+
+SETUP_TTL = 600  # seconds the setup token stays valid
+
+
+def _serializer():
+    return URLSafeTimedSerializer(current_app.config["SECRET_KEY"], salt="join-setup")
+
+
+def _audit(membership, action, note):
+    db.session.add(
+        AuditLog(
+            sacco_id=membership.sacco_id,
+            actor_id=g.user.id,
+            action=action,
+            target=f"membership:{membership.id} {note}",
+        )
+    )
+
+
+def _signed_in():
+    try:
+        g.user = current_user()
+    except AccessDenied as exc:
+        return error_response(exc.status, exc.message)
+    return None
+
+
+@auth_bp.post("/join")
+@write_limit
+def join():
+    if error := _signed_in():
+        return error
+    body = request.get_json(silent=True) or {}
+    try:
+        phone = normalize_phone(body.get("phone"))
+    except ValueError:
+        return interface_error(CODE_WRONG, "That code is not correct.")
+    code = str(body.get("code", ""))
+    # An unknown phone gets the same answer as a wrong code.
+    membership = db.session.execute(
+        select(SaccoMembership)
+        .where(
+            SaccoMembership.phone == phone,
+        )
+        .order_by(SaccoMembership.id.desc())
+        .limit(1)
+        .with_for_update()
+    ).scalar_one_or_none()
+    row = None
+    if membership is not None:
+        row = db.session.execute(
+            select(JoinCode)
+            .where(JoinCode.membership_id == membership.id)
+            .order_by(JoinCode.id.desc())
+            .limit(1)
+            .with_for_update()
+        ).scalar_one_or_none()
+    if row is None:
+        db.session.rollback()
+        return interface_error(CODE_WRONG, "That code is not correct.")
+    try:
+        check_code(row, code, current_app.config["SECRET_KEY"])
+    except JoinError as exc:
+        db.session.commit()  # keep the wrong-attempt count
+        return interface_error(exc.name, exc.message)
+
+    user = g.user
+    existing = db.session.execute(
+        select(UserPhone).where(UserPhone.phone == phone)
+    ).scalar_one_or_none()
+    if existing is not None and existing.user_id != user.id:
+        db.session.rollback()  # code stays unspent
+        return error_response(409, "That phone belongs to another account.")
+    if existing is None:
+        db.session.add(
+            UserPhone(user_id=user.id, phone=phone, verified_at=datetime.now(UTC))
+        )
+    membership.user_id = user.id
+    try:
+        db.session.flush()
+    except IntegrityError:
+        db.session.rollback()
+        return error_response(409, "You are already a member of this SACCO.")
+    _audit(membership, "member.join", "invited -> linked")
+    db.session.commit()
+    token = _serializer().dumps({"m": membership.id, "u": user.id})
+    return jsonify(setup_token=token, membership_id=membership.id)
+
+
+@auth_bp.post("/join/pin")
+@write_limit
+def join_pin():
+    if error := _signed_in():
+        return error
+    body = request.get_json(silent=True) or {}
+    try:
+        data = _serializer().loads(str(body.get("setup_token", "")), max_age=SETUP_TTL)
+    except BadSignature:
+        return error_response(401, "The setup token is invalid or expired.")
+    membership = db.session.get(SaccoMembership, data["m"], with_for_update=True)
+    if membership is None or membership.user_id != g.user.id or data["u"] != g.user.id:
+        db.session.rollback()
+        return error_response(403, "Not allowed.")
+    if membership.status is not MembershipStatus.INVITED:
+        db.session.rollback()
+        return error_response(409, "This membership is already set up.")
+    try:
+        set_pin(membership, str(body.get("pin", "")))
+    except ValueError as exc:
+        db.session.rollback()
+        return error_response(400, str(exc))
+    membership.status = MembershipStatus.ACTIVE
+    _audit(membership, "member.activate", "invited -> active")
+    db.session.commit()
+    return jsonify(membership_id=membership.id, status="active")
+
+
+@auth_bp.post("/circle-login")
+@write_limit
+def circle_login():
+    if error := _signed_in():
+        return error
+    body = request.get_json(silent=True) or {}
+    try:
+        sacco_id = int(body.get("sacco_id"))
+    except (TypeError, ValueError):
+        return error_response(400, "sacco_id is required.")
+    membership = db.session.execute(
+        select(SaccoMembership)
+        .where(
+            SaccoMembership.user_id == g.user.id, SaccoMembership.sacco_id == sacco_id
+        )
+        .with_for_update()
+    ).scalar_one_or_none()
+    if membership is None or membership.status is not MembershipStatus.ACTIVE:
+        db.session.rollback()
+        return error_response(403, "Not allowed.")
+    try:
+        check_pin(membership, str(body.get("pin", "")))
+    except PinError as exc:
+        db.session.commit()  # keep the wrong-attempt count
+        return interface_error(exc.name, exc.message)
+    db.session.commit()
+    return jsonify(ok=True, membership_id=membership.id, role=membership.role.value)

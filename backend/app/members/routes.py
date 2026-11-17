@@ -4,11 +4,12 @@ Two groups live here because they both serve members: the signed-in user's own
 profile under /members/me (Sam's Move 2 work), and one SACCO's member list
 under /saccos/<sacco_id>/members (Neo's Move 2 work).
 """
-from flask import g, jsonify, request
+from flask import current_app, g, jsonify, request
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 
 from app import members_bp, saccos_bp
+from app.auth.join import issue_code, normalize_phone
 from app.auth.limits import read_limit, write_limit
 from app.auth.routes import _body
 from app.auth.suspension import check_sacco_not_suspended
@@ -17,7 +18,7 @@ from app.extensions import db
 from app.members import self_service
 from app.members.schemas import InvalidMember, parse_create_member, parse_update_member
 from app.models.audit import AuditLog
-from app.models.membership import MembershipRole, SaccoMembership
+from app.models.membership import MembershipRole, MembershipStatus, SaccoMembership
 from app.models.user import User
 from app.security.tenant import AccessDenied, current_user, sacco_scoped
 
@@ -84,11 +85,12 @@ def patch_me():
 ADMIN = MembershipRole.SACCO_ADMIN
 
 
-def _member_json(membership: SaccoMembership, email: str) -> dict:
+def _member_json(membership: SaccoMembership, email: str | None) -> dict:
     return {
         "id": membership.id,
         "user_id": membership.user_id,
         "email": email,
+        "phone": membership.phone,
         "role": membership.role.value,
         "status": membership.status.value,
         "created_at": membership.created_at.isoformat(),
@@ -113,10 +115,13 @@ def _audit(membership: SaccoMembership, action: str, before: str = "") -> None:
 
 
 def _members(sacco_id: int, membership_id: int | None = None, lock: bool = False):
-    """(membership, email) rows in this SACCO only, so other SACCOs never leak."""
+    """(membership, email) rows in this SACCO only, so other SACCOs never leak.
+
+    Invited members have no user yet, so the join to users is an outer join.
+    """
     query = (
         select(SaccoMembership, User.email)
-        .join(User, User.id == SaccoMembership.user_id)
+        .outerjoin(User, User.id == SaccoMembership.user_id)
         .where(SaccoMembership.sacco_id == sacco_id)
         .order_by(SaccoMembership.id)
     )
@@ -144,10 +149,56 @@ def get_member(sacco_id, membership_id):
     return jsonify(_member_json(*rows[0]))
 
 
+def _invite_member(sacco_id):
+    """An officer adds a phone: invited membership plus a one-time join code."""
+    body = request.get_json(silent=True) or {}
+    try:
+        phone = normalize_phone(body.get("phone"))
+        role = MembershipRole(body.get("role", "member"))
+    except ValueError:
+        return error_response(400, "A valid phone and role are required.")
+    if role is ADMIN and not g.access.user.is_platform_owner:
+        return error_response(
+            403, "Only the platform owner can add a SACCO administrator."
+        )
+    membership = SaccoMembership(
+        user_id=None,
+        sacco_id=sacco_id,
+        phone=phone,
+        role=role,
+        status=MembershipStatus.INVITED,
+    )
+    db.session.add(membership)
+    try:
+        db.session.flush()
+    except IntegrityError:  # unique (sacco_id, phone)
+        db.session.rollback()
+        return error_response(409, "That phone has already been invited to this SACCO.")
+    row, code = issue_code(
+        membership.id, g.access.user.id, current_app.config["SECRET_KEY"]
+    )
+    _audit(membership, "member.invite")
+    db.session.commit()
+    return (
+        jsonify(
+            id=membership.id,
+            phone=phone,
+            role=role.value,
+            status="invited",
+            join_code=code,
+            expires_at=row.expires_at.isoformat(),
+        ),
+        201,
+    )
+
+
 @saccos_bp.post("/<int:sacco_id>/members")
 @write_limit
 @sacco_scoped()
 def add_member(sacco_id):
+    raw = request.get_json(silent=True)
+    if isinstance(raw, dict) and raw.get("phone") and not raw.get("email"):
+        return _invite_member(sacco_id)
     owner = g.access.user.is_platform_owner
     try:
         email, role, status = parse_create_member(_body())

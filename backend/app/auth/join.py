@@ -6,6 +6,7 @@ once. Five wrong entries burn it. Only an HMAC digest is stored, never the code.
 
 import hashlib
 import hmac
+import re
 import secrets
 from datetime import UTC, datetime, timedelta
 
@@ -31,6 +32,13 @@ class JoinError(Exception):
 
 def _now() -> datetime:
     return datetime.now(UTC)
+
+
+def normalize_phone(value) -> str:
+    phone = re.sub(r"[\s\-()]", "", str(value or ""))
+    if not re.fullmatch(r"\+?[0-9]{9,15}", phone):
+        raise ValueError("Enter a valid phone number.")
+    return phone
 
 
 def generate_code() -> str:

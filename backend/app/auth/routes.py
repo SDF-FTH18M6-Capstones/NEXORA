@@ -284,3 +284,5 @@ def change_password():
 def logout_all():
     account.logout_all(g.user.id)
     return jsonify(message="Logged out everywhere.")
+
+from app.auth import join_routes  # noqa: E402,F401

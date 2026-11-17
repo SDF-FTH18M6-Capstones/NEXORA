@@ -428,6 +428,111 @@ paths:
               required:
               - email
               - password
+  /api/v1/auth/join:
+    post:
+      summary: Join a SACCO with a code
+      description: |-
+        **Who:** a signed-in user holding a join code.
+
+        The code is six digits, valid 15 minutes and usable once. Five wrong entries burn it. On success the phone is linked to the user and a setup token (valid 10 minutes) is returned for setting the circle PIN.
+      security:
+      - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                phone: {type: string, maxLength: 20}
+                code: {type: string, minLength: 6, maxLength: 6}
+              required: [phone, code]
+      responses:
+        '200':
+          description: Phone linked. Send the setup token to the PIN route.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  setup_token: {type: string}
+                  membership_id: {type: integer}
+                required: [setup_token, membership_id]
+        '400': {description: "Wrong code or unknown phone (CODE_WRONG).", content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
+        '401': {description: "Missing or invalid access token (unauthorized).", content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
+        '409': {description: "Code already used or burned (CODE_USED), the phone belongs to another account, or the user is already a member.", content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
+        '410': {description: "Code expired (CODE_EXPIRED).", content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
+        '429': {description: "Rate limit exceeded (rate_limited).", content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
+  /api/v1/auth/join/pin:
+    post:
+      summary: Set the circle PIN and activate the membership
+      description: |-
+        **Who:** the signed-in user who just joined.
+
+        Sets a four-digit PIN (stored hashed). The membership changes from invited to active.
+      security:
+      - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                setup_token: {type: string}
+                pin: {type: string, minLength: 4, maxLength: 4}
+              required: [setup_token, pin]
+      responses:
+        '200':
+          description: PIN set, membership active.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  membership_id: {type: integer}
+                  status: {type: string, enum: [active]}
+                required: [membership_id, status]
+        '400': {description: "The PIN is not exactly four digits.", content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
+        '401': {description: "Missing or invalid access token, or the setup token is invalid or expired.", content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
+        '403': {description: "The setup token belongs to someone else (NOT_ALLOWED).", content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
+        '409': {description: "The membership is already set up.", content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
+        '429': {description: "Rate limit exceeded (rate_limited).", content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
+  /api/v1/auth/circle-login:
+    post:
+      summary: Check the circle PIN
+      description: |-
+        **Who:** a signed-in user with an active membership in the SACCO.
+
+        Five wrong PINs lock the PIN for 15 minutes (PIN_LOCKED).
+      security:
+      - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                sacco_id: {type: integer}
+                pin: {type: string, minLength: 4, maxLength: 4}
+              required: [sacco_id, pin]
+      responses:
+        '200':
+          description: PIN correct.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: {type: boolean}
+                  membership_id: {type: integer}
+                  role: {type: string}
+                required: [ok, membership_id, role]
+        '401': {description: "Missing or invalid access token, or wrong PIN (PIN_WRONG).", content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
+        '403': {description: "No active membership in that SACCO (NOT_ALLOWED).", content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
+        '423': {description: "The PIN is locked (PIN_LOCKED).", content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
+        '429': {description: "Rate limit exceeded (rate_limited).", content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
   /api/v1/auth/login:
     post:
       summary: Sign in
