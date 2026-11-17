@@ -9,6 +9,11 @@ Two kinds of proof:
 
 The second matters because the append-only trigger from `0005` would refuse the
 write anyway. The privilege check is what proves the grant itself is right.
+
+Migration 0014 skips the role when the migrating user may not create roles (a
+plain schema owner without CREATEROLE). On such a machine the role has to be
+provisioned once with `backend/scripts/nexora_app_role.sql`, so these tests skip
+with that instruction instead of failing the suite.
 """
 
 from pathlib import Path
@@ -29,6 +34,11 @@ MIGRATIONS = str(Path(__file__).resolve().parents[1] / "backend" / "migrations")
 APP_ROLE = "nexora_app"
 TEST_PASSWORD = "app-role-test-only"
 HISTORY_TABLES = ("transactions", "audit_logs")
+PROVISION_HINT = (
+    f"{APP_ROLE} is not provisioned in this cluster and the migrating user may "
+    "not create roles. Run backend/scripts/nexora_app_role.sql as an "
+    "administrator, then run the suite again."
+)
 
 
 def _schema_test_url():
@@ -58,7 +68,14 @@ def _ensure_database(url):
 @pytest.fixture(scope="module")
 def schema_app():
     url = _schema_test_url()
-    _ensure_database(url)
+    try:
+        _ensure_database(url)
+    except psycopg.Error as exc:
+        pytest.fail(
+            f"Could not create database {url.database!r}. Create it once with: "
+            f"psql -U postgres -c 'CREATE DATABASE {url.database} "
+            f"OWNER {url.username};'  ({exc})"
+        )
 
     class SchemaConfig(TestConfig):
         SQLALCHEMY_DATABASE_URI = url.render_as_string(hide_password=False)
@@ -80,31 +97,49 @@ def session(schema_app):
     db.session.rollback()
 
 
-def test_the_role_exists(session):
+@pytest.fixture
+def app_role(session):
+    """The provisioned role, or a skip explaining how to provision it."""
     found = session.execute(
         text("SELECT 1 FROM pg_roles WHERE rolname = :role"), {"role": APP_ROLE}
     ).scalar_one_or_none()
-    assert found == 1
+    if found is None:
+        pytest.skip(PROVISION_HINT)
+    return APP_ROLE
 
 
-def test_the_role_holds_no_rewrite_privilege_on_history(session):
+@pytest.fixture
+def can_manage_roles(session):
+    return session.execute(
+        text(
+            "SELECT rolsuper OR rolcreaterole FROM pg_roles "
+            "WHERE rolname = current_user"
+        )
+    ).scalar_one()
+
+
+def test_the_role_exists(app_role):
+    assert app_role == APP_ROLE
+
+
+def test_the_role_holds_no_rewrite_privilege_on_history(session, app_role):
     for table in HISTORY_TABLES:
         for privilege in ("UPDATE", "DELETE", "TRUNCATE"):
             held = session.execute(
                 text("SELECT has_table_privilege(:role, :table, :privilege)"),
-                {"role": APP_ROLE, "table": table, "privilege": privilege},
+                {"role": app_role, "table": table, "privilege": privilege},
             ).scalar_one()
-            assert held is False, f"{APP_ROLE} must not hold {privilege} on {table}"
+            assert held is False, f"{app_role} must not hold {privilege} on {table}"
 
         for privilege in ("SELECT", "INSERT"):
             held = session.execute(
                 text("SELECT has_table_privilege(:role, :table, :privilege)"),
-                {"role": APP_ROLE, "table": table, "privilege": privilege},
+                {"role": app_role, "table": table, "privilege": privilege},
             ).scalar_one()
-            assert held is True, f"{APP_ROLE} needs {privilege} on {table}"
+            assert held is True, f"{app_role} needs {privilege} on {table}"
 
 
-def test_the_role_can_still_run_the_application(session):
+def test_the_role_can_still_run_the_application(session, app_role):
     """Ordinary tables are read/write, and the balance column is updatable."""
     for table, privilege in (
         ("users", "INSERT"),
@@ -114,28 +149,34 @@ def test_the_role_can_still_run_the_application(session):
     ):
         held = session.execute(
             text("SELECT has_table_privilege(:role, :table, :privilege)"),
-            {"role": APP_ROLE, "table": table, "privilege": privilege},
+            {"role": app_role, "table": table, "privilege": privilege},
         ).scalar_one()
-        assert held is True, f"{APP_ROLE} needs {privilege} on {table}"
+        assert held is True, f"{app_role} needs {privilege} on {table}"
 
 
-def test_the_role_cannot_change_the_schema(session):
+def test_the_role_cannot_change_the_schema(session, app_role):
     held = session.execute(
-        text(
-            "SELECT has_schema_privilege(:role, 'public', 'CREATE')"
-        ),
-        {"role": APP_ROLE},
+        text("SELECT has_schema_privilege(:role, 'public', 'CREATE')"),
+        {"role": app_role},
     ).scalar_one()
     assert held is False
 
 
-def test_a_connection_as_the_role_is_refused_a_rewrite(session):
+def test_a_connection_as_the_role_is_refused_a_rewrite(
+    session, app_role, can_manage_roles
+):
     """Log in as the role, then try to rewrite history for real."""
+    if not can_manage_roles:
+        pytest.skip(
+            f"The migrating user may not ALTER ROLE {app_role}, so it cannot be "
+            "given a login here."
+        )
+
     session.execute(
-        text(f"ALTER ROLE {APP_ROLE} LOGIN PASSWORD '{TEST_PASSWORD}'")
+        text(f"ALTER ROLE {app_role} LOGIN PASSWORD '{TEST_PASSWORD}'")
     )
     session.commit()
-    url = _schema_test_url().set(username=APP_ROLE, password=TEST_PASSWORD)
+    url = _schema_test_url().set(username=app_role, password=TEST_PASSWORD)
     dsn = url.set(drivername="postgresql").render_as_string(hide_password=False)
 
     try:
@@ -157,5 +198,5 @@ def test_a_connection_as_the_role_is_refused_a_rewrite(session):
             conn.execute("INSERT INTO audit_logs (action) VALUES ('role.test')")
     finally:
         session.rollback()
-        session.execute(text(f"ALTER ROLE {APP_ROLE} NOLOGIN PASSWORD NULL"))
+        session.execute(text(f"ALTER ROLE {app_role} NOLOGIN PASSWORD NULL"))
         session.commit()
