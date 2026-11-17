@@ -32,6 +32,12 @@ components:
       scheme: bearer
       bearerFormat: JWT
   parameters:
+    loan_id:
+      name: loan_id
+      in: path
+      required: true
+      schema:
+        type: integer
     sacco_id:
       name: sacco_id
       in: path
@@ -99,7 +105,128 @@ components:
         type: string
         maxLength: 100
       description: Exact action name, or a prefix ending in `.` such as `savings.`.
+  responses:
+    BadRequest:
+      description: Validation error (`validation_error`).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Unauthorized:
+      description: Missing, invalid or expired access token (`unauthorized`).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Forbidden:
+      description: 'Signed in but not allowed (`forbidden` or `NOT_ALLOWED`, `LOAN_SAME_OFFICER`).'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    NotFound:
+      description: Not found, including another SACCO's record (`not_found`).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Conflict:
+      description: 'Conflicts with current state (`conflict`, `DUPLICATE_REFERENCE`, `INSUFFICIENT_FUNDS`,
+        `LOAN_NEEDS_APPROVAL`).'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Locked:
+      description: The SACCO is suspended (`locked`).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
   schemas:
+    Loan:
+      type: object
+      properties:
+        id:
+          type: integer
+        sacco_id:
+          type: integer
+        membership_id:
+          type: integer
+        principal:
+          type: integer
+          description: Minor units.
+        term_months:
+          type: integer
+          nullable: true
+        required_approvals:
+          type: integer
+        approvals_count:
+          type: integer
+        repaid_total:
+          type: integer
+        status:
+          type: string
+          enum:
+          - requested
+          - approved
+          - rejected
+          - disbursed
+          - repaid
+        disbursed_by_membership_id:
+          type: integer
+          nullable: true
+        disbursed_at:
+          type: string
+          format: date-time
+          nullable: true
+        disbursement_transaction_id:
+          type: integer
+          nullable: true
+          description: The ledger row that paid the loan out. It cannot be reversed.
+        created_at:
+          type: string
+          format: date-time
+    Owner:
+      type: object
+      properties:
+        user_id:
+          type: integer
+        email:
+          type: string
+    Settings:
+      type: object
+      properties:
+        sacco_id:
+          type: integer
+        loan_cap:
+          type: integer
+          description: Largest principal in minor units; 0 means no cap.
+        savings_multiple:
+          type: integer
+          description: A loan may be at most this many times the borrower's savings.
+        join_code_ttl_minutes:
+          type: integer
+        required_approvals:
+          type: integer
+          enum:
+          - 1
+          - 2
+    Roles:
+      type: object
+      properties:
+        membership_id:
+          type: integer
+        roles:
+          type: array
+          items:
+            type: string
+            enum:
+            - circle_admin
+            - secretary
+            - finance_officer
+            - loans_officer
+            - member
     Error:
       type: object
       properties:
@@ -1404,7 +1531,8 @@ paths:
     - $ref: '#/components/parameters/sacco_id'
     get:
       summary: List a SACCO's members
-      description: '**Who:** platform owner, or that SACCO''s admin (staff and members get 403)
+      description: '**Who:** platform owner, or an officer holding `member.view` (admin, secretary, loans
+        officer); members get 403
 
 
         **Rate limit:** 120 per minute.'
@@ -1545,7 +1673,8 @@ paths:
     - $ref: '#/components/parameters/membership_id'
     get:
       summary: Get one member
-      description: '**Who:** platform owner, or that SACCO''s admin (staff and members get 403)
+      description: '**Who:** platform owner, or an officer holding `member.view` (admin, secretary, loans
+        officer); members get 403
 
 
         **Rate limit:** 120 per minute.'
@@ -1597,7 +1726,9 @@ paths:
         **Rate limit:** 30 per minute.
 
 
-        Send `role` and/or `status`. Writes an audit row.'
+        Send `role` and/or `status`. Writes an audit row. Nobody is moved back to `invited`, and an invited
+        member becomes active only by joining with their code (both 409). Making or removing an admin moves
+        the `circle_admin` title with the role.'
       responses:
         '200':
           description: Updated member.
@@ -2367,7 +2498,7 @@ paths:
     - $ref: '#/components/parameters/sacco_id'
     get:
       summary: A SACCO's audit log, newest first
-      description: '**Who:** SACCO admin or platform owner (not staff)
+      description: '**Who:** the secretary (`audit.view`) or the platform owner. The SACCO admin gets 403.
 
 
         **Rate limit:** 120 per minute.
@@ -2501,3 +2632,590 @@ paths:
         in: query
         schema:
           type: integer
+  /api/v1/savings/accounts/{account_id}/interest:
+    parameters:
+    - $ref: '#/components/parameters/account_id'
+    post:
+      summary: Credit interest
+      description: '**Who:** admin or finance officer (`savings.post`). Same reference rules as deposits.'
+      responses:
+        '201':
+          description: New entry.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Posted'
+        '200':
+          description: Replay of the same request.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Posted'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '423':
+          $ref: '#/components/responses/Locked'
+      security:
+      - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                amount:
+                  type: integer
+                  minimum: 1
+                  description: Minor units. Integers only.
+                reference:
+                  type: string
+                  pattern: ^[A-Za-z0-9._:-]{1,64}$
+                  description: Required idempotency key, unique per SACCO.
+              required:
+              - amount
+              - reference
+  /api/v1/savings/accounts/{account_id}/fees:
+    parameters:
+    - $ref: '#/components/parameters/account_id'
+    post:
+      summary: Charge a fee
+      description: '**Who:** admin or finance officer (`savings.post`). Same reference rules as deposits.'
+      responses:
+        '201':
+          description: New entry.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Posted'
+        '200':
+          description: Replay of the same request.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Posted'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '423':
+          $ref: '#/components/responses/Locked'
+      security:
+      - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                amount:
+                  type: integer
+                  minimum: 1
+                  description: Minor units. Integers only.
+                reference:
+                  type: string
+                  pattern: ^[A-Za-z0-9._:-]{1,64}$
+                  description: Required idempotency key, unique per SACCO.
+              required:
+              - amount
+              - reference
+  /api/v1/saccos/{sacco_id}/members/{membership_id}/roles:
+    parameters:
+    - $ref: '#/components/parameters/sacco_id'
+    - $ref: '#/components/parameters/membership_id'
+    get:
+      summary: A member's job titles
+      description: '**Who:** the SACCO admin or the platform owner.'
+      responses:
+        '200':
+          description: The titles held.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Roles'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '423':
+          $ref: '#/components/responses/Locked'
+      security:
+      - bearerAuth: []
+    put:
+      summary: Set a member's job titles
+      description: '**Who:** the SACCO admin or the platform owner. Replaces the whole list. Only the
+        platform owner edits an admin''s titles; nobody changes their own titles; the membership must
+        be active (409). `circle_admin` follows the SACCO admin role: keep it on an admin and leave it
+        off everyone else (409), and make or remove admins with PATCH /saccos/{sacco_id}/members/{membership_id},
+        which moves the title with the role.'
+      responses:
+        '200':
+          description: The titles now held.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Roles'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '423':
+          $ref: '#/components/responses/Locked'
+      security:
+      - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                roles:
+                  type: array
+                  minItems: 1
+                  items:
+                    type: string
+              required:
+              - roles
+  /api/v1/saccos/{sacco_id}/settings:
+    parameters:
+    - $ref: '#/components/parameters/sacco_id'
+    get:
+      summary: The SACCO's loan rules
+      description: '**Who:** any active member of the SACCO, or the platform owner. Defaults are returned
+        until the owner changes them.'
+      responses:
+        '200':
+          description: Current settings.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Settings'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '423':
+          $ref: '#/components/responses/Locked'
+      security:
+      - bearerAuth: []
+    patch:
+      summary: Change the SACCO's loan rules
+      description: '**Who:** platform owner only. Send any of the fields; whole numbers only.'
+      responses:
+        '200':
+          description: Updated settings.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Settings'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      security:
+      - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                loan_cap:
+                  type: integer
+                  minimum: 0
+                savings_multiple:
+                  type: integer
+                  minimum: 0
+                join_code_ttl_minutes:
+                  type: integer
+                  minimum: 1
+                  maximum: 1440
+                required_approvals:
+                  type: integer
+                  minimum: 1
+                  maximum: 2
+  /api/v1/loans/saccos/{sacco_id}:
+    parameters:
+    - $ref: '#/components/parameters/sacco_id'
+    get:
+      summary: Loans in a SACCO, newest first
+      description: '**Who:** any active member. Officers (`loan.view`) see every loan; a member sees only
+        their own.'
+      parameters:
+      - $ref: '#/components/parameters/page'
+      - $ref: '#/components/parameters/per_page'
+      responses:
+        '200':
+          description: A page of loans.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  loans:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Loan'
+                  page:
+                    type: integer
+                  per_page:
+                    type: integer
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '423':
+          $ref: '#/components/responses/Locked'
+      security:
+      - bearerAuth: []
+    post:
+      summary: Request a loan
+      description: '**Who:** an active member with a savings account (`loan.request`). One open loan per
+        member (409). Within both the SACCO cap and the savings multiple the loan needs 1 approval; above
+        either it needs the SACCO''s `required_approvals` (a cap of 0 sends every loan there). The count is
+        frozen on the loan.'
+      responses:
+        '201':
+          description: The new loan, status `requested`.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Loan'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '423':
+          $ref: '#/components/responses/Locked'
+      security:
+      - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                principal:
+                  type: integer
+                  minimum: 1
+                  description: Minor units.
+                term_months:
+                  type: integer
+                  minimum: 1
+                  maximum: 360
+              required:
+              - principal
+              - term_months
+  /api/v1/loans/{loan_id}:
+    parameters:
+    - $ref: '#/components/parameters/loan_id'
+    get:
+      summary: One loan with its decisions
+      description: '**Who:** the borrower, or an officer of the SACCO (`loan.view`). Anyone else gets 404.'
+      responses:
+        '200':
+          description: The loan, plus a `decisions` list.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Loan'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '423':
+          $ref: '#/components/responses/Locked'
+      security:
+      - bearerAuth: []
+  /api/v1/loans/{loan_id}/decisions:
+    parameters:
+    - $ref: '#/components/parameters/loan_id'
+    post:
+      summary: Approve or reject one step
+      description: '**Who:** admin or loans officer (`loan.approve`), never the borrower, and a different
+        officer for each step. Steps go in order; the last required approval sets `approved`, a rejection
+        ends the loan.'
+      responses:
+        '201':
+          description: The loan after the decision.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Loan'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '423':
+          $ref: '#/components/responses/Locked'
+      security:
+      - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                step:
+                  type: integer
+                  minimum: 1
+                decision:
+                  type: string
+                  enum:
+                  - approve
+                  - reject
+                reason:
+                  type: string
+                  maxLength: 500
+                  description: Required for a rejection.
+              required:
+              - step
+              - decision
+  /api/v1/loans/{loan_id}/disbursements:
+    parameters:
+    - $ref: '#/components/parameters/loan_id'
+    post:
+      summary: Pay out an approved loan
+      description: '**Who:** finance officer (`loan.disburse`) who approved no step (`LOAN_SAME_OFFICER`).
+        Credits the principal to the borrower''s savings account. The ledger row cannot be reversed.'
+      responses:
+        '201':
+          description: The loan, status `disbursed`.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Loan'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '423':
+          $ref: '#/components/responses/Locked'
+      security:
+      - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reference:
+                  type: string
+                  pattern: ^[A-Za-z0-9._:-]{1,64}$
+                  description: Required idempotency key, unique per SACCO.
+              required:
+              - reference
+  /api/v1/loans/{loan_id}/repayments:
+    parameters:
+    - $ref: '#/components/parameters/loan_id'
+    post:
+      summary: Repay a disbursed loan from savings
+      description: '**Who:** the borrower, or a finance officer. Debits the borrower''s savings account;
+        the loan becomes `repaid` when the principal is covered. The ledger row cannot be reversed.'
+      responses:
+        '201':
+          description: The repayment.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  repayment_id:
+                    type: integer
+                  loan_id:
+                    type: integer
+                  transaction_id:
+                    type: integer
+                  amount:
+                    type: integer
+                  repaid_total:
+                    type: integer
+                  loan_status:
+                    type: string
+                  account_balance:
+                    type: integer
+                  reference:
+                    type: string
+                  created_at:
+                    type: string
+                    format: date-time
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '423':
+          $ref: '#/components/responses/Locked'
+      security:
+      - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                amount:
+                  type: integer
+                  minimum: 1
+                  description: Minor units. Integers only.
+                reference:
+                  type: string
+                  pattern: ^[A-Za-z0-9._:-]{1,64}$
+                  description: Required idempotency key, unique per SACCO.
+              required:
+              - amount
+              - reference
+  /api/v1/admin/owners:
+    get:
+      summary: List the platform owners
+      description: '**Who:** platform owner only.'
+      responses:
+        '200':
+          description: Every active platform owner.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  owners:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Owner'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+      security:
+      - bearerAuth: []
+    post:
+      summary: Make a registered user a platform owner
+      description: '**Who:** platform owner only. The user must have verified their email (409) and not be an
+        owner already (409).'
+      responses:
+        '201':
+          description: The new owner.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Owner'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+      security:
+      - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                email:
+                  type: string
+                  maxLength: 255
+              required:
+              - email
+  /api/v1/admin/owners/{user_id}:
+    parameters:
+    - name: user_id
+      in: path
+      required: true
+      schema:
+        type: integer
+    delete:
+      summary: Revoke a platform owner
+      description: '**Who:** platform owner only. Nobody revokes themselves (403); at least two owners always
+        remain (409). The revoked owner loses platform access on their next request.'
+      responses:
+        '200':
+          description: The owners that remain.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  owners:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Owner'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+      security:
+      - bearerAuth: []

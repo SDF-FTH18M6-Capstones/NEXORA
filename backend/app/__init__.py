@@ -97,6 +97,7 @@ def create_app(config_class=Config):
     migrate.init_app(app, db)
 
     # Import models so Alembic's autogenerate can see every table.
+    from app.admin import owners as admin_owners  # noqa: F401
     from app.admin import routes as admin_routes  # noqa: F401
 
     # Importing the routes attaches them to auth_bp.
@@ -119,6 +120,7 @@ def create_app(config_class=Config):
         savings,
         user,
     )
+    from app.saccos import access_routes as saccos_access_routes  # noqa: F401
     from app.saccos import routes as saccos_routes  # noqa: F401
     from app.savings import accounts as savings_accounts  # noqa: F401
     from app.savings import history as savings_history  # noqa: F401

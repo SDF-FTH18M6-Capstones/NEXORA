@@ -25,9 +25,12 @@ from sqlalchemy import (
     Enum,
     ForeignKey,
     ForeignKeyConstraint,
+    Index,
     Integer,
+    Text,
     UniqueConstraint,
     func,
+    text,
 )
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -103,9 +106,23 @@ class Loan(db.Model):
             name="fk_loans_membership_sacco",
         ),
         UniqueConstraint("id", "sacco_id", name="uq_loans_id_sacco"),
+        UniqueConstraint(
+            "disbursement_transaction_id", name="uq_loans_disbursement_transaction"
+        ),
         CheckConstraint("principal > 0", name="ck_loans_principal_positive"),
         CheckConstraint(
             "required_approvals >= 1", name="ck_loans_required_approvals_positive"
+        ),
+        CheckConstraint(
+            "term_months IS NULL OR term_months > 0",
+            name="ck_loans_term_months_positive",
+        ),
+        # One open loan per member (agreed schema rule).
+        Index(
+            "uq_loans_one_open_per_member",
+            "membership_id",
+            unique=True,
+            postgresql_where=text("status IN ('requested', 'approved', 'disbursed')"),
         ),
     )
 
@@ -115,6 +132,7 @@ class Loan(db.Model):
     )
     membership_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
     principal: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    term_months: Mapped[int | None] = mapped_column(Integer, nullable=True)
     # Computed from sacco_settings when the request is made, then frozen.
     required_approvals: Mapped[int] = mapped_column(Integer, nullable=False)
     status: Mapped[LoanStatus] = mapped_column(
@@ -137,6 +155,11 @@ class Loan(db.Model):
     disbursed_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    # The ledger row that paid the loan out; reversals refuse it.
+    disbursement_transaction_id: Mapped[int | None] = mapped_column(
+        ForeignKey("transactions.id", name="fk_loans_disbursement_transaction"),
+        nullable=True,
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
@@ -147,6 +170,10 @@ class LoanDecision(db.Model):
     __table_args__ = (
         UniqueConstraint("loan_id", "step", name="uq_loan_decisions_loan_step"),
         CheckConstraint("step >= 1", name="ck_loan_decisions_step_positive"),
+        CheckConstraint(
+            "decision <> 'reject' OR btrim(coalesce(reason, '')) <> ''",
+            name="ck_loan_decisions_reject_has_reason",
+        ),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -165,6 +192,7 @@ class LoanDecision(db.Model):
     decided_by_membership_id: Mapped[int] = mapped_column(
         ForeignKey("sacco_memberships.id"), nullable=False
     )
+    reason: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )

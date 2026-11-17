@@ -39,7 +39,7 @@ def test_running_the_seed_twice_changes_nothing(schema_app):
     assert counts() == first
 
     users, saccos, memberships, accounts, transactions, _ = first
-    assert (users, saccos, memberships, accounts) == (11, 2, 10, 6)
+    assert (users, saccos, memberships, accounts) == (18, 2, 16, 6)
     assert transactions == 14  # 6 movements and 1 reversal per SACCO
     reversals = db.session.scalar(
         select(func.count())
@@ -52,7 +52,7 @@ def test_running_the_seed_twice_changes_nothing(schema_app):
 def test_every_seeded_user_can_log_in(schema_app):
     seeded = seed_script.seed(schema_app, require_dev=False)
     client = schema_app.test_client()
-    assert len(seeded) == 11
+    assert len(seeded) == 18
     for row in seeded:
         resp = client.post(
             "/api/v1/auth/login",
@@ -80,13 +80,13 @@ def test_every_seeded_membership_holds_its_job_title(schema_app):
     ).all()
 
     expected = {
-        "sacco_admin": "circle_admin",
-        "staff": "secretary",
-        "member": "member",
+        "sacco_admin": {"circle_admin"},
+        "staff": {"secretary", "loans_officer", "finance_officer"},
+        "member": {"member"},
     }
     memberships = db.session.scalar(
         select(func.count()).select_from(SaccoMembership)
     )
-    assert len(rows) == memberships == 10
+    assert len(rows) == memberships == 16
     for membership_role, role_code in rows:
-        assert expected[membership_role.value] == role_code
+        assert role_code in expected[membership_role.value]

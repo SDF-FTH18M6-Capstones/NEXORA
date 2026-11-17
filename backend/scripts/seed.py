@@ -19,8 +19,17 @@ sys.path.insert(0, str(BACKEND))
 DEV_PASSWORD = "Dev-Seed-Pass-2026"
 DOMAIN = "example.com"
 OWNER_EMAIL = f"owner@{DOMAIN}"
+# The schema keeps at least two platform owners, so the seed starts with two.
+OWNER2_EMAIL = f"owner2@{DOMAIN}"
 
 SACCOS = (("Alpha SACCO", "alpha"), ("Beta SACCO", "beta"))
+# Officers for the loan flow: two loans officers approve the two steps (a SACCO
+# admin never approves), and the finance officer, who approved nothing, disburses.
+OFFICERS = (
+    ("loans", "loans_officer"),
+    ("loans2", "loans_officer"),
+    ("finance", "finance_officer"),
+)
 
 # Amounts are integers in minor units (100 = 1.00).
 MOVEMENTS = {
@@ -86,9 +95,10 @@ def seed(app, require_dev=True):
         MembershipRole.MEMBER: "member",
     }
 
-    emails = [OWNER_EMAIL]
+    emails = [OWNER_EMAIL, OWNER2_EMAIL]
     for _, slug in SACCOS:
         emails += [f"{slug}-admin@{DOMAIN}", f"{slug}-staff@{DOMAIN}"]
+        emails += [f"{slug}-{short}@{DOMAIN}" for short, _ in OFFICERS]
         emails += [f"{slug}-m{i}@{DOMAIN}" for i in MOVEMENTS]
     for email in emails:
         problem = validate_password(DEV_PASSWORD, email)
@@ -126,11 +136,11 @@ def seed(app, require_dev=True):
             return sacco_id
         return sacco.id
 
-    def grant_job_title(membership_id, role):
-        """Give a membership the role row its legacy enum implies, once."""
+    def grant_job_title(membership_id, role, title=None):
+        """Give a membership its job title (default: what the legacy enum implies)."""
         from app.models.access import MembershipRoleLink, Role
 
-        code = JOB_TITLE[role]
+        code = title or JOB_TITLE[role]
         role_row = db.session.execute(
             select(Role).where(Role.code == code)
         ).scalar_one_or_none()
@@ -145,7 +155,7 @@ def seed(app, require_dev=True):
             )
             db.session.commit()
 
-    def get_membership(user_id, sacco_id, role):
+    def get_membership(user_id, sacco_id, role, title=None):
         found = db.session.execute(
             select(SaccoMembership).where(
                 SaccoMembership.user_id == user_id,
@@ -160,7 +170,7 @@ def seed(app, require_dev=True):
             db.session.commit()
         else:
             membership_id = found.id
-        grant_job_title(membership_id, role)
+        grant_job_title(membership_id, role, title)
         return membership_id
 
     def get_account(admin_id, membership_id):
@@ -175,8 +185,11 @@ def seed(app, require_dev=True):
 
     seeded = []
     with app.app_context():
-        get_user(OWNER_EMAIL, owner=True)
-        seeded.append({"email": OWNER_EMAIL, "role": "platform_owner", "sacco": None})
+        for owner_email in (OWNER_EMAIL, OWNER2_EMAIL):
+            get_user(owner_email, owner=True)
+            seeded.append(
+                {"email": owner_email, "role": "platform_owner", "sacco": None}
+            )
 
         for name, slug in SACCOS:
             sacco_id = get_sacco(name)
@@ -191,6 +204,12 @@ def seed(app, require_dev=True):
             get_membership(staff_id, sacco_id, MembershipRole.STAFF)
             seeded.append({"email": staff_email, "role": "staff", "sacco": name})
 
+            for short, title in OFFICERS:
+                officer_email = f"{slug}-{short}@{DOMAIN}"
+                officer_id = get_user(officer_email)
+                get_membership(officer_id, sacco_id, MembershipRole.STAFF, title)
+                seeded.append({"email": officer_email, "role": title, "sacco": name})
+
             for i, moves in MOVEMENTS.items():
                 email = f"{slug}-m{i}@{DOMAIN}"
                 user_id = get_user(email)
@@ -203,7 +222,14 @@ def seed(app, require_dev=True):
                     done[kind] += 1
                     short = "dep" if kind == "deposit" else "wd"
                     reference = f"seed-{slug}-m{i}-{short}-{done[kind]}"
-                    getattr(service, kind)(admin_id, account_id, amount, reference)
+                    posted = db.session.execute(
+                        select(Transaction.id).where(
+                            Transaction.sacco_id == sacco_id,
+                            Transaction.reference == reference,
+                        )
+                    ).first()
+                    if posted is None:  # a second run posts nothing new
+                        getattr(service, kind)(admin_id, account_id, amount, reference)
 
             # One reversal: undo the second deposit of the first member.
             original = db.session.execute(
