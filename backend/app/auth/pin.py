@@ -39,8 +39,10 @@ def set_pin(membership, pin: str) -> None:
 
 
 def check_pin(membership, pin: str, now: datetime | None = None) -> None:
-    """Return normally if the PIN is right, else raise PinError. The caller commits,
-    even on error, so the attempt count is kept."""
+    """Return normally if the PIN is right, else raise PinError.
+
+    The caller commits, even on error, so the attempt count is kept.
+    """
     now = now or _now()
     locked_until = membership.pin_locked_until
     if locked_until is not None and locked_until > now:
@@ -56,6 +58,8 @@ def check_pin(membership, pin: str, now: datetime | None = None) -> None:
         membership.pin_attempts += 1
         if membership.pin_attempts >= MAX_FAILED_ATTEMPTS:
             membership.pin_locked_until = now + LOCKOUT_DURATION
-            raise PinError(PIN_LOCKED, "Too many wrong PINs. The PIN is locked.")
-        raise PinError(PIN_WRONG, "That PIN is not correct.")
+            raise PinError(
+                PIN_LOCKED, "Too many wrong PINs. The PIN is locked."
+            ) from None
+        raise PinError(PIN_WRONG, "That PIN is not correct.") from None
     membership.pin_attempts = 0
