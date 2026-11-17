@@ -21,6 +21,7 @@ from app.savings.validation import (
     parse_money,
     parse_reference,
 )
+from app.security.permissions import can
 from app.security.tenant import AccessDenied, current_user, sacco_access
 
 
@@ -36,8 +37,12 @@ def _serialize(view) -> dict:
 @write_limit
 @signed_in
 def create_loan(user_id: int, sacco_id: int):
-    principal = parse_amount(_body().get("principal"))
-    view = service.request_loan(user_id, sacco_id, principal)
+    body = _body()
+    principal = parse_amount(body.get("principal"))
+    term = body.get("term_months")
+    if isinstance(term, bool) or not isinstance(term, int) or not 1 <= term <= 360:
+        raise InvalidRequest("term_months must be a whole number from 1 to 360.")
+    view = service.request_loan(user_id, sacco_id, principal, term)
     return jsonify(_serialize(view)), 201
 
 
@@ -54,7 +59,7 @@ def list_loans(sacco_id: int):
         return error_response(400, str(exc))
 
     stmt = select(Loan).where(Loan.sacco_id == sacco_id)
-    if access.membership and access.membership.role is MembershipRole.MEMBER:
+    if not can(user, sacco_id, "loan.view"):
         stmt = stmt.where(Loan.membership_id == access.membership.id)
     loans = (
         db.session.execute(
@@ -66,7 +71,7 @@ def list_loans(sacco_id: int):
         .all()
     )
     return jsonify(
-        loans=[_serialize(service._loan_view(l)) for l in loans],
+        loans=[_serialize(service._loan_view(loan)) for loan in loans],
         page=page,
         per_page=per_page,
     )
@@ -84,8 +89,7 @@ def get_loan(loan_id: int):
     except AccessDenied as exc:
         return error_response(exc.status, exc.message)
     if (
-        access.membership
-        and access.membership.role is MembershipRole.MEMBER
+        not can(user, loan.sacco_id, "loan.view")
         and loan.membership_id != access.membership.id
     ):
         return error_response(404, "Not found.")
@@ -104,6 +108,7 @@ def get_loan(loan_id: int):
         {
             "step": d.step,
             "decision": d.decision.value,
+            "reason": d.reason,
             "decided_by_membership_id": d.decided_by_membership_id,
             "created_at": d.created_at.isoformat(),
         }
@@ -121,8 +126,16 @@ def decide(user_id: int, loan_id: int):
     raw_decision = body.get("decision")
     if raw_decision not in ("approve", "reject"):
         raise InvalidRequest("decision must be 'approve' or 'reject'.")
+    reason = body.get("reason")
+    if reason is not None and (
+        not isinstance(reason, str) or len(reason) > 500 or "\x00" in reason
+    ):
+        raise InvalidRequest("reason must be text of at most 500 characters.")
+    reason = (reason or "").strip() or None
+    if raw_decision == "reject" and reason is None:
+        raise InvalidRequest("A rejection needs a reason.")
     view = service.decide_loan(
-        user_id, loan_id, step, LoanDecisionKind(raw_decision)
+        user_id, loan_id, step, LoanDecisionKind(raw_decision), reason
     )
     return jsonify(_serialize(view)), 201
 

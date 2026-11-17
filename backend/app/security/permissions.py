@@ -53,7 +53,9 @@ PERMISSIONS: dict[str, str] = {
     "dashboard.view": "See the dashboard for the caller's role",
 }
 
-# The five job titles from the work split, each with the permissions it holds.
+# The five job titles, each with the permissions it holds. As in docs/schema.sql:
+# a SACCO admin never approves loans and cannot read the audit log; the
+# secretary is read-only and the only SACCO role that reads the audit log.
 ROLE_PERMISSIONS: dict[str, frozenset[str]] = {
     "circle_admin": frozenset(
         {
@@ -64,8 +66,6 @@ ROLE_PERMISSIONS: dict[str, frozenset[str]] = {
             "savings.post",
             "savings.reverse",
             "loan.view",
-            "loan.approve",
-            "audit.view",
             "dashboard.view",
         }
     ),
@@ -73,7 +73,6 @@ ROLE_PERMISSIONS: dict[str, frozenset[str]] = {
         {
             "sacco.view",
             "member.view",
-            "member.manage",
             "savings.view",
             "loan.view",
             "audit.view",
@@ -112,6 +111,9 @@ ROLE_PERMISSIONS: dict[str, frozenset[str]] = {
         }
     ),
 }
+
+# Never held by a SACCO admin membership, even through another title.
+ADMIN_NEVER = frozenset({"loan.approve", "audit.view"})
 
 ROLE_NAMES = {
     "circle_admin": "Circle administrator",
@@ -234,7 +236,7 @@ def permissions_for(user, sacco) -> frozenset[str]:
     membership = _membership_for(user.id, sacco_id)
     if membership is None or membership.status is not MembershipStatus.ACTIVE:
         return frozenset()
-    return frozenset(
+    held = frozenset(
         db.session.execute(
             select(Permission.code)
             .join(RolePermission, RolePermission.permission_id == Permission.id)
@@ -242,6 +244,11 @@ def permissions_for(user, sacco) -> frozenset[str]:
             .where(Role.code.in_(_role_codes(membership)))
         ).scalars()
     )
+    if membership.role is MembershipRole.SACCO_ADMIN:
+        # Agreed schema: a SACCO admin never approves loans and never reads the
+        # audit log, whatever other titles the membership holds.
+        held -= ADMIN_NEVER
+    return held
 
 
 def can(user, sacco, permission: str, resource=None) -> bool:  # noqa: ARG001

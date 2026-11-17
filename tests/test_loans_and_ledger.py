@@ -28,7 +28,7 @@ def _add_officer(sacco_id: int, email: str, job_title: str) -> User:
     return user
 
 
-def test_balance_matches_ledger_across_all_movement_types_and_reconcile(schema_app):
+def test_balance_matches_ledger_across_all_movement_types_and_reconcile(schema_app):  # noqa: F811
     s = Setup(balance=10_000)
     tx_int = savings_service.post_interest(s.admin.id, s.account.id, 500, "int-1")
     savings_service.post_fee(s.admin.id, s.account.id, 200, "fee-1")
@@ -49,21 +49,27 @@ def test_balance_matches_ledger_across_all_movement_types_and_reconcile(schema_a
     assert report.accounts_checked >= 1
 
 
-def test_duplicate_reference_returns_duplicate_reference_without_posting(schema_app):
+def test_duplicate_reference_returns_duplicate_reference_without_posting(schema_app):  # noqa: F811
     s = Setup(balance=5_000)
     savings_service.deposit(s.admin.id, s.account.id, 1_000, "ref-unique-1")
 
+    # The same request again is a safe retry: the original entry comes back.
+    again = savings_service.deposit(s.admin.id, s.account.id, 1_000, "ref-unique-1")
+    assert again.replayed
+
+    # The same reference for a different request is refused.
     with pytest.raises(savings_service.Conflict) as exc:
-        savings_service.deposit(s.admin.id, s.account.id, 1_000, "ref-unique-1")
+        savings_service.deposit(s.admin.id, s.account.id, 2_000, "ref-unique-1")
 
     assert exc.value.code == "DUPLICATE_REFERENCE"
     assert verify_balance(s.account.id).stored == 6_000
 
 
-def test_two_approval_loan_fails_with_one_approval(schema_app):
+def test_two_approval_loan_fails_with_one_approval(schema_app):  # noqa: F811
     s = Setup(balance=10_000)
     db.session.add(
-        SaccoSettings(sacco_id=s.sacco.id, loan_cap=50_000, savings_multiple=3)
+        # Above the cap, so the SACCO's higher approval count applies.
+        SaccoSettings(sacco_id=s.sacco.id, loan_cap=10_000, savings_multiple=3)
     )
     db.session.commit()
 
@@ -81,11 +87,12 @@ def test_two_approval_loan_fails_with_one_approval(schema_app):
 
 
 def test_approving_officer_cannot_disburse_same_loan_and_repayment_posts_both_rows(
-    schema_app,
+    schema_app,  # noqa: F811
 ):
     s = Setup(balance=10_000)
     db.session.add(
-        SaccoSettings(sacco_id=s.sacco.id, loan_cap=50_000, savings_multiple=3)
+        # Above the cap, so the SACCO's higher approval count applies.
+        SaccoSettings(sacco_id=s.sacco.id, loan_cap=10_000, savings_multiple=3)
     )
     db.session.commit()
 

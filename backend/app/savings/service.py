@@ -122,6 +122,18 @@ def _require_not_own_account(actor: SaccoMembership, account) -> None:
         raise Forbidden("You cannot post money on your own account.")
 
 
+def _was_reversed(transaction_id: int) -> bool:
+    return db.session.execute(
+        select(Transaction.id).where(Transaction.reverses_id == transaction_id)
+    ).first() is not None
+
+
+def _is_loan_entry(transaction_id: int) -> bool:
+    from app.ledger.reversals import _is_loan_entry as is_loan
+
+    return is_loan(transaction_id)
+
+
 def _require_sacco_active(sacco_id: int) -> None:
     sacco = db.session.get(Sacco, sacco_id)
     if sacco is None or sacco.status is SaccoStatus.SUSPENDED:
@@ -184,10 +196,33 @@ def _post(
             Transaction.reference == reference,
         )
     ).scalar_one_or_none()
+    # A retry of the same request returns the original entry instead of posting
+    # twice. This comes before the balance check, so a withdrawal that already
+    # went through is not refused on retry because the balance has dropped since.
     if existing is not None:
-        raise Conflict(
-            "That reference has already been used.", code=DUPLICATE_REFERENCE
+        same = (existing.savings_account_id, existing.type, existing.amount) == (
+            account.id,
+            kind,
+            amount,
         )
+        reused = existing.reverses_id is not None or _is_loan_entry(existing.id)
+        # A retry of an entry that was reversed since must not look like success.
+        if not same or reused or _was_reversed(existing.id):
+            raise Conflict(
+                "That reference has already been used.", code=DUPLICATE_REFERENCE
+            )
+        view = PostedTransaction(
+            existing.id,
+            account.id,
+            existing.type.value,
+            existing.amount,
+            existing.reference,
+            account.balance,
+            existing.created_at,
+            replayed=True,
+        )
+        db.session.rollback()  # nothing to write; release the lock
+        return view
 
     if kind in DEBIT_TYPES and amount > account.balance:
         raise Conflict("Insufficient funds.", code=INSUFFICIENT_FUNDS)

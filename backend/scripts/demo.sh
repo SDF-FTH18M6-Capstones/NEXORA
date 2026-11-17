@@ -30,15 +30,16 @@ step "Health (database reachable)"
 curl -s "$API/api/health" | show
 
 OWNER=$(token owner@example.com); ADMIN=$(token alpha-admin@example.com)
-STAFF=$(token alpha-staff@example.com); MEMBER=$(token alpha-m1@example.com)
+STAFF=$(token alpha-finance@example.com); MEMBER=$(token alpha-m1@example.com)
 [ -n "$OWNER" ] && [ -n "$ADMIN" ] && [ -n "$STAFF" ] && [ -n "$MEMBER" ] ||
   { echo "Login failed: is the database seeded? (python backend/scripts/seed.py)"; exit 1; }
-echo "Logged in as: platform owner, SACCO admin, staff, member (4 tokens)"
+echo "Logged in as: platform owner, SACCO admin, finance officer, member (4 tokens)"
 
 step "ADMIN DASHBOARD (Alpha SACCO admin)"
 echo "-- summary"; call GET /admin/saccos/1/reports/summary "$ADMIN"
 echo "-- accounts"; call GET "/admin/saccos/1/accounts?per_page=3" "$ADMIN" "" 600
-echo "-- audit log (newest first)"; call GET "/admin/saccos/1/audit?per_page=3" "$ADMIN" "" 600
+echo "-- audit log, read by the platform owner (newest first)"; call GET "/admin/saccos/1/audit?per_page=3" "$OWNER" "" 600
+echo "-- the SACCO admin cannot read the audit log: 403"; call GET /admin/saccos/1/audit "$ADMIN" "" 300
 
 step "MEMBER DASHBOARD (alpha-m1)"
 echo "-- my accounts"; call GET /savings/accounts/me "$MEMBER"

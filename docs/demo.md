@@ -30,7 +30,7 @@ If your app role is not `postgres`, add `OWNER <role>` to each statement.
 
 ```bash
 cd backend
-flask --app app db upgrade                  # creates the tables (migrations 0001 to 0009)
+flask --app app db upgrade                  # creates the tables (migrations 0001 to 0018)
 cd .. && python backend/scripts/seed.py     # demo data; safe to run twice
 cd backend && python app.py                 # API on http://localhost:5000
 ```
@@ -41,11 +41,13 @@ The seed prints every seeded email. All of them share the password `Dev-Seed-Pas
 
 | Who | Email | Role |
 |---|---|---|
-| Platform owner | `owner@example.com` | runs the whole platform |
+| Platform owners | `owner@example.com`, `owner2@example.com` | run the whole platform (at least two must always remain) |
 | Alpha admin | `alpha-admin@example.com` | admin of Alpha SACCO |
-| Alpha staff | `alpha-staff@example.com` | posts money |
+| Alpha staff | `alpha-staff@example.com` | legacy staff role with the secretary title (see `docs/parked.md`) |
+| Alpha loans officers | `alpha-loans@example.com`, `alpha-loans2@example.com` | approve loan steps (one step each) |
+| Alpha finance officer | `alpha-finance@example.com` | posts money, disburses loans |
 | Alpha members | `alpha-m1@example.com` to `alpha-m3@example.com` | savers |
-| Beta SACCO | `beta-admin@example.com`, `beta-staff@example.com`, `beta-m1..m3@example.com` | a second SACCO, for the isolation demo |
+| Beta SACCO | `beta-admin@example.com`, `beta-staff@example.com`, `beta-loans@example.com`, `beta-loans2@example.com`, `beta-finance@example.com`, `beta-m1..m3@example.com` | a second SACCO, for the isolation demo |
 
 ## 3. Show it (5 minutes)
 
@@ -57,7 +59,9 @@ bash backend/scripts/demo.sh
 
 It logs in as four users and walks through, with the real responses printed: the admin dashboard, the member dashboard, a deposit and its safe retry, the refusals (wrong role, another SACCO, no token), logout-all killing a session, and registration with password recovery. Login is limited to 5 per minute per address, so wait a minute before running it twice.
 
-For the interactive API reference, paste `docs/openapi.yaml` into <https://editor.swagger.io>. All 32 routes are there with request bodies, responses and error codes.
+For the interactive API reference, paste `docs/openapi.yaml` into <https://editor.swagger.io>. All 53 operations (44 paths) are there with request bodies, responses and error codes.
+
+To click through the whole API, including the loan flow, use Thunder Client: [`docs/thunder-client.md`](thunder-client.md).
 
 To show the tests: `pytest -m "schema or not schema" --cov` (602 tests, 97% coverage), and `ruff check backend/app tests`.
 

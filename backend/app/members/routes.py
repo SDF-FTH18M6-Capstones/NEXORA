@@ -5,7 +5,7 @@ profile under /members/me (Sam's Move 2 work), and one SACCO's member list
 under /saccos/<sacco_id>/members (Neo's Move 2 work).
 """
 from flask import current_app, g, jsonify, request
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.exc import IntegrityError
 
 from app import members_bp, saccos_bp
@@ -17,10 +17,16 @@ from app.errors import error_response
 from app.extensions import db
 from app.members import self_service
 from app.members.schemas import InvalidMember, parse_create_member, parse_update_member
+from app.models.access import MembershipRoleLink, Role
 from app.models.audit import AuditLog
 from app.models.membership import MembershipRole, MembershipStatus, SaccoMembership
 from app.models.user import User
-from app.security.tenant import AccessDenied, current_user, sacco_scoped
+from app.security.tenant import (
+    AccessDenied,
+    current_user,
+    permission_scoped,
+    sacco_scoped,
+)
 
 
 def _me_error(message: str, status: int):
@@ -134,14 +140,14 @@ def _members(sacco_id: int, membership_id: int | None = None, lock: bool = False
 
 @saccos_bp.get("/<int:sacco_id>/members")
 @read_limit
-@sacco_scoped()
+@permission_scoped("member.view")
 def list_members(sacco_id):
     return jsonify(members=[_member_json(*row) for row in _members(sacco_id)])
 
 
 @saccos_bp.get("/<int:sacco_id>/members/<int:membership_id>")
 @read_limit
-@sacco_scoped()
+@permission_scoped("member.view")
 def get_member(sacco_id, membership_id):
     rows = _members(sacco_id, membership_id)
     if not rows:
@@ -233,6 +239,28 @@ def add_member(sacco_id):
     return jsonify(_member_json(membership, target.email)), 201
 
 
+def _reset_titles(membership: SaccoMembership) -> None:
+    """After a role change, drop every job title the old role carried.
+
+    Titles left behind would keep powers the new role does not have (a loans
+    officer demoted to member could still approve). With no title rows, `can()`
+    answers from the role column; a new admin gets circle_admin as a row, so
+    `can()` and the admin routes (which read the role) agree.
+    """
+    db.session.execute(
+        delete(MembershipRoleLink).where(
+            MembershipRoleLink.membership_id == membership.id
+        )
+    )
+    if membership.role is not ADMIN:
+        return
+    role_id = db.session.execute(
+        select(Role.id).where(Role.code == "circle_admin")
+    ).scalar_one_or_none()
+    if role_id is not None:  # no catalogue (create_all): the role column answers
+        db.session.add(MembershipRoleLink(membership_id=membership.id, role_id=role_id))
+
+
 @saccos_bp.patch("/<int:sacco_id>/members/<int:membership_id>")
 @write_limit
 @sacco_scoped()
@@ -253,13 +281,30 @@ def update_member(sacco_id, membership_id):
         return error_response(
             403, "Only the platform owner can change SACCO administrators."
         )
+    new_status = changes.get("status")
+    if new_status is not None and new_status is not membership.status:
+        if new_status is MembershipStatus.INVITED:
+            db.session.rollback()
+            return error_response(409, "A membership cannot be moved back to invited.")
+        # Nobody has joined a phone invitation yet (no user): only the join flow,
+        # with its code, makes it active. Also closes invited -> inactive -> active.
+        if new_status is MembershipStatus.ACTIVE and (
+            membership.status is MembershipStatus.INVITED or membership.user_id is None
+        ):
+            db.session.rollback()
+            return error_response(
+                409, "An invited member becomes active by joining with their code."
+            )
     if all(getattr(membership, f) is v for f, v in changes.items()):
         body = _member_json(membership, email)
         db.session.rollback()  # nothing changed; release the lock
         return jsonify(body)
     before = _state(membership)
+    old_role = membership.role
     for field, value in changes.items():
         setattr(membership, field, value)
+    if membership.role is not old_role:
+        _reset_titles(membership)
     _audit(membership, "member.update", before)
     body = _member_json(membership, email)
     db.session.commit()

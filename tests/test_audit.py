@@ -19,6 +19,13 @@ PLATFORM = f"{ADMIN}/audit"
 FIELDS = {"id", "actor_id", "action", "target", "created_at"}
 
 
+def reader(s):
+    """The SACCO's audit reader: a secretary (legacy staff role), one per Setup."""
+    if not hasattr(s, "audit_reader"):
+        s.audit_reader = add_member(s, role=MembershipRole.STAFF, with_account=False)
+    return s.audit_reader
+
+
 def sacco_url(sacco_id):
     return f"{ADMIN}/saccos/{sacco_id}/audit"
 
@@ -44,7 +51,7 @@ def test_an_admin_sees_only_their_sacco_newest_first(schema_app):
     client = schema_app.test_client()
 
     body = client.get(
-        sacco_url(s.sacco.id) + "?action=audit_test.", headers=auth(s.admin)
+        sacco_url(s.sacco.id) + "?action=audit_test.", headers=auth(reader(s))
     ).get_json()
     assert body["total"] == 2
     assert [e["id"] for e in body["entries"]] == [second, first]
@@ -53,7 +60,7 @@ def test_an_admin_sees_only_their_sacco_newest_first(schema_app):
     assert body["entries"][0]["target"] == "t2"
 
     everything = client.get(
-        sacco_url(s.sacco.id) + "?per_page=100", headers=auth(s.admin)
+        sacco_url(s.sacco.id) + "?per_page=100", headers=auth(reader(s))
     ).get_json()
     assert foreign not in [e["id"] for e in everything["entries"]]
 
@@ -68,20 +75,21 @@ def test_audit_access_rules(schema_app):
 
     assert client.get(url).status_code == 401
     assert client.get(url, headers=auth(s.member)).status_code == 403
-    assert client.get(url, headers=auth(staff)).status_code == 403
+    # The secretary is the SACCO's reader; the admin never reads the audit log.
+    assert client.get(url, headers=auth(staff)).status_code == 200
     assert client.get(url, headers=auth(outsider.admin)).status_code == 404
-    assert client.get(url, headers=auth(s.admin)).status_code == 200
+    assert client.get(url, headers=auth(s.admin)).status_code == 403
     assert client.get(url, headers=auth(owner)).status_code == 200
     assert client.get(sacco_url(2_000_000_000), headers=auth(owner)).status_code == 404
 
 
-def test_audit_of_a_suspended_sacco_is_423_for_the_admin_only(schema_app):
+def test_audit_of_a_suspended_sacco_is_423_for_the_secretary(schema_app):
     s = Setup()
     owner = make_owner()
     suspend(s.sacco.id)
     client = schema_app.test_client()
     url = sacco_url(s.sacco.id)
-    assert client.get(url, headers=auth(s.admin)).status_code == 423
+    assert client.get(url, headers=auth(reader(s))).status_code == 423
     assert client.get(url, headers=auth(owner)).status_code == 200
 
 
@@ -94,7 +102,7 @@ def test_action_filter_is_exact_or_a_prefix_and_escapes_wildcards(schema_app):
     url = sacco_url(s.sacco.id)
 
     def total(query):
-        resp = client.get(url + query, headers=auth(s.admin))
+        resp = client.get(url + query, headers=auth(reader(s)))
         assert resp.status_code == 200
         return resp.get_json()["total"]
 
@@ -118,7 +126,7 @@ def test_date_filters(schema_app):
     base = sacco_url(s.sacco.id) + "?action=audit_test.dates"
 
     def ids(query):
-        resp = client.get(base + query, headers=auth(s.admin))
+        resp = client.get(base + query, headers=auth(reader(s)))
         assert resp.status_code == 200
         return [e["id"] for e in resp.get_json()["entries"]]
 
@@ -136,7 +144,7 @@ def test_audit_paging(schema_app):
     url = sacco_url(s.sacco.id) + "?action=audit_test.page&per_page=2"
 
     pages = [
-        client.get(url + f"&page={n}", headers=auth(s.admin)).get_json()
+        client.get(url + f"&page={n}", headers=auth(reader(s))).get_json()
         for n in (1, 2, 3)
     ]
     assert [len(p["entries"]) for p in pages] == [2, 2, 1]
@@ -145,7 +153,7 @@ def test_audit_paging(schema_app):
     assert seen == sorted(made, reverse=True)
 
     huge = client.get(
-        sacco_url(s.sacco.id) + "?page=99999999999999999999", headers=auth(s.admin)
+        sacco_url(s.sacco.id) + "?page=99999999999999999999", headers=auth(reader(s))
     )
     assert huge.status_code == 200 and huge.get_json()["entries"] == []
 
@@ -169,9 +177,9 @@ def test_audit_bad_input_is_400(schema_app):
         "?from=２０２６-01-01",
     )
     for query in bad:
-        resp = client.get(url + query, headers=auth(s.admin))
+        resp = client.get(url + query, headers=auth(reader(s)))
         assert resp.status_code == 400, query
-    capped = client.get(url + "?per_page=5000", headers=auth(s.admin))
+    capped = client.get(url + "?per_page=5000", headers=auth(reader(s)))
     assert capped.get_json()["per_page"] == 100
 
 
@@ -186,7 +194,7 @@ def test_the_platform_route_is_for_the_owner_only(schema_app):
     url = PLATFORM + "?action=audit_test.plat&per_page=100"
 
     assert client.get(PLATFORM).status_code == 401
-    assert client.get(PLATFORM, headers=auth(s.admin)).status_code == 403
+    assert client.get(PLATFORM, headers=auth(reader(s))).status_code == 403
     assert client.get(PLATFORM, headers=auth(s.member)).status_code == 403
 
     body = client.get(url, headers=auth(owner)).get_json()
@@ -198,7 +206,7 @@ def test_the_platform_route_is_for_the_owner_only(schema_app):
 
     # The SACCO route never shows platform-wide rows (sacco_id is NULL).
     own = client.get(
-        sacco_url(s.sacco.id) + "?action=audit_test.plat", headers=auth(s.admin)
+        sacco_url(s.sacco.id) + "?action=audit_test.plat", headers=auth(reader(s))
     ).get_json()
     assert [e["id"] for e in own["entries"]] == [mine]
 
@@ -224,7 +232,7 @@ def test_audit_routes_are_read_only(schema_app):
     s = Setup()
     owner = make_owner()
     client = schema_app.test_client()
-    for url, user in ((sacco_url(s.sacco.id), s.admin), (PLATFORM, owner)):
+    for url, user in ((sacco_url(s.sacco.id), reader(s)), (PLATFORM, owner)):
         for method in ("post", "put", "patch", "delete"):
             resp = getattr(client, method)(url, headers=auth(user))
             assert resp.status_code == 405, (method, url)

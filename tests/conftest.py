@@ -10,6 +10,7 @@ load_dotenv(Path(__file__).resolve().parent.parent / "backend" / ".env")
 
 from app import create_app  # noqa: E402
 from app.extensions import db  # noqa: E402
+from app.security.permissions import sync_catalogue  # noqa: E402
 from config import TestConfig  # noqa: E402
 
 
@@ -26,6 +27,9 @@ def app():
 
     with application.app_context():
         db.create_all()
+        # A migrated database always holds the role catalogue (migration 0010);
+        # without it every permission check would depend on test order.
+        sync_catalogue()
         yield application
         db.session.remove()
         db.drop_all()

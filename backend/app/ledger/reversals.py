@@ -51,6 +51,33 @@ def _view(tx: Transaction, balance: int, replayed: bool) -> ReversalView:
     )
 
 
+def _is_loan_entry(transaction_id: int) -> bool:
+    """True when the row disbursed a loan or repaid one.
+
+    The audit row is a second source for disbursements, for a loan whose link
+    column is empty (disbursed before migration 0017).
+    """
+    from app.models.audit import AuditLog
+    from app.models.loan import Loan, LoanRepayment
+
+    return db.session.execute(
+        select(
+            select(Loan.id)
+            .where(Loan.disbursement_transaction_id == transaction_id)
+            .union_all(
+                select(LoanRepayment.id).where(
+                    LoanRepayment.transaction_id == transaction_id
+                ),
+                select(AuditLog.id).where(
+                    AuditLog.action == "loan.disburse",
+                    AuditLog.target.like(f"loan:%/transaction:{transaction_id}"),
+                ),
+            )
+            .exists()
+        )
+    ).scalar_one()
+
+
 @_atomic
 def reverse_transaction(
     user_id: int, transaction_id: int, reference: str
@@ -69,6 +96,10 @@ def reverse_transaction(
 
     if original.reverses_id is not None:
         raise Conflict("A reversal cannot be reversed. Post a new entry instead.")
+    if _is_loan_entry(original.id):
+        raise Conflict(
+            "Loan disbursements and repayments cannot be reversed here."
+        )
 
     dup_ref = db.session.execute(
         select(Transaction).where(
@@ -76,6 +107,11 @@ def reverse_transaction(
             Transaction.reference == reference,
         )
     ).scalar_one_or_none()
+    if dup_ref is not None and dup_ref.reverses_id == original.id:
+        # A retry of this same reversal: return it instead of failing.
+        view = _view(dup_ref, account.balance, replayed=True)
+        db.session.rollback()  # nothing to write; release the lock
+        return view
     if dup_ref is not None:
         raise Conflict(
             "That reference has already been used.", code=DUPLICATE_REFERENCE

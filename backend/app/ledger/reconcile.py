@@ -87,7 +87,8 @@ def reconcile_command(sacco_id: int | None):
     """Run nightly ledger vs stored balance check."""
     report = run_nightly_reconciliation(sacco_id=sacco_id)
     click.echo(
-        f"Checked {report.accounts_checked} accounts; mismatches={len(report.mismatches)}"
+        f"Checked {report.accounts_checked} accounts; "
+        f"mismatches={len(report.mismatches)}"
     )
     if not report.ok:
         for m in report.mismatches:

@@ -13,7 +13,13 @@ from app.errors import error_response
 from app.models.membership import MembershipRole
 from app.savings.accounts import list_sacco_accounts
 from app.savings.history import page_params
-from app.security.tenant import ADMIN_ONLY, AccessDenied, current_user, sacco_scoped
+from app.security.tenant import (
+    ADMIN_ONLY,
+    AccessDenied,
+    current_user,
+    permission_scoped,
+    sacco_scoped,
+)
 
 REPORT_ROLES = (*ADMIN_ONLY, MembershipRole.STAFF)
 MAX_DB_ID = 2_147_483_647  # largest id an INTEGER column holds
@@ -103,7 +109,7 @@ def sacco_accounts(sacco_id: int):
 
 @admin_bp.get("/saccos/<int:sacco_id>/audit")
 @read_limit
-@sacco_scoped(ADMIN_ONLY)  # SACCO admin or platform owner; staff get 403
+@permission_scoped("audit.view")  # secretary or platform owner; the admin gets 403
 def sacco_audit(sacco_id: int):
     try:
         action, start, end, page, per_page = _audit_filters()

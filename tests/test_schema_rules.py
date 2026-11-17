@@ -1,0 +1,572 @@
+"""The rules of the agreed schema (docs/schema.sql and its schema_test.sql).
+
+Each test names the schema rule it holds the application to.
+"""
+
+import uuid
+from datetime import UTC, datetime
+
+import pytest
+from sqlalchemy import text
+
+from app.auth.tokens import create_access_token
+from app.extensions import db
+from app.loans import service as loans
+from app.models.loan import LoanDecisionKind, SaccoSettings
+from app.models.membership import MembershipRole, MembershipStatus, SaccoMembership
+from app.models.user import User
+from app.security.permissions import can
+from savings_support import Setup, release_session, schema_app  # noqa: F401
+
+pytestmark = pytest.mark.schema
+
+
+class Ref:
+    def __init__(self, user):
+        self.id, self.token_version = user.id, user.token_version
+
+
+def auth(user):
+    token = create_access_token(user.id, user.token_version)
+    return {"Authorization": f"Bearer {token}"}
+
+
+def make_user(owner=False):
+    user = User(
+        email=f"rule-{uuid.uuid4().hex[:10]}@example.com",
+        password_hash="x",
+        is_platform_owner=owner,
+        email_verified_at=datetime.now(UTC),
+    )
+    db.session.add(user)
+    db.session.commit()
+    ref = Ref(user)
+    db.session.remove()
+    return ref
+
+
+def officer(s, *titles):
+    """A legacy-staff membership holding exactly these job titles."""
+    from app.models.access import MembershipRoleLink, Role
+
+    user = make_user()
+    membership = SaccoMembership(
+        user_id=user.id, sacco_id=s.sacco.id, role=MembershipRole.STAFF
+    )
+    db.session.add(membership)
+    db.session.flush()
+    for code in titles:
+        role_id = db.session.query(Role.id).filter_by(code=code).scalar()
+        db.session.add(MembershipRoleLink(membership_id=membership.id, role_id=role_id))
+    db.session.commit()
+    db.session.remove()
+    return user
+
+
+def settings(s, **values):
+    db.session.add(SaccoSettings(sacco_id=s.sacco.id, **values))
+    db.session.commit()
+    db.session.remove()
+
+
+# ---- who may do what ---------------------------------------------------------
+
+
+def test_job_titles_hold_exactly_the_schema_permissions(schema_app):  # noqa: F811
+    s = Setup()
+    secretary = officer(s, "secretary")
+    finance = officer(s, "finance_officer")
+    loans_officer = officer(s, "loans_officer")
+
+    def may(user, permission):
+        return can(db.session.get(User, user.id), s.sacco.id, permission)
+
+    assert may(s.admin, "member.manage")
+    assert not may(s.admin, "loan.approve")  # admin: never approves loans
+    assert not may(s.admin, "audit.view")  # admin: cannot read the audit log
+    assert may(secretary, "audit.view")  # secretary: the SACCO's audit reader
+    assert not may(secretary, "savings.post")
+    assert not may(secretary, "member.manage")
+    assert may(finance, "savings.post") and may(finance, "loan.disburse")
+    assert not may(finance, "loan.approve")
+    assert may(loans_officer, "loan.approve")
+    assert not may(loans_officer, "loan.disburse")
+    assert may(s.member, "loan.request")
+    assert not may(s.member, "member.view")
+
+
+def test_the_secretary_reads_members_but_cannot_add_them(schema_app):  # noqa: F811
+    s = Setup()
+    secretary = officer(s, "secretary")
+    client = schema_app.test_client()
+    url = f"/api/v1/saccos/{s.sacco.id}/members"
+    assert client.get(url, headers=auth(secretary)).status_code == 200
+    added = client.post(
+        url, json={"phone": "+254700000123"}, headers=auth(secretary)
+    )
+    assert added.status_code == 403
+    assert client.get(url, headers=auth(s.member)).status_code == 403
+
+
+# ---- loan rules ----------------------------------------------------------------
+
+
+def test_within_cap_and_savings_multiple_needs_one_approval(schema_app):  # noqa: F811
+    s = Setup(balance=10_000)
+    settings(s, loan_cap=50_000, savings_multiple=3, required_approvals=2)
+    lo = officer(s, "loans_officer")
+    loan = loans.request_loan(s.member.id, s.sacco.id, 20_000, 6)
+    assert loan.required_approvals == 1
+    approved = loans.decide_loan(lo.id, loan.id, 1, LoanDecisionKind.APPROVE)
+    assert approved.status == "approved"
+
+
+@pytest.mark.parametrize(
+    ("values", "principal"),
+    [
+        ({}, 1_000),  # no settings row: cap 0, every loan takes the higher count
+        ({"loan_cap": 50_000, "savings_multiple": 3}, 40_000),  # above 3x savings
+        ({"loan_cap": 5_000, "savings_multiple": 3}, 6_000),  # above the cap
+    ],
+)
+def test_above_either_limit_needs_the_higher_count_and_is_not_refused(
+    schema_app,  # noqa: F811
+    values,
+    principal,
+):
+    s = Setup(balance=10_000)
+    if values:
+        settings(s, **values)
+    loan = loans.request_loan(s.member.id, s.sacco.id, principal, 6)
+    assert (loan.status, loan.required_approvals) == ("requested", 2)
+
+
+def test_one_open_loan_per_member_until_it_ends(schema_app):  # noqa: F811
+    s = Setup(balance=10_000)
+    lo = officer(s, "loans_officer")
+    first = loans.request_loan(s.member.id, s.sacco.id, 1_000, 6)
+    with pytest.raises(loans.Conflict):
+        loans.request_loan(s.member.id, s.sacco.id, 500, 3)
+    loans.decide_loan(lo.id, first.id, 1, LoanDecisionKind.REJECT, "Too soon")
+    # A rejected loan is no longer open, so the member may ask again.
+    assert loans.request_loan(s.member.id, s.sacco.id, 500, 3).status == "requested"
+
+
+def test_the_database_holds_one_open_loan_per_member(schema_app):  # noqa: F811
+    s = Setup(balance=10_000)
+    loans.request_loan(s.member.id, s.sacco.id, 1_000, 6)
+    with pytest.raises(Exception, match="uq_loans_one_open_per_member"):
+        db.session.execute(
+            text(
+                "INSERT INTO loans (sacco_id, membership_id, principal, "
+                "required_approvals, term_months) VALUES (:s, :m, 5, 1, 1)"
+            ),
+            {"s": s.sacco.id, "m": s.member_membership.id},
+        )
+    db.session.rollback()
+
+
+def test_a_rejection_needs_a_reason(schema_app):  # noqa: F811
+    s = Setup(balance=10_000)
+    lo = officer(s, "loans_officer")
+    loan = loans.request_loan(s.member.id, s.sacco.id, 1_000, 6)
+    client = schema_app.test_client()
+    url = f"/api/v1/loans/{loan.id}/decisions"
+    for reason in (None, "", "   "):
+        body = {"step": 1, "decision": "reject"}
+        if reason is not None:
+            body["reason"] = reason
+        assert client.post(url, json=body, headers=auth(lo)).status_code == 400
+    with pytest.raises(loans.Conflict):
+        loans.decide_loan(lo.id, loan.id, 1, LoanDecisionKind.REJECT, "  ")
+    done = client.post(
+        url,
+        json={"step": 1, "decision": "reject", "reason": "Savings too low"},
+        headers=auth(lo),
+    )
+    assert done.status_code == 201 and done.json["status"] == "rejected"
+    got = client.get(f"/api/v1/loans/{loan.id}", headers=auth(s.member))
+    assert got.json["decisions"][0]["reason"] == "Savings too low"
+
+
+@pytest.mark.parametrize("term", [None, 0, -1, 361, True, "6"])
+def test_a_loan_request_needs_a_term_in_months(schema_app, term):  # noqa: F811
+    s = Setup(balance=10_000)
+    body = {"principal": 1_000}
+    if term is not None:
+        body["term_months"] = term
+    resp = schema_app.test_client().post(
+        f"/api/v1/loans/saccos/{s.sacco.id}", json=body, headers=auth(s.member)
+    )
+    assert resp.status_code == 400
+
+
+@pytest.mark.parametrize("table", ["loan_decisions", "loan_repayments"])
+def test_loan_history_is_append_only(schema_app, table):  # noqa: F811
+    s = Setup(balance=10_000)
+    lo = officer(s, "loans_officer")
+    finance = officer(s, "finance_officer")
+    loan = loans.request_loan(s.member.id, s.sacco.id, 1_000, 6)
+    settings_one = loans.decide_loan(lo.id, loan.id, 1, LoanDecisionKind.APPROVE)
+    if settings_one.status != "approved":
+        lo2 = officer(s, "loans_officer")
+        loans.decide_loan(lo2.id, loan.id, 2, LoanDecisionKind.APPROVE)
+    loans.disburse_loan(finance.id, loan.id, "disb-ao")
+    loans.repay_loan(s.member.id, loan.id, 100, "rep-ao")
+    for statement in (f"UPDATE {table} SET id = id", f"DELETE FROM {table}"):
+        with pytest.raises(Exception, match="append only"):
+            db.session.execute(text(statement))
+        db.session.rollback()
+
+
+# ---- memberships ---------------------------------------------------------------
+
+
+def test_membership_transitions_follow_the_schema(schema_app):  # noqa: F811
+    s = Setup()
+    client = schema_app.test_client()
+    owner = make_user(owner=True)
+    member_url = f"/api/v1/saccos/{s.sacco.id}/members/{s.member_membership.id}"
+    back = client.patch(member_url, json={"status": "invited"}, headers=auth(owner))
+    assert back.status_code == 409  # active cannot go back to invited
+
+    invited = client.post(
+        f"/api/v1/saccos/{s.sacco.id}/members",
+        json={"phone": "+254700000777"},
+        headers=auth(s.admin),
+    )
+    assert invited.status_code == 201
+    url = f"/api/v1/saccos/{s.sacco.id}/members/{invited.json['id']}"
+    skip = client.patch(url, json={"status": "active"}, headers=auth(s.admin))
+    assert skip.status_code == 409  # only joining with the code activates it
+    gone = client.patch(url, json={"status": "inactive"}, headers=auth(s.admin))
+    assert gone.status_code == 200
+    m = db.session.get(SaccoMembership, invited.json["id"])
+    assert m.status is MembershipStatus.INACTIVE
+
+
+# ---- platform owners -------------------------------------------------------------
+
+
+def test_platform_owner_rules(schema_app):  # noqa: F811
+    db.session.execute(text("UPDATE users SET is_platform_owner = false"))
+    db.session.execute(text("DELETE FROM platform_grants"))
+    db.session.commit()
+    first, second, third = (make_user(owner=True) for _ in range(3))
+    candidate = make_user()
+    client = schema_app.test_client()
+    s = Setup()
+
+    listed = client.get("/api/v1/admin/owners", headers=auth(first))
+    assert [o["user_id"] for o in listed.json["owners"]] == [
+        first.id, second.id, third.id
+    ]
+    assert client.get("/api/v1/admin/owners", headers=auth(s.admin)).status_code == 403
+
+    # Only an owner grants; the user must exist and not be an owner already.
+    email = db.session.get(User, candidate.id).email
+    db.session.remove()
+    owners_url = "/api/v1/admin/owners"
+    no = client.post(owners_url, json={"email": email}, headers=auth(s.admin))
+    assert no.status_code == 403
+    yes = client.post(owners_url, json={"email": email}, headers=auth(first))
+    assert yes.status_code == 201
+    again = client.post(
+        "/api/v1/admin/owners", json={"email": email}, headers=auth(first)
+    )
+    assert again.status_code == 409
+
+    # Nobody revokes themselves.
+    own = client.delete(f"/api/v1/admin/owners/{first.id}", headers=auth(first))
+    assert own.status_code == 403
+    # Four owners: two revokes are fine, the third would leave one.
+    for target in (candidate, third):
+        resp = client.delete(f"/api/v1/admin/owners/{target.id}", headers=auth(first))
+        assert resp.status_code == 200, resp.json
+    last = client.delete(f"/api/v1/admin/owners/{second.id}", headers=auth(first))
+    assert last.status_code == 409
+
+    # A revoked owner loses platform access at once.
+    assert client.get("/api/v1/admin/owners", headers=auth(third)).status_code == 403
+    assert client.get("/api/v1/saccos", headers=auth(third)).status_code == 403
+    unknown = client.delete("/api/v1/admin/owners/999999", headers=auth(first))
+    assert unknown.status_code == 404
+
+
+# ---- found by the second red-team review ------------------------------------------
+
+
+def test_a_phone_invitation_never_becomes_active_without_joining(schema_app):  # noqa: F811
+    s = Setup()
+    client = schema_app.test_client()
+    invited = client.post(
+        f"/api/v1/saccos/{s.sacco.id}/members",
+        json={"phone": "+254700000888"},
+        headers=auth(s.admin),
+    )
+    url = f"/api/v1/saccos/{s.sacco.id}/members/{invited.json['id']}"
+    to_inactive = client.patch(url, json={"status": "inactive"}, headers=auth(s.admin))
+    assert to_inactive.status_code == 200
+    # invited -> inactive -> active would skip the join code.
+    back = client.patch(url, json={"status": "active"}, headers=auth(s.admin))
+    assert back.status_code == 409
+
+
+def test_an_admin_never_approves_or_reads_the_audit_log_whatever_titles(
+    schema_app,  # noqa: F811
+):
+    from app.models.access import MembershipRoleLink, Role
+
+    s = Setup(balance=10_000)
+    # Titles attached straight in the database, past every route.
+    for code in ("loans_officer", "secretary"):
+        role_id = db.session.query(Role.id).filter_by(code=code).scalar()
+        db.session.add(
+            MembershipRoleLink(membership_id=s.admin_membership.id, role_id=role_id)
+        )
+    db.session.commit()
+    admin = db.session.get(User, s.admin.id)
+    assert not can(admin, s.sacco.id, "loan.approve")
+    assert not can(admin, s.sacco.id, "audit.view")
+    db.session.remove()
+    loan = loans.request_loan(s.member.id, s.sacco.id, 1_000, 6)
+    with pytest.raises(loans.Forbidden):
+        loans.decide_loan(s.admin.id, loan.id, 1, LoanDecisionKind.APPROVE)
+    audit = schema_app.test_client().get(
+        f"/api/v1/admin/saccos/{s.sacco.id}/audit", headers=auth(s.admin)
+    )
+    assert audit.status_code == 403
+
+
+def test_an_admin_holds_no_other_job_title(schema_app):  # noqa: F811
+    s = Setup()
+    client = schema_app.test_client()
+    boss = auth(make_user(owner=True))
+    url = f"/api/v1/saccos/{s.sacco.id}/members/{s.admin_membership.id}/roles"
+    for extra in ("loans_officer", "secretary", "finance_officer"):
+        resp = client.put(url, json={"roles": ["circle_admin", extra]}, headers=boss)
+        assert resp.status_code == 409, extra
+    # A secretary promoted to admin keeps only circle_admin.
+    secretary = officer(s, "secretary")
+    mid = (
+        db.session.query(SaccoMembership.id).filter_by(user_id=secretary.id).scalar()
+    )
+    db.session.remove()
+    promoted = client.patch(
+        f"/api/v1/saccos/{s.sacco.id}/members/{mid}",
+        json={"role": "sacco_admin"},
+        headers=boss,
+    )
+    assert promoted.status_code == 200
+    titles = client.get(
+        f"/api/v1/saccos/{s.sacco.id}/members/{mid}/roles", headers=boss
+    )
+    assert titles.json["roles"] == ["circle_admin"]
+
+
+def _disbursed_loan(s, reference):
+    lo, lo2 = officer(s, "loans_officer"), officer(s, "loans_officer")
+    finance = officer(s, "finance_officer")
+    loan = loans.request_loan(s.member.id, s.sacco.id, 1_000, 6)
+    if loans.decide_loan(lo.id, loan.id, 1, LoanDecisionKind.APPROVE).status != (
+        "approved"
+    ):
+        loans.decide_loan(lo2.id, loan.id, 2, LoanDecisionKind.APPROVE)
+    done = loans.disburse_loan(finance.id, loan.id, reference)
+    return loan.id, done.disbursement_transaction_id, finance
+
+
+def test_a_disbursement_without_its_link_is_still_not_reversible(schema_app):  # noqa: F811
+    from app.ledger import reversals
+
+    s = Setup(balance=10_000)
+    loan_id, tx_id, finance = _disbursed_loan(s, "disb-nolink")
+    # The state a loan disbursed before migration 0017 is in.
+    db.session.execute(
+        text("UPDATE loans SET disbursement_transaction_id = NULL WHERE id = :i"),
+        {"i": loan_id},
+    )
+    db.session.commit()
+    db.session.remove()
+    with pytest.raises(reversals.Conflict, match="Loan disbursements"):
+        reversals.reverse_transaction(s.admin.id, tx_id, "undo-nolink")
+
+
+def test_0018_upgrades_a_database_with_old_rejections_and_disbursements(
+    schema_app,  # noqa: F811
+):
+    from flask_migrate import downgrade, upgrade
+
+    from test_schema import MIGRATIONS
+
+    s = Setup(balance=10_000)
+    loan_id, tx_id, _ = _disbursed_loan(s, "disb-old")
+    lo = officer(s, "loans_officer")
+    neighbour = officer(s, "member")
+    from app.models.savings import SavingsAccount  # noqa: F401
+    from app.savings import service as savings
+
+    mid = db.session.query(SaccoMembership.id).filter_by(user_id=neighbour.id).scalar()
+    db.session.remove()
+    savings.open_account(s.admin.id, mid)
+    rejected = loans.request_loan(neighbour.id, s.sacco.id, 1, 1)
+    loans.decide_loan(lo.id, rejected.id, 1, LoanDecisionKind.REJECT, "x")
+    db.session.remove()
+
+    downgrade(directory=MIGRATIONS, revision="0017")  # reason column gone
+    db.session.execute(
+        text("UPDATE loans SET disbursement_transaction_id = NULL WHERE id = :i"),
+        {"i": loan_id},
+    )
+    db.session.commit()
+    upgrade(directory=MIGRATIONS, revision="head")
+
+    link = db.session.execute(
+        text("SELECT disbursement_transaction_id FROM loans WHERE id = :i"),
+        {"i": loan_id},
+    ).scalar()
+    reason = db.session.execute(
+        text("SELECT reason FROM loan_decisions WHERE loan_id = :i"),
+        {"i": rejected.id},
+    ).scalar()
+    db.session.remove()
+    assert link == tx_id
+    assert reason == "No reason recorded (before migration 0018)"
+
+
+def test_two_revokes_at_once_still_leave_two_owners(schema_app):  # noqa: F811
+    import threading
+
+    from app.admin.owners import OWNERS_LOCK
+
+    db.session.execute(text("UPDATE users SET is_platform_owner = false"))
+    db.session.execute(text("DELETE FROM platform_grants"))
+    db.session.commit()
+    a, b = (make_user(owner=True) for _ in range(2))
+    c = make_user()
+    # C is an owner through a grant row only: row locks on users never see
+    # C's revoke, only the owners lock does.
+    db.session.execute(
+        text(
+            "INSERT INTO platform_grants (user_id, granted_by_user_id) "
+            "VALUES (:c, :a)"
+        ),
+        {"c": c.id, "a": a.id},
+    )
+    db.session.commit()
+    db.session.remove()
+
+    # Revoke C by hand inside the owners lock, and hold the transaction open.
+    first = db.engine.connect()
+    held = first.begin()
+    first.execute(text(OWNERS_LOCK))
+    first.execute(text("DELETE FROM platform_grants WHERE user_id = :i"), {"i": c.id})
+
+    result = {}
+
+    def b_revokes_a():
+        with schema_app.app_context():
+            client = schema_app.test_client()
+            resp = client.delete(f"/api/v1/admin/owners/{a.id}", headers=auth(b))
+            result["status"] = resp.status_code
+            db.session.remove()
+
+    thread = threading.Thread(target=b_revokes_a)
+    thread.start()
+    thread.join(1.5)
+    assert thread.is_alive(), "the revoke did not wait for the owners lock"
+    held.commit()
+    first.close()
+    thread.join(15)
+    # With C gone, revoking A would leave only B.
+    assert result["status"] == 409
+    owners = db.session.execute(
+        text(
+            "SELECT count(*) FROM users WHERE is_platform_owner "
+            "OR id IN (SELECT user_id FROM platform_grants)"
+        )
+    ).scalar()
+    db.session.remove()
+    assert owners == 2
+
+
+# ---- found by the third red-team review ---------------------------------------------
+
+
+def test_any_role_change_drops_the_old_roles_titles(schema_app):  # noqa: F811
+    s = Setup()
+    client = schema_app.test_client()
+    staff = officer(s, "secretary", "loans_officer")
+    mid = db.session.query(SaccoMembership.id).filter_by(user_id=staff.id).scalar()
+    db.session.remove()
+    demoted = client.patch(
+        f"/api/v1/saccos/{s.sacco.id}/members/{mid}",
+        json={"role": "member"},
+        headers=auth(s.admin),
+    )
+    assert demoted.status_code == 200 and demoted.json["role"] == "member"
+    user = db.session.get(User, staff.id)
+    assert not can(user, s.sacco.id, "loan.approve")
+    assert not can(user, s.sacco.id, "audit.view")
+    assert can(user, s.sacco.id, "loan.request")  # now an ordinary member
+    db.session.remove()
+    audit = client.get(f"/api/v1/admin/saccos/{s.sacco.id}/audit", headers=auth(staff))
+    assert audit.status_code == 403
+
+
+def test_a_nul_character_is_a_400_not_a_500(schema_app):  # noqa: F811
+    s = Setup(balance=10_000)
+    lo = officer(s, "loans_officer")
+    loan = loans.request_loan(s.member.id, s.sacco.id, 1_000, 6)
+    client = schema_app.test_client()
+    reject = client.post(
+        f"/api/v1/loans/{loan.id}/decisions",
+        json={"step": 1, "decision": "reject", "reason": "bad\x00reason"},
+        headers=auth(lo),
+    )
+    assert reject.status_code == 400
+    grant = client.post(
+        "/api/v1/admin/owners",
+        json={"email": "x\x00@example.com"},
+        headers=auth(make_user(owner=True)),
+    )
+    assert grant.status_code == 400
+
+
+def test_an_owner_revoked_while_waiting_cannot_still_grant(schema_app):  # noqa: F811
+    import threading
+
+    from app.admin.owners import OWNERS_LOCK
+
+    a, b, c = (make_user(owner=True) for _ in range(3))
+    newcomer = make_user()
+    email = db.session.get(User, newcomer.id).email
+    db.session.remove()
+
+    held_conn = db.engine.connect()
+    held = held_conn.begin()
+    held_conn.execute(text(OWNERS_LOCK))
+    result = {}
+
+    def b_grants():
+        with schema_app.app_context():
+            resp = schema_app.test_client().post(
+                "/api/v1/admin/owners", json={"email": email}, headers=auth(b)
+            )
+            result["status"] = resp.status_code
+            db.session.remove()
+
+    thread = threading.Thread(target=b_grants)
+    thread.start()
+    thread.join(1.5)
+    assert thread.is_alive(), "the grant did not wait for the owners lock"
+    # A revokes B while B's grant waits (what revoke_owner writes).
+    held_conn.execute(
+        text("UPDATE users SET is_platform_owner = false WHERE id = :i"), {"i": b.id}
+    )
+    held.commit()
+    held_conn.close()
+    thread.join(15)
+    granted = db.session.get(User, newcomer.id).is_platform_owner
+    db.session.remove()
+    assert result["status"] == 403 and not granted, result

@@ -23,7 +23,7 @@ from app.models.loan import (
     LoanStatus,
     SaccoSettings,
 )
-from app.models.membership import MembershipRole, MembershipStatus, SaccoMembership
+from app.models.membership import MembershipStatus, SaccoMembership
 from app.models.savings import SavingsAccount
 from app.models.user import User
 from app.savings.service import (
@@ -36,6 +36,11 @@ from app.savings.service import (
 )
 from app.security.permissions import can
 
+OPEN_STATUSES = (LoanStatus.REQUESTED, LoanStatus.APPROVED, LoanStatus.DISBURSED)
+DEFAULT_LOAN_CAP = 0
+DEFAULT_SAVINGS_MULTIPLE = 3
+DEFAULT_REQUIRED_APPROVALS = 2
+
 
 @dataclass(frozen=True)
 class LoanView:
@@ -43,12 +48,14 @@ class LoanView:
     sacco_id: int
     membership_id: int
     principal: int
+    term_months: int | None
     required_approvals: int
     approvals_count: int
     repaid_total: int
     status: str
     disbursed_by_membership_id: int | None
     disbursed_at: datetime | None
+    disbursement_transaction_id: int | None
     created_at: datetime
 
 
@@ -107,18 +114,22 @@ def _loan_view(loan: Loan) -> LoanView:
         sacco_id=loan.sacco_id,
         membership_id=loan.membership_id,
         principal=loan.principal,
+        term_months=loan.term_months,
         required_approvals=loan.required_approvals,
         approvals_count=int(approvals_count),
         repaid_total=int(repaid_total),
         status=loan.status.value,
         disbursed_by_membership_id=loan.disbursed_by_membership_id,
         disbursed_at=loan.disbursed_at,
+        disbursement_transaction_id=loan.disbursement_transaction_id,
         created_at=loan.created_at,
     )
 
 
 @_atomic
-def request_loan(user_id: int, sacco_id: int, principal: int) -> LoanView:
+def request_loan(
+    user_id: int, sacco_id: int, principal: int, term_months: int | None = None
+) -> LoanView:
     user = db.session.get(User, user_id)
     actor = _membership(user_id, sacco_id)
     _require_sacco_active(sacco_id)
@@ -129,32 +140,44 @@ def request_loan(user_id: int, sacco_id: int, principal: int) -> LoanView:
         select(SavingsAccount).where(SavingsAccount.membership_id == actor.id)
     ).scalar_one_or_none()
     if account is None:
-        raise Conflict("An active savings account is required before requesting a loan.")
+        raise Conflict(
+            "An active savings account is required before requesting a loan."
+        )
 
+    open_loan = db.session.execute(
+        select(Loan.id).where(
+            Loan.membership_id == actor.id, Loan.status.in_(OPEN_STATUSES)
+        )
+    ).first()
+    if open_loan is not None:
+        raise Conflict("You already have an open loan.")
+
+    # Read only: a SACCO without a settings row runs on the defaults.
     settings = db.session.get(SaccoSettings, sacco_id)
-    if settings is None:
-        settings = SaccoSettings(sacco_id=sacco_id)
-        db.session.add(settings)
-        db.session.flush()
-
-    if settings.loan_cap > 0 and principal > settings.loan_cap:
-        raise Conflict(f"Loan principal exceeds SACCO cap of {settings.loan_cap}.")
-    max_by_savings = account.balance * settings.savings_multiple
-    if principal > max_by_savings:
-        raise Conflict("Loan principal exceeds allowed savings multiple.")
-
-    required_approvals = getattr(settings, "required_approvals", 2)
+    cap = settings.loan_cap if settings else DEFAULT_LOAN_CAP
+    multiple = settings.savings_multiple if settings else DEFAULT_SAVINGS_MULTIPLE
+    above = settings.required_approvals if settings else DEFAULT_REQUIRED_APPROVALS
+    # Within the cap and the savings multiple: one approval. Above either: the
+    # SACCO's higher count. A cap of 0 sends every loan to the higher count.
+    within = principal <= cap and principal <= multiple * account.balance
+    required_approvals = 1 if within else above
 
     loan = Loan(
         sacco_id=sacco_id,
         membership_id=actor.id,
         principal=principal,
+        term_months=term_months,
         required_approvals=required_approvals,
         status=LoanStatus.REQUESTED,
         requested_by_membership_id=actor.id,
     )
     db.session.add(loan)
-    db.session.flush()
+    try:
+        db.session.flush()
+    except IntegrityError as exc:
+        if _constraint(exc) == "uq_loans_one_open_per_member":
+            raise Conflict("You already have an open loan.") from exc
+        raise
     db.session.refresh(loan)
 
     audit_log.record(sacco_id, user_id, "loan.request", f"loan:{loan.id}")
@@ -165,7 +188,11 @@ def request_loan(user_id: int, sacco_id: int, principal: int) -> LoanView:
 
 @_atomic
 def decide_loan(
-    user_id: int, loan_id: int, step: int, decision: LoanDecisionKind
+    user_id: int,
+    loan_id: int,
+    step: int,
+    decision: LoanDecisionKind,
+    reason: str | None = None,
 ) -> LoanView:
     loan = _lock_loan(loan_id)
     user = db.session.get(User, user_id)
@@ -180,6 +207,8 @@ def decide_loan(
         raise Conflict(
             f"Cannot record a decision when loan status is {loan.status.value}."
         )
+    if decision is LoanDecisionKind.REJECT and not (reason or "").strip():
+        raise Conflict("A rejection needs a reason.")
 
     existing_decisions = (
         db.session.execute(
@@ -204,6 +233,7 @@ def decide_loan(
         step=step,
         decision=decision,
         decided_by_membership_id=actor.id,
+        reason=reason,
     )
     db.session.add(row)
     try:
@@ -305,6 +335,7 @@ def disburse_loan(user_id: int, loan_id: int, reference: str) -> LoanView:
     loan.status = LoanStatus.DISBURSED
     loan.disbursed_by_membership_id = actor.id
     loan.disbursed_at = func.now()
+    loan.disbursement_transaction_id = tx.id
     db.session.flush()
     db.session.refresh(loan)
 
@@ -330,7 +361,7 @@ def repay_loan(
 
     if not can(user, loan.sacco_id, "loan.repay"):
         raise Forbidden("You are not allowed to repay loans.")
-    if actor.role is MembershipRole.MEMBER and actor.id != loan.membership_id:
+    if actor.id != loan.membership_id and not can(user, loan.sacco_id, "loan.view"):
         raise NotFound("Not found.")
     if loan.status is not LoanStatus.DISBURSED:
         raise Conflict("Only disbursed loans can be repaid.")
@@ -364,7 +395,9 @@ def repay_loan(
     ).scalar_one()
 
     if amount > account.balance:
-        raise Conflict("Insufficient funds in savings account.", code=INSUFFICIENT_FUNDS)
+        raise Conflict(
+            "Insufficient funds in savings account.", code=INSUFFICIENT_FUNDS
+        )
 
     tx = Transaction(
         sacco_id=loan.sacco_id,
