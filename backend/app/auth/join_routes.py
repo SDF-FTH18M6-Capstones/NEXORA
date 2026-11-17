@@ -1,4 +1,5 @@
 """Join, set PIN, circle login. Section 2."""
+
 from datetime import UTC, datetime
 
 from flask import current_app, g, jsonify, request
@@ -59,8 +60,6 @@ def join():
         select(SaccoMembership)
         .where(
             SaccoMembership.phone == phone,
-            SaccoMembership.status == MembershipStatus.INVITED,
-            SaccoMembership.user_id.is_(None),
         )
         .order_by(SaccoMembership.id.desc())
         .limit(1)
