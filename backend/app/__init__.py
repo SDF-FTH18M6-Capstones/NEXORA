@@ -23,8 +23,9 @@ saccos_bp = Blueprint("saccos", __name__, url_prefix="/saccos")
 savings_bp = Blueprint("savings", __name__, url_prefix="/savings")
 admin_bp = Blueprint("admin", __name__, url_prefix="/admin")
 members_bp = Blueprint("members", __name__, url_prefix="/members")
+loans_bp = Blueprint("loans", __name__, url_prefix="/loans")
 
-BLUEPRINTS = (auth_bp, saccos_bp, savings_bp, admin_bp, members_bp)
+BLUEPRINTS = (auth_bp, saccos_bp, savings_bp, admin_bp, members_bp, loans_bp)
 MAX_ID = 2**31 - 1  # ids are 32-bit integers in Postgres
 
 PRODUCTION = "production"
@@ -103,6 +104,8 @@ def create_app(config_class=Config):
 
     # The ledger and history routes import from the savings routes, so they come after.
     from app.ledger import routes as ledger_routes  # noqa: F401
+    from app.ledger.reconcile import reconcile_command
+    from app.loans import routes as loans_routes  # noqa: F401
     from app.members import routes as members_routes  # noqa: F401
     from app.models import (  # noqa: F401
         access,
@@ -129,6 +132,7 @@ def create_app(config_class=Config):
         app.register_blueprint(blueprint, url_prefix=prefix)
 
     _register_health(app)
+    app.cli.add_command(reconcile_command)
 
     return app
 

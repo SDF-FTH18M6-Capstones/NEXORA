@@ -1,24 +1,13 @@
-"""Reversals: correct a ledger entry by appending its opposite.
-
-History is never edited. A reversal is a new row of the opposite type, for the
-same account and amount, whose `reverses_id` points at the original. The database
-allows one reversal per entry and checks the opposite/same-amount rule.
-
-Rules enforced here:
-- only active admins or staff of the SACCO can reverse (a member cannot);
-- another SACCO's entry answers 404, so its existence is not revealed;
-- an entry that is itself a reversal cannot be reversed. To redo money that was
-  reversed, post a fresh deposit or withdrawal;
-- an entry can be reversed once;
-- a reversal that would take the balance below zero is refused (409).
-"""
+"""Reversals: correct a ledger entry by appending its opposite."""
 
 from dataclasses import dataclass
 from datetime import datetime
 
+from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 
 from app.audit import log as audit_log
+from app.errors import DUPLICATE_REFERENCE, INSUFFICIENT_FUNDS
 from app.extensions import db
 from app.ledger import service as ledger
 from app.models.ledger import Transaction, TransactionType
@@ -30,6 +19,8 @@ from app.savings.service import Conflict, NotFound, _atomic
 OPPOSITE = {
     TransactionType.DEPOSIT: TransactionType.WITHDRAWAL,
     TransactionType.WITHDRAWAL: TransactionType.DEPOSIT,
+    TransactionType.INTEREST: TransactionType.FEE,
+    TransactionType.FEE: TransactionType.INTEREST,
 }
 
 
@@ -41,7 +32,7 @@ class ReversalView:
     type: str
     amount: int
     reference: str
-    balance: int  # the account balance right after the reversal
+    balance: int
     created_at: datetime
     replayed: bool
 
@@ -69,8 +60,6 @@ def reverse_transaction(
         raise NotFound("Not found.")
     actor: SaccoMembership = savings._actor(user_id, original.sacco_id)
 
-    # Same lock as deposits and withdrawals, so a reversal and a withdrawal on
-    # one account cannot interleave.
     account: SavingsAccount = ledger.lock_account(original.savings_account_id)
     savings._require_not_own_account(actor, account)
     savings._require_sacco_active(account.sacco_id)
@@ -81,12 +70,19 @@ def reverse_transaction(
     if original.reverses_id is not None:
         raise Conflict("A reversal cannot be reversed. Post a new entry instead.")
 
+    dup_ref = db.session.execute(
+        select(Transaction).where(
+            Transaction.sacco_id == account.sacco_id,
+            Transaction.reference == reference,
+        )
+    ).scalar_one_or_none()
+    if dup_ref is not None:
+        raise Conflict(
+            "That reference has already been used.", code=DUPLICATE_REFERENCE
+        )
+
     existing = ledger.reversal_of(original.id)
     if existing is not None:
-        if existing.reference == reference:
-            view = _view(existing, account.balance, replayed=True)
-            db.session.rollback()  # nothing to write; release the lock
-            return view
         raise Conflict("This transaction has already been reversed.")
 
     entry = Transaction(
@@ -100,13 +96,20 @@ def reverse_transaction(
     )
     db.session.add(entry)
     try:
-        db.session.flush()  # the trigger applies it to the balance
+        db.session.flush()
     except IntegrityError as exc:
         name = savings._constraint(exc)
         if name == "ck_savings_accounts_balance_non_negative":
-            raise Conflict("Insufficient funds to reverse this transaction.") from exc
-        if name in ("uq_transactions_sacco_reference", "transactions_reverses_id_key"):
-            raise Conflict("That reference is already used.") from exc
+            raise Conflict(
+                "Insufficient funds to reverse this transaction.",
+                code=INSUFFICIENT_FUNDS,
+            ) from exc
+        if name == "uq_transactions_sacco_reference":
+            raise Conflict(
+                "That reference has already been used.", code=DUPLICATE_REFERENCE
+            ) from exc
+        if name == "transactions_reverses_id_key":
+            raise Conflict("This transaction has already been reversed.") from exc
         raise
     db.session.refresh(entry)
     db.session.refresh(account)
