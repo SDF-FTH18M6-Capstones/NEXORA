@@ -25,6 +25,7 @@ class MembershipRole(enum.Enum):
 class MembershipStatus(enum.Enum):
     ACTIVE = "active"
     INACTIVE = "inactive"
+    INVITED = "invited"
 
 
 class SaccoMembership(db.Model):
@@ -32,13 +33,20 @@ class SaccoMembership(db.Model):
     __table_args__ = (
         UniqueConstraint("user_id", "sacco_id", name="uq_membership_user_sacco"),
         UniqueConstraint("id", "sacco_id", name="uq_membership_id_sacco"),
+        UniqueConstraint("sacco_id", "phone", name="uq_membership_sacco_phone"),
         CheckConstraint(
             "pin_attempts >= 0", name="ck_memberships_pin_attempts_non_negative"
+        ),
+        CheckConstraint(
+            "user_id IS NOT NULL OR phone IS NOT NULL",
+            name="ck_membership_user_or_phone",
         ),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
+    user_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id"), nullable=True
+    )
     sacco_id: Mapped[int] = mapped_column(
         ForeignKey("saccos.id"), nullable=False, index=True
     )
@@ -60,6 +68,7 @@ class SaccoMembership(db.Model):
         default=MembershipStatus.ACTIVE,
         server_default=MembershipStatus.ACTIVE.value,
     )
+    phone: Mapped[str | None] = mapped_column(String(20), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
