@@ -30,7 +30,7 @@ If your app role is not `postgres`, add `OWNER <role>` to each statement.
 
 ```bash
 cd backend
-flask --app app db upgrade                  # creates the tables (migrations 0001 to 0018)
+flask --app app db upgrade                  # creates the tables (migrations 0001 to 0020)
 cd .. && python backend/scripts/seed.py     # demo data; safe to run twice
 cd backend && python app.py                 # API on http://localhost:5000
 ```
@@ -43,7 +43,7 @@ The seed prints every seeded email. All of them share the password `Dev-Seed-Pas
 |---|---|---|
 | Platform owners | `owner@example.com`, `owner2@example.com` | run the whole platform (at least two must always remain) |
 | Alpha admin | `alpha-admin@example.com` | admin of Alpha SACCO |
-| Alpha staff | `alpha-staff@example.com` | legacy staff role with the secretary title (see `docs/parked.md`) |
+| Alpha secretary | `alpha-staff@example.com` | secretary: reads members, accounts, reports and the audit log; cannot move money |
 | Alpha loans officers | `alpha-loans@example.com`, `alpha-loans2@example.com` | approve loan steps (one step each) |
 | Alpha finance officer | `alpha-finance@example.com` | posts money, disburses loans |
 | Alpha members | `alpha-m1@example.com` to `alpha-m3@example.com` | savers |

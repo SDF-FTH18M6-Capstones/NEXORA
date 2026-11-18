@@ -51,6 +51,16 @@ def digest_code(membership_id: int, code: str, secret: str) -> str:
     return hmac.new(secret.encode(), message, hashlib.sha256).hexdigest()
 
 
+def burn_codes(membership_id: int) -> None:
+    """Spend every unused code of a membership (counted as out of attempts).
+    The caller commits."""
+    db.session.execute(
+        update(JoinCode)
+        .where(JoinCode.membership_id == membership_id, JoinCode.used_at.is_(None))
+        .values(attempts=MAX_ATTEMPTS)
+    )
+
+
 def issue_code(
     membership_id: int,
     created_by_user_id: int | None,
@@ -64,11 +74,7 @@ def issue_code(
     gives an attacker a fresh set of five guesses.
     """
     now = now or _now()
-    db.session.execute(
-        update(JoinCode)
-        .where(JoinCode.membership_id == membership_id, JoinCode.used_at.is_(None))
-        .values(attempts=MAX_ATTEMPTS)
-    )
+    burn_codes(membership_id)
     code = generate_code()
     row = JoinCode(
         membership_id=membership_id,

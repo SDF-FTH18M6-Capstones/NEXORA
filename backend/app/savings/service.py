@@ -19,13 +19,12 @@ from app.errors import DUPLICATE_REFERENCE, INSUFFICIENT_FUNDS, NOT_ALLOWED, NOT
 from app.extensions import db
 from app.ledger.service import lock_account
 from app.models.ledger import Transaction, TransactionType
-from app.models.membership import MembershipRole, MembershipStatus, SaccoMembership
+from app.models.membership import MembershipStatus, SaccoMembership
 from app.models.sacco import Sacco, SaccoStatus
 from app.models.savings import SavingsAccount
 from app.models.user import User
 from app.security.permissions import can
 
-POSTING_ROLES = (MembershipRole.SACCO_ADMIN, MembershipRole.STAFF)
 DEBIT_TYPES = (TransactionType.WITHDRAWAL, TransactionType.FEE)
 
 
@@ -43,6 +42,7 @@ class SavingsError(Exception):
 
 
 class NotFound(SavingsError):
+    # Also used for another SACCO's record, so its existence is never revealed.
     status = 404
     code = NOT_FOUND
 
@@ -76,9 +76,9 @@ class PostedTransaction:
     type: str
     amount: int
     reference: str
-    balance: int
+    balance: int  # the account balance now (right after the entry when it is new)
     created_at: datetime
-    replayed: bool
+    replayed: bool  # True when this reference had already been posted
 
 
 def _atomic(fn):
@@ -100,7 +100,14 @@ def _constraint(exc: IntegrityError) -> str | None:
     return getattr(diag, "constraint_name", None)
 
 
-def _actor(user_id: int, sacco_id: int) -> SaccoMembership:
+def _actor(
+    user_id: int, sacco_id: int, permission: str = "savings.post"
+) -> SaccoMembership:
+    """The caller's active membership here, if it holds `permission`.
+
+    Decided by `can()` alone (job titles), never by the legacy role column: a
+    "staff" membership holding the secretary title cannot move money.
+    """
     actor = db.session.execute(
         select(SaccoMembership).where(
             SaccoMembership.user_id == user_id, SaccoMembership.sacco_id == sacco_id
@@ -109,8 +116,8 @@ def _actor(user_id: int, sacco_id: int) -> SaccoMembership:
     if actor is None:
         raise NotFound("Not found.")
     user = db.session.get(User, user_id)
-    if actor.status is not MembershipStatus.ACTIVE or (
-        actor.role not in POSTING_ROLES and not can(user, sacco_id, "savings.post")
+    if actor.status is not MembershipStatus.ACTIVE or not can(
+        user, sacco_id, permission
     ):
         raise Forbidden("You are not allowed to do this.")
     return actor
@@ -135,6 +142,7 @@ def _is_loan_entry(transaction_id: int) -> bool:
 
 
 def _require_sacco_active(sacco_id: int) -> None:
+    # A suspension must also stop access tokens that were issued before it.
     sacco = db.session.get(Sacco, sacco_id)
     if sacco is None or sacco.status is SaccoStatus.SUSPENDED:
         raise Suspended(SUSPENDED_MESSAGE)
@@ -182,6 +190,9 @@ def _post(
         raise NotFound("Not found.")
     actor = _actor(user_id, account.sacco_id)
 
+    # Lock the account row. A second request for this account waits here until
+    # the first commits, then reads the new balance, so two withdrawals that
+    # together exceed the balance cannot both succeed.
     account = lock_account(account_id)
 
     _require_not_own_account(actor, account)
@@ -237,7 +248,7 @@ def _post(
     )
     db.session.add(tx)
     try:
-        db.session.flush()
+        db.session.flush()  # the database trigger applies the row to the balance
     except IntegrityError as exc:
         name = _constraint(exc)
         if name == "uq_transactions_sacco_reference":

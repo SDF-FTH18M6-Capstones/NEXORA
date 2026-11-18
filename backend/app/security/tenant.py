@@ -65,7 +65,9 @@ def sacco_access(user: User, sacco_id: int, roles=ADMIN_ONLY) -> Access:
     """Open `sacco_id` for `user`, or raise AccessDenied."""
     # The URL converter (app/__init__.py) only lets through ids Postgres can hold.
     sacco = db.session.get(Sacco, sacco_id)
-    if user.is_platform_owner:
+    from app.security.permissions import is_platform_owner
+
+    if is_platform_owner(user):
         if sacco is None:
             raise AccessDenied("Not found.", 404)
         return Access(user, sacco, None)

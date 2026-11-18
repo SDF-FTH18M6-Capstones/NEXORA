@@ -3,7 +3,7 @@
 Revision ID: 0018
 Revises: 0017
 
-The rules in docs/schema.sql that the earlier migrations did not hold yet:
+The agreed rules (docs/roles-permissions.md) that earlier migrations did not hold:
 
 * a SACCO admin never approves loans and cannot read the audit log, and a
   secretary cannot manage members (role_permissions rows removed);
@@ -64,6 +64,19 @@ def upgrade():
         "loans",
         "term_months IS NULL OR term_months > 0",
     )
+    duplicates = op.get_bind().execute(
+        sa.text(
+            "SELECT membership_id FROM loans "
+            "WHERE status IN ('requested', 'approved', 'disbursed') "
+            "GROUP BY membership_id HAVING count(*) > 1"
+        )
+    ).scalars().all()
+    if duplicates:
+        raise RuntimeError(
+            "Migration 0018 allows one open loan per member, but these memberships "
+            f"hold more than one: {sorted(duplicates)}. Close or reject the extra "
+            "loans, then run the upgrade again."
+        )
     op.create_index(
         "uq_loans_one_open_per_member",
         "loans",

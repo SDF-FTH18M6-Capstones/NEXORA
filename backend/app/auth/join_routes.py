@@ -60,6 +60,9 @@ def join():
         select(SaccoMembership)
         .where(
             SaccoMembership.phone == phone,
+            # Only a live invitation can be joined: a cancelled or finished
+            # membership answers like an unknown phone.
+            SaccoMembership.status == MembershipStatus.INVITED,
         )
         .order_by(SaccoMembership.id.desc())
         .limit(1)
@@ -102,7 +105,9 @@ def join():
         return error_response(409, "You are already a member of this SACCO.")
     _audit(membership, "member.join", "invited -> linked")
     db.session.commit()
-    token = _serializer().dumps({"m": membership.id, "u": user.id})
+    # The token names the code it came from: a re-invite issues a newer code,
+    # so a token from before the cancel can no longer finish the join.
+    token = _serializer().dumps({"m": membership.id, "u": user.id, "c": row.id})
     return jsonify(setup_token=token, membership_id=membership.id)
 
 
@@ -123,6 +128,17 @@ def join_pin():
     if membership.status is not MembershipStatus.INVITED:
         db.session.rollback()
         return error_response(409, "This membership is already set up.")
+    newest = db.session.execute(
+        select(JoinCode)
+        .where(JoinCode.membership_id == membership.id)
+        .order_by(JoinCode.id.desc())
+        .limit(1)
+    ).scalar_one_or_none()
+    if newest is None or newest.id != data.get("c") or newest.used_at is None:
+        db.session.rollback()
+        return error_response(
+            401, "The setup token is invalid or expired. Join again with your code."
+        )
     try:
         set_pin(membership, str(body.get("pin", "")))
     except ValueError as exc:

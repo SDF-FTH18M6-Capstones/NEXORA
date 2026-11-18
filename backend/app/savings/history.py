@@ -14,6 +14,7 @@ from app.extensions import db
 from app.models.ledger import Transaction
 from app.models.membership import MembershipRole
 from app.models.savings import SavingsAccount
+from app.security.permissions import can
 from app.security.tenant import AccessDenied, current_user, sacco_access
 
 DEFAULT_PER_PAGE = 20
@@ -45,7 +46,10 @@ def _open_account(user, account_id: int) -> SavingsAccount:
         raise AccessDenied("Not found.", 404)
     access = sacco_access(user, account.sacco_id, tuple(MembershipRole))
     mine = access.membership
-    if mine and mine.role is MembershipRole.MEMBER and account.membership_id != mine.id:
+    # Your own account, or every account with savings.view_all (admin, secretary,
+    # finance officer). Decided by `can()`, never by the legacy role column.
+    own = mine is not None and account.membership_id == mine.id
+    if not own and not can(user, account.sacco_id, "savings.view_all"):
         raise AccessDenied("Not found.", 404)  # someone else's account
     return account
 

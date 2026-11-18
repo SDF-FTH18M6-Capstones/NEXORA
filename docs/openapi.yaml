@@ -350,7 +350,8 @@ components:
           type: string
         balance:
           type: integer
-          description: Account balance right after this entry.
+          description: The account balance now (right after the entry when it is new; the current balance
+            on a replay).
         created_at:
           type: string
           format: date-time
@@ -561,7 +562,7 @@ paths:
       description: |-
         **Who:** a signed-in user holding a join code.
 
-        The code is six digits, valid 15 minutes and usable once. Five wrong entries burn it. On success the phone is linked to the user and a setup token (valid 10 minutes) is returned for setting the circle PIN.
+        The code is six digits, valid for the SACCO's `join_code_ttl_minutes` (15 by default) and usable once. Five wrong entries burn it. Only a membership that is currently `invited` can be joined; a cancelled invite answers like a wrong code. On success the phone is linked to the user and a setup token (valid 10 minutes, tied to this code) is returned for setting the circle PIN; a re-invite makes older setup tokens invalid.
       security:
       - bearerAuth: []
       requestBody:
@@ -1582,15 +1583,19 @@ paths:
       security:
       - bearerAuth: []
     post:
-      summary: Add a registered user to a SACCO
+      summary: Add a registered user, or invite a phone, to a SACCO
       description: '**Who:** SACCO admin or platform owner (only the platform owner may add an admin)
 
 
         **Rate limit:** 30 per minute.
 
 
-        404 if no user has that email. 409 if the user is already a member, **or has not verified their
-        email yet** (`That user has not verified their email yet.`).'
+        Two forms. **Email:** adds a registered user (status `active` or `inactive`; `invited` is 400).
+        404 if no user has that email; 409 if the user is already a member, or has not verified their
+        email yet. **Phone** (send `phone` and no `email`): creates an `invited` membership and answers 201
+        with a one-time `join_code` and `expires_at`, shown once; the person joins with
+        POST /auth/join. 409 if the phone was already invited to this SACCO. Every new membership
+        gets the job title its role implies (staff: secretary).'
       responses:
         '201':
           description: Added.
@@ -1652,6 +1657,10 @@ paths:
               properties:
                 email:
                   type: string
+                  description: Email form. Send this or `phone`.
+                phone:
+                  type: string
+                  description: Phone form, for example +254700000123. Send this or `email`.
                 role:
                   type: string
                   enum:
@@ -1661,12 +1670,11 @@ paths:
                   default: member
                 status:
                   type: string
+                  description: Email form only.
                   enum:
                   - active
                   - inactive
                   default: active
-              required:
-              - email
   /api/v1/saccos/{sacco_id}/members/{membership_id}:
     parameters:
     - $ref: '#/components/parameters/sacco_id'
@@ -1726,12 +1734,15 @@ paths:
         **Rate limit:** 30 per minute.
 
 
-        Send `role` and/or `status`. Writes an audit row. Nobody is moved back to `invited`, and an invited
-        member becomes active only by joining with their code (both 409). Making or removing an admin moves
+        Send `role` and/or `status`. Writes an audit row. An active member never goes back to `invited`;
+        an inactive phone member can be invited again (`status: invited`), which answers with a fresh
+        `join_code` and kills the old ones. An invited or PIN-less phone member becomes active only by
+        joining with their code (409). Setting `inactive` kills unused join codes. Making or removing an admin moves
         the `circle_admin` title with the role.'
       responses:
         '200':
-          description: Updated member.
+          description: Updated member. A re-invite (`status` inactive -> invited) also returns
+            `join_code` and `expires_at`, shown once.
           content:
             application/json:
               schema:
@@ -1799,10 +1810,11 @@ paths:
                   enum:
                   - active
                   - inactive
+                  - invited
   /api/v1/savings/accounts:
     post:
       summary: Open a savings account for a member
-      description: '**Who:** SACCO staff or admin
+      description: '**Who:** a member of this SACCO holding `savings.post` (SACCO admin or finance officer)
 
 
         **Rate limit:** 30 per minute.
@@ -1911,7 +1923,7 @@ paths:
     - $ref: '#/components/parameters/account_id'
     get:
       summary: Get one account and its balance
-      description: '**Who:** the account''s owner, SACCO staff or admin, platform owner
+      description: '**Who:** the account''s owner, `savings.view_all` (SACCO admin, secretary, finance officer), platform owner
 
 
         **Rate limit:** 120 per minute.
@@ -1963,7 +1975,7 @@ paths:
     - $ref: '#/components/parameters/account_id'
     post:
       summary: Post a deposit
-      description: '**Who:** SACCO staff or admin
+      description: '**Who:** a member of this SACCO holding `savings.post` (SACCO admin or finance officer)
 
 
         **Rate limit:** 20 per minute.
@@ -1971,7 +1983,7 @@ paths:
 
         `reference` is required. A new entry answers **201**; repeating the same reference with the same
         request answers **200** with `replayed: true`; the same reference with a different request is
-        409. Staff and admins post money, members cannot (403), and nobody may post on their own account
+        409. Holders of `savings.post` (admin, finance officer) post money, others cannot (403), and nobody may post on their own account
         (403). Amounts are integers in minor units.'
       responses:
         '201':
@@ -2055,7 +2067,7 @@ paths:
     - $ref: '#/components/parameters/account_id'
     post:
       summary: Post a withdrawal
-      description: '**Who:** SACCO staff or admin
+      description: '**Who:** a member of this SACCO holding `savings.post` (SACCO admin or finance officer)
 
 
         **Rate limit:** 20 per minute.
@@ -2063,7 +2075,7 @@ paths:
 
         Insufficient funds is 409 `Insufficient funds.`. `reference` is required. A new entry answers
         **201**; repeating the same reference with the same request answers **200** with `replayed: true`;
-        the same reference with a different request is 409. Staff and admins post money, members cannot
+        the same reference with a different request is 409. Holders of `savings.post` (admin, finance officer) post money, others cannot
         (403), and nobody may post on their own account (403). Amounts are integers in minor units.'
       responses:
         '201':
@@ -2147,7 +2159,7 @@ paths:
     - $ref: '#/components/parameters/account_id'
     get:
       summary: An account's ledger history, newest first
-      description: '**Who:** the account''s owner, SACCO staff or admin, platform owner
+      description: '**Who:** the account''s owner, `savings.view_all` (SACCO admin, secretary, finance officer), platform owner
 
 
         **Rate limit:** 120 per minute.'
@@ -2216,7 +2228,7 @@ paths:
     - $ref: '#/components/parameters/transaction_id'
     post:
       summary: Reverse a ledger entry
-      description: '**Who:** SACCO staff or admin
+      description: '**Who:** a member of this SACCO holding `savings.reverse` (SACCO admin or finance officer)
 
 
         **Rate limit:** 20 per minute.
@@ -2225,9 +2237,9 @@ paths:
         A reversal is a new opposite entry; nobody may reverse an entry on their own account (403). An
         entry can be reversed once, and a reversal cannot be reversed (409). `reference` is required.
         A new entry answers **201**; repeating the same reference with the same request answers **200**
-        with `replayed: true`; the same reference with a different request is 409. Staff and admins post
-        money, members cannot (403), and nobody may post on their own account (403). Amounts are integers
-        in minor units.'
+        with `replayed: true`; the same reference with a different request is 409. Holders of
+        `savings.reverse` (admin, finance officer) reverse entries, others cannot (403). Amounts are
+        integers in minor units.'
       responses:
         '201':
           description: The new opposite entry.
@@ -2306,7 +2318,7 @@ paths:
     - $ref: '#/components/parameters/to'
     get:
       summary: SACCO totals
-      description: '**Who:** SACCO staff or admin, platform owner
+      description: '**Who:** `report.view` (SACCO admin, secretary, finance or loans officer), platform owner
 
 
         **Rate limit:** 120 per minute.'
@@ -2362,7 +2374,7 @@ paths:
     - $ref: '#/components/parameters/sacco_id'
     get:
       summary: Per-member activity
-      description: '**Who:** SACCO staff or admin, platform owner
+      description: '**Who:** `report.view` (SACCO admin, secretary, finance or loans officer), platform owner
 
 
         **Rate limit:** 120 per minute.'
@@ -2429,7 +2441,7 @@ paths:
     - $ref: '#/components/parameters/sacco_id'
     get:
       summary: List a SACCO's accounts with balances
-      description: '**Who:** SACCO staff or admin, platform owner
+      description: '**Who:** `savings.view_all` (SACCO admin, secretary, finance officer), platform owner
 
 
         **Rate limit:** 120 per minute.'
@@ -2976,7 +2988,7 @@ paths:
     - $ref: '#/components/parameters/loan_id'
     post:
       summary: Approve or reject one step
-      description: '**Who:** admin or loans officer (`loan.approve`), never the borrower, and a different
+      description: '**Who:** loans officer (`loan.approve`; a SACCO admin never approves), never the borrower, and a different
         officer for each step. Steps go in order; the last required approval sets `approved`, a rejection
         ends the loan.'
       responses:

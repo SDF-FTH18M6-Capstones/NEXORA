@@ -12,6 +12,7 @@ rules their SACCO runs by; only the platform owner changes them.
 
 from flask import g, jsonify
 from sqlalchemy import delete, select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from app import saccos_bp
 from app.auth.guards import platform_owner_required
@@ -24,7 +25,7 @@ from app.models.audit import AuditLog
 from app.models.loan import SaccoSettings
 from app.models.membership import MembershipRole, MembershipStatus, SaccoMembership
 from app.models.sacco import Sacco
-from app.security.permissions import ROLE_NAMES, _role_codes
+from app.security.permissions import ROLE_NAMES, _role_codes, is_platform_owner
 from app.security.tenant import sacco_scoped
 
 OWNER_ONLY_TITLE = "circle_admin"
@@ -109,7 +110,7 @@ def set_roles(sacco_id, membership_id):
     membership = _membership(sacco_id, membership_id, lock=True)
     if membership is None:
         return error_response(404, "Member not found.")
-    owner = g.access.user.is_platform_owner
+    owner = is_platform_owner(g.access.user)
     if membership.user_id == g.access.user.id:
         db.session.rollback()
         return error_response(403, "You cannot change your own roles.")
@@ -168,14 +169,20 @@ def set_roles(sacco_id, membership_id):
     return jsonify(membership_id=membership.id, roles=sorted(wanted))
 
 
+def _default_values(sacco_id: int) -> dict:
+    """The one place the settings defaults live (the loan service reads the same
+    numbers when a SACCO has no row)."""
+    return {
+        "sacco_id": sacco_id,
+        "loan_cap": 0,
+        "savings_multiple": 3,
+        "join_code_ttl_minutes": 15,
+        "required_approvals": 2,
+    }
+
+
 def _defaults(sacco_id: int) -> SaccoSettings:
-    return SaccoSettings(
-        sacco_id=sacco_id,
-        loan_cap=0,
-        savings_multiple=3,
-        join_code_ttl_minutes=15,
-        required_approvals=2,
-    )
+    return SaccoSettings(**_default_values(sacco_id))
 
 
 def _settings_json(sacco_id: int, row: SaccoSettings | None) -> dict:
@@ -219,10 +226,15 @@ def update_settings(sacco_id):
     if db.session.get(Sacco, sacco_id) is None:
         return error_response(404, "Not found.")
 
-    row = db.session.get(SaccoSettings, sacco_id, with_for_update=True)
-    if row is None:
-        row = _defaults(sacco_id)
-        db.session.add(row)
+    # Create the row if missing without racing a concurrent first write.
+    db.session.execute(
+        pg_insert(SaccoSettings)
+        .values(_default_values(sacco_id))
+        .on_conflict_do_nothing(index_elements=["sacco_id"])
+    )
+    row = db.session.get(
+        SaccoSettings, sacco_id, with_for_update=True, populate_existing=True
+    )
     for field, value in changes.items():
         setattr(row, field, value)
     _audit(

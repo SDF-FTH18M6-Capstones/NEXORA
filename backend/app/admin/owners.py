@@ -1,6 +1,6 @@
 """Platform owners: list, grant, revoke. Platform owners only.
 
-Rules from the agreed schema (docs/schema.sql):
+Rules from the agreed schema (docs/roles-permissions.md, section 6):
 
 * only an active platform owner grants or revokes platform ownership;
 * nobody revokes themselves;

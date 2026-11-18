@@ -51,9 +51,11 @@ PERMISSIONS: dict[str, str] = {
     "loan.repay": "Repay a loan",
     "audit.view": "Read the audit trail",
     "dashboard.view": "See the dashboard for the caller's role",
+    "report.view": "Read the SACCO's reports",
+    "savings.view_all": "Read every savings account in the SACCO",
 }
 
-# The five job titles, each with the permissions it holds. As in docs/schema.sql:
+# The five job titles, each with the permissions it holds (docs/roles-permissions.md):
 # a SACCO admin never approves loans and cannot read the audit log; the
 # secretary is read-only and the only SACCO role that reads the audit log.
 ROLE_PERMISSIONS: dict[str, frozenset[str]] = {
@@ -66,6 +68,8 @@ ROLE_PERMISSIONS: dict[str, frozenset[str]] = {
             "savings.post",
             "savings.reverse",
             "loan.view",
+            "report.view",
+            "savings.view_all",
             "dashboard.view",
         }
     ),
@@ -76,6 +80,8 @@ ROLE_PERMISSIONS: dict[str, frozenset[str]] = {
             "savings.view",
             "loan.view",
             "audit.view",
+            "report.view",
+            "savings.view_all",
             "dashboard.view",
         }
     ),
@@ -88,6 +94,8 @@ ROLE_PERMISSIONS: dict[str, frozenset[str]] = {
             "loan.view",
             "loan.disburse",
             "loan.repay",
+            "report.view",
+            "savings.view_all",
             "dashboard.view",
         }
     ),
@@ -98,6 +106,7 @@ ROLE_PERMISSIONS: dict[str, frozenset[str]] = {
             "savings.view",
             "loan.view",
             "loan.approve",
+            "report.view",
             "dashboard.view",
         }
     ),
@@ -113,7 +122,7 @@ ROLE_PERMISSIONS: dict[str, frozenset[str]] = {
 }
 
 # Never held by a SACCO admin membership, even through another title.
-ADMIN_NEVER = frozenset({"loan.approve", "audit.view"})
+ADMIN_NEVER = frozenset({"loan.approve", "loan.disburse", "audit.view"})
 
 ROLE_NAMES = {
     "circle_admin": "Circle administrator",
