@@ -1,4 +1,18 @@
-"""Reversals: correct a ledger entry by appending its opposite."""
+"""Reversals: correct a ledger entry by appending its opposite.
+
+History is never edited. A reversal is a new row of the opposite type, for the
+same account and amount, whose `reverses_id` points at the original. The database
+allows one reversal per entry and checks the opposite/same-amount rule.
+
+Rules enforced here:
+- only active members holding `savings.reverse` can reverse (a member cannot);
+- another SACCO's entry answers 404, so its existence is not revealed;
+- an entry that is itself a reversal cannot be reversed. To redo money that was
+  reversed, post a fresh deposit or withdrawal;
+- loan disbursements and repayments cannot be reversed here;
+- an entry can be reversed once; retrying the same reversal returns it;
+- a reversal that would take the balance below zero is refused (409).
+"""
 
 from dataclasses import dataclass
 from datetime import datetime
@@ -32,7 +46,7 @@ class ReversalView:
     type: str
     amount: int
     reference: str
-    balance: int
+    balance: int  # the account balance now (right after the reversal when new)
     created_at: datetime
     replayed: bool
 
@@ -85,8 +99,12 @@ def reverse_transaction(
     original = ledger.get_entry(transaction_id)
     if original is None:
         raise NotFound("Not found.")
-    actor: SaccoMembership = savings._actor(user_id, original.sacco_id)
+    actor: SaccoMembership = savings._actor(
+        user_id, original.sacco_id, "savings.reverse"
+    )
 
+    # Same lock as deposits and withdrawals, so a reversal and a withdrawal on
+    # one account cannot interleave.
     account: SavingsAccount = ledger.lock_account(original.savings_account_id)
     savings._require_not_own_account(actor, account)
     savings._require_sacco_active(account.sacco_id)

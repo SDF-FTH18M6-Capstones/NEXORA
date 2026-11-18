@@ -17,7 +17,9 @@ def check_sacco_not_suspended(user) -> str | None:
     suspended. The platform owner is never blocked: they reactivate SACCOs.
     The message does not name the SACCO.
     """
-    if user is None or user.is_platform_owner:
+    from app.security.permissions import is_platform_owner
+
+    if user is None or is_platform_owner(user):
         return None
     rows = db.session.execute(
         db.select(SaccoMembership.status, Sacco.status)

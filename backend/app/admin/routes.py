@@ -10,18 +10,15 @@ from app.admin import audit, reports
 from app.audit.log import MAX_ACTION_LENGTH
 from app.auth.limits import read_limit
 from app.errors import error_response
-from app.models.membership import MembershipRole
 from app.savings.accounts import list_sacco_accounts
 from app.savings.history import page_params
+from app.security.permissions import is_platform_owner
 from app.security.tenant import (
-    ADMIN_ONLY,
     AccessDenied,
     current_user,
     permission_scoped,
-    sacco_scoped,
 )
 
-REPORT_ROLES = (*ADMIN_ONLY, MembershipRole.STAFF)
 MAX_DB_ID = 2_147_483_647  # largest id an INTEGER column holds
 
 
@@ -69,7 +66,7 @@ def _sacco_id_param() -> int | None:
 
 @admin_bp.get("/saccos/<int:sacco_id>/reports/summary")
 @read_limit
-@sacco_scoped(REPORT_ROLES)
+@permission_scoped("report.view")
 def sacco_summary(sacco_id: int):
     try:
         start, end = _date_param("from"), _date_param("to")
@@ -82,7 +79,7 @@ def sacco_summary(sacco_id: int):
 
 @admin_bp.get("/saccos/<int:sacco_id>/reports/member-activity")
 @read_limit
-@sacco_scoped(REPORT_ROLES)
+@permission_scoped("report.view")
 def member_activity(sacco_id: int):
     try:
         page, per_page = page_params()
@@ -97,7 +94,7 @@ def member_activity(sacco_id: int):
 
 @admin_bp.get("/saccos/<int:sacco_id>/accounts")
 @read_limit
-@sacco_scoped(REPORT_ROLES)
+@permission_scoped("savings.view_all")
 def sacco_accounts(sacco_id: int):
     try:
         page, per_page = page_params()
@@ -125,7 +122,7 @@ def platform_audit():
         user = current_user()
     except AccessDenied as exc:
         return error_response(exc.status, exc.message)
-    if not user.is_platform_owner:
+    if not is_platform_owner(user):
         return error_response(403, "You are not allowed to do this.")
     try:
         action, start, end, page, per_page = _audit_filters()

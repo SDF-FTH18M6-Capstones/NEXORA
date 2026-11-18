@@ -65,6 +65,7 @@ def open_account(user_id: int):
 def _post_money(user_id: int, account_id: int, action):
     amount, reference = parse_money(_body())
     tx = action(user_id, account_id, amount, reference)
+    # 201 for a new entry, 200 when a retried reference returns the original.
     return jsonify(_json(tx)), 200 if tx.replayed else 201
 
 

@@ -15,7 +15,9 @@ def platform_owner_required(view):
             user = current_user()
         except AccessDenied as exc:
             return error_response(exc.status, exc.message)
-        if not user.is_platform_owner:
+        from app.security.permissions import is_platform_owner
+
+        if not is_platform_owner(user):
             return error_response(403, "Platform owner access required.")
         g.user = user
         return view(*args, **kwargs)

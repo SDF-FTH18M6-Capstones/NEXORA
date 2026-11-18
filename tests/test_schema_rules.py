@@ -1,4 +1,4 @@
-"""The rules of the agreed schema (docs/schema.sql and its schema_test.sql).
+"""The agreed rules in docs/roles-permissions.md, one test per rule.
 
 Each test names the schema rule it holds the application to.
 """
@@ -7,7 +7,7 @@ import uuid
 from datetime import UTC, datetime
 
 import pytest
-from sqlalchemy import text
+from sqlalchemy import select, text
 
 from app.auth.tokens import create_access_token
 from app.extensions import db
@@ -570,3 +570,396 @@ def test_an_owner_revoked_while_waiting_cannot_still_grant(schema_app):  # noqa:
     granted = db.session.get(User, newcomer.id).is_platform_owner
     db.session.remove()
     assert result["status"] == 403 and not granted, result
+
+
+# ---- locked down: nothing decided by the legacy role column ------------------------
+
+
+def _staff_with(s, *titles):
+    user = officer(s, *titles)
+    mid = db.session.query(SaccoMembership.id).filter_by(user_id=user.id).scalar()
+    db.session.remove()
+    return user, mid
+
+
+def test_money_moves_only_with_the_permission_not_the_staff_role(schema_app):  # noqa: F811
+    from app.ledger import reversals
+    from app.savings import service as savings
+
+    s = Setup(balance=1_000)
+    secretary, _ = _staff_with(s, "secretary")
+    finance, _ = _staff_with(s, "finance_officer")
+    _, other_mid = _staff_with(s, "member")
+    for action in (
+        lambda u: savings.deposit(u.id, s.account.id, 10, f"d-{u.id}"),
+        lambda u: savings.withdraw(u.id, s.account.id, 10, f"w-{u.id}"),
+        lambda u: savings.open_account(u.id, other_mid),
+    ):
+        with pytest.raises(savings.Forbidden):
+            action(secretary)
+    posted = savings.deposit(finance.id, s.account.id, 10, "by-finance")
+    with pytest.raises(savings.Forbidden):
+        reversals.reverse_transaction(secretary.id, posted.id, "rev-by-secretary")
+    assert reversals.reverse_transaction(finance.id, posted.id, "rev-by-finance")
+
+
+def test_reports_and_the_account_list_follow_the_schema(schema_app):  # noqa: F811
+    s = Setup()
+    client = schema_app.test_client()
+    secretary, _ = _staff_with(s, "secretary")
+    finance, _ = _staff_with(s, "finance_officer")
+    loans_officer, _ = _staff_with(s, "loans_officer")
+    base = f"/api/v1/admin/saccos/{s.sacco.id}"
+    reports = (f"{base}/reports/summary", f"{base}/reports/member-activity")
+    for who in (s.admin, secretary, finance, loans_officer):
+        for url in reports:
+            assert client.get(url, headers=auth(who)).status_code == 200, url
+    for url in (*reports, f"{base}/accounts"):
+        assert client.get(url, headers=auth(s.member)).status_code == 403, url
+    for who in (s.admin, secretary, finance):
+        assert client.get(f"{base}/accounts", headers=auth(who)).status_code == 200
+    # savings.view_all is not a loans officer's (agreed schema).
+    accounts = client.get(f"{base}/accounts", headers=auth(loans_officer))
+    assert accounts.status_code == 403
+
+
+def test_an_admin_never_disburses_even_with_an_old_finance_title(schema_app):  # noqa: F811
+    from app.models.access import MembershipRoleLink, Role
+
+    s = Setup()
+    role_id = db.session.query(Role.id).filter_by(code="finance_officer").scalar()
+    db.session.add(
+        MembershipRoleLink(membership_id=s.admin_membership.id, role_id=role_id)
+    )
+    db.session.commit()
+    assert not can(db.session.get(User, s.admin.id), s.sacco.id, "loan.disburse")
+    db.session.remove()
+
+
+def test_an_email_member_cannot_be_added_as_invited(schema_app):  # noqa: F811
+    s = Setup()
+    person = make_user()
+    email = db.session.get(User, person.id).email
+    db.session.remove()
+    resp = schema_app.test_client().post(
+        f"/api/v1/saccos/{s.sacco.id}/members",
+        json={"email": email, "status": "invited"},
+        headers=auth(s.admin),
+    )
+    assert resp.status_code == 400
+
+
+def test_a_joined_invite_without_a_pin_is_not_activated_by_hand(schema_app):  # noqa: F811
+    s = Setup()
+    person = make_user()
+    membership = SaccoMembership(
+        user_id=person.id,
+        sacco_id=s.sacco.id,
+        phone="+254700000999",
+        role=MembershipRole.MEMBER,
+        status=MembershipStatus.INACTIVE,
+    )
+    db.session.add(membership)
+    db.session.commit()
+    mid = membership.id
+    db.session.remove()
+    client = schema_app.test_client()
+    url = f"/api/v1/saccos/{s.sacco.id}/members/{mid}"
+    refused = client.patch(url, json={"status": "active"}, headers=auth(s.admin))
+    assert refused.status_code == 409
+    db.session.get(SaccoMembership, mid).pin_hash = "set-by-the-pin-step"
+    db.session.commit()
+    db.session.remove()
+    allowed = client.patch(url, json={"status": "active"}, headers=auth(s.admin))
+    assert allowed.status_code == 200
+
+
+def test_two_first_settings_writes_at_once_both_succeed(schema_app):  # noqa: F811
+    import threading
+
+    s = Setup()
+    boss = make_user(owner=True)
+    url = f"/api/v1/saccos/{s.sacco.id}/settings"
+    barrier = threading.Barrier(2)
+    statuses = []
+
+    def write(cap):
+        with schema_app.app_context():
+            barrier.wait()
+            resp = schema_app.test_client().patch(
+                url, json={"loan_cap": cap}, headers=auth(boss)
+            )
+            statuses.append(resp.status_code)
+            db.session.remove()
+
+    threads = [threading.Thread(target=write, args=(cap,)) for cap in (100, 200)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(15)
+    assert statuses == [200, 200]
+    rows = db.session.execute(
+        text("SELECT count(*) FROM sacco_settings WHERE sacco_id = :s"),
+        {"s": s.sacco.id},
+    ).scalar()
+    db.session.remove()
+    assert rows == 1
+
+
+def test_0018_refuses_clearly_when_a_member_has_two_open_loans(
+    schema_app,  # noqa: F811
+    capfd,
+):
+    from flask_migrate import downgrade, upgrade
+
+    from test_schema import MIGRATIONS
+
+    s = Setup(balance=10_000)
+    loans.request_loan(s.member.id, s.sacco.id, 1_000, 6)
+    db.session.remove()
+    downgrade(directory=MIGRATIONS, revision="0017")  # no one-open-loan index
+    db.session.execute(
+        text(
+            "INSERT INTO loans (sacco_id, membership_id, principal, "
+            "required_approvals) VALUES (:s, :m, 500, 1)"
+        ),
+        {"s": s.sacco.id, "m": s.member_membership.id},
+    )
+    db.session.commit()
+    db.session.remove()
+    # Flask-Migrate logs the error and exits; the message says what to fix.
+    with pytest.raises(SystemExit):
+        upgrade(directory=MIGRATIONS, revision="head")
+    printed = capfd.readouterr().err
+    assert "allows one open loan per member" in printed
+    assert f"[{s.member_membership.id}]" in printed
+    db.session.remove()
+    db.session.execute(
+        text("UPDATE loans SET status = 'rejected' WHERE principal = 500")
+    )
+    db.session.commit()
+    db.session.remove()
+    upgrade(directory=MIGRATIONS, revision="head")
+
+
+def test_reading_someone_elses_account_needs_savings_view_all(schema_app):  # noqa: F811
+    s = Setup(balance=100)
+    client = schema_app.test_client()
+    loans_officer, _ = _staff_with(s, "loans_officer")
+    secretary, _ = _staff_with(s, "secretary")
+    finance, _ = _staff_with(s, "finance_officer")
+    account = f"/api/v1/savings/accounts/{s.account.id}"
+    for url in (account, f"{account}/transactions"):
+        assert client.get(url, headers=auth(s.member)).status_code == 200  # own
+        assert client.get(url, headers=auth(loans_officer)).status_code == 404
+        for who in (secretary, finance, s.admin):
+            assert client.get(url, headers=auth(who)).status_code == 200, url
+
+
+# ---- invitations: cancel, re-invite, join -------------------------------------------
+
+
+def test_a_cancelled_phone_invite_can_be_invited_again(schema_app):  # noqa: F811
+    s = Setup()
+    client = schema_app.test_client()
+    person = make_user()
+    phone = "+254700000555"
+    invited = client.post(
+        f"/api/v1/saccos/{s.sacco.id}/members",
+        json={"phone": phone},
+        headers=auth(s.admin),
+    )
+    assert invited.status_code == 201
+    old_code = invited.json["join_code"]
+    url = f"/api/v1/saccos/{s.sacco.id}/members/{invited.json['id']}"
+
+    cancel = client.patch(url, json={"status": "inactive"}, headers=auth(s.admin))
+    assert cancel.status_code == 200
+    # A cancelled invite cannot be joined, not even with its old code.
+    stale = client.post(
+        "/api/v1/auth/join",
+        json={"phone": phone, "code": old_code},
+        headers=auth(person),
+    )
+    assert stale.status_code != 200
+
+    again = client.patch(url, json={"status": "invited"}, headers=auth(s.admin))
+    assert again.status_code == 200 and again.json["status"] == "invited"
+    new_code = again.json["join_code"]
+    assert new_code
+    from app.auth.join import MAX_ATTEMPTS
+    from app.models.identity import JoinCode
+
+    rows = db.session.execute(
+        select(JoinCode.attempts, JoinCode.used_at)
+        .where(JoinCode.membership_id == invited.json["id"])
+        .order_by(JoinCode.id)
+    ).all()
+    db.session.remove()
+    # The first code is burned outright; only the newest one is live.
+    assert rows[0].attempts == MAX_ATTEMPTS and rows[-1].attempts == 0
+    # The old code stays dead; the fresh one works, then the PIN activates.
+    old = client.post(
+        "/api/v1/auth/join",
+        json={"phone": phone, "code": old_code},
+        headers=auth(person),
+    )
+    assert old.status_code != 200
+    joined = client.post(
+        "/api/v1/auth/join",
+        json={"phone": phone, "code": new_code},
+        headers=auth(person),
+    )
+    assert joined.status_code == 200, joined.json
+    pinned = client.post(
+        "/api/v1/auth/join/pin",
+        json={"setup_token": joined.json["setup_token"], "pin": "4826"},
+        headers=auth(person),
+    )
+    assert pinned.status_code == 200 and pinned.json["status"] == "active"
+
+
+def test_only_an_inactive_phone_member_is_invited_again(schema_app):  # noqa: F811
+    s = Setup()
+    client = schema_app.test_client()
+    url = f"/api/v1/saccos/{s.sacco.id}/members/{s.member_membership.id}"
+    active = client.patch(url, json={"status": "invited"}, headers=auth(s.admin))
+    assert active.status_code == 409  # active never goes back to invited
+    client.patch(url, json={"status": "inactive"}, headers=auth(s.admin))
+    no_phone = client.patch(url, json={"status": "invited"}, headers=auth(s.admin))
+    assert no_phone.status_code == 409  # an email member has no phone to invite
+
+
+def test_every_membership_the_api_creates_or_changes_has_a_title_row(schema_app):  # noqa: F811
+    from app.models.access import MembershipRoleLink, Role
+
+    s = Setup()
+    client = schema_app.test_client()
+    person = make_user()
+    email = db.session.get(User, person.id).email
+    db.session.remove()
+
+    def titles(mid):
+        rows = db.session.execute(
+            select(Role.code)
+            .join(MembershipRoleLink, MembershipRoleLink.role_id == Role.id)
+            .where(MembershipRoleLink.membership_id == mid)
+        ).scalars()
+        result = sorted(rows)
+        db.session.remove()
+        return result
+
+    added = client.post(
+        f"/api/v1/saccos/{s.sacco.id}/members",
+        json={"email": email, "role": "staff"},
+        headers=auth(s.admin),
+    )
+    assert added.status_code == 201
+    assert titles(added.json["id"]) == ["secretary"]
+    invited = client.post(
+        f"/api/v1/saccos/{s.sacco.id}/members",
+        json={"phone": "+254700000666"},
+        headers=auth(s.admin),
+    )
+    assert titles(invited.json["id"]) == ["member"]
+    changed = client.patch(
+        f"/api/v1/saccos/{s.sacco.id}/members/{added.json['id']}",
+        json={"role": "member"},
+        headers=auth(s.admin),
+    )
+    assert changed.status_code == 200
+    assert titles(added.json["id"]) == ["member"]
+
+
+def test_a_secretary_moves_no_money_over_http(schema_app):  # noqa: F811
+    s = Setup(balance=1_000)
+    client = schema_app.test_client()
+    secretary, _ = _staff_with(s, "secretary")
+    _, other_mid = _staff_with(s, "member")
+    base = f"/api/v1/savings/accounts/{s.account.id}"
+    for path in ("deposits", "withdrawals", "interest", "fees"):
+        resp = client.post(
+            f"{base}/{path}",
+            json={"amount": 10, "reference": f"sec-{path}"},
+            headers=auth(secretary),
+        )
+        assert resp.status_code == 403, path
+    opened = client.post(
+        "/api/v1/savings/accounts",
+        json={"membership_id": other_mid},
+        headers=auth(secretary),
+    )
+    assert opened.status_code == 403
+
+
+def test_a_setup_token_from_before_a_reinvite_is_dead(schema_app):  # noqa: F811
+    s = Setup()
+    client = schema_app.test_client()
+    wrong_person = make_user()
+    phone = "+254700000881"
+    invited = client.post(
+        f"/api/v1/saccos/{s.sacco.id}/members",
+        json={"phone": phone},
+        headers=auth(s.admin),
+    )
+    mid = invited.json["id"]
+    url = f"/api/v1/saccos/{s.sacco.id}/members/{mid}"
+    joined = client.post(
+        "/api/v1/auth/join",
+        json={"phone": phone, "code": invited.json["join_code"]},
+        headers=auth(wrong_person),
+    )
+    assert joined.status_code == 200
+    stale_token = joined.json["setup_token"]
+    # The admin cancels the half-done join and re-adds the phone.
+    cancel = client.patch(url, json={"status": "inactive"}, headers=auth(s.admin))
+    assert cancel.status_code == 200
+    again = client.patch(url, json={"status": "invited"}, headers=auth(s.admin))
+    assert again.status_code == 200
+    pinned = client.post(
+        "/api/v1/auth/join/pin",
+        json={"setup_token": stale_token, "pin": "4826"},
+        headers=auth(wrong_person),
+    )
+    status = db.session.get(SaccoMembership, mid).status
+    db.session.remove()
+    assert pinned.status_code == 401
+    assert status is MembershipStatus.INVITED
+
+
+def test_a_join_code_lives_as_long_as_the_sacco_setting(schema_app):  # noqa: F811
+    from datetime import datetime as dt
+
+    s = Setup()
+    settings(s, join_code_ttl_minutes=60)
+    resp = schema_app.test_client().post(
+        f"/api/v1/saccos/{s.sacco.id}/members",
+        json={"phone": "+254700000444"},
+        headers=auth(s.admin),
+    )
+    expires = dt.fromisoformat(resp.json["expires_at"])
+    minutes = (expires - dt.now(UTC)).total_seconds() / 60
+    assert 55 < minutes <= 60
+
+
+def test_a_re_add_starts_from_the_default_title(schema_app):  # noqa: F811
+    from app.models.access import MembershipRoleLink, Role
+
+    s = Setup()
+    client = schema_app.test_client()
+    invited = client.post(
+        f"/api/v1/saccos/{s.sacco.id}/members",
+        json={"phone": "+254700000333"},
+        headers=auth(s.admin),
+    )
+    mid = invited.json["id"]
+    url = f"/api/v1/saccos/{s.sacco.id}/members/{mid}"
+    # Suppose this member had been made a finance officer, then left.
+    role_id = db.session.query(Role.id).filter_by(code="finance_officer").scalar()
+    db.session.add(MembershipRoleLink(membership_id=mid, role_id=role_id))
+    db.session.commit()
+    db.session.remove()
+    client.patch(url, json={"status": "inactive"}, headers=auth(s.admin))
+    client.patch(url, json={"status": "invited"}, headers=auth(s.admin))
+    titles = client.get(f"{url}/roles", headers=auth(s.admin)).json["roles"]
+    assert titles == ["member"]

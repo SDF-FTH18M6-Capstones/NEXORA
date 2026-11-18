@@ -4,12 +4,14 @@ Two groups live here because they both serve members: the signed-in user's own
 profile under /members/me (Sam's Move 2 work), and one SACCO's member list
 under /saccos/<sacco_id>/members (Neo's Move 2 work).
 """
+from datetime import timedelta
+
 from flask import current_app, g, jsonify, request
 from sqlalchemy import delete, select
 from sqlalchemy.exc import IntegrityError
 
 from app import members_bp, saccos_bp
-from app.auth.join import issue_code, normalize_phone
+from app.auth.join import burn_codes, issue_code, normalize_phone
 from app.auth.limits import read_limit, write_limit
 from app.auth.routes import _body
 from app.auth.suspension import check_sacco_not_suspended
@@ -19,8 +21,10 @@ from app.members import self_service
 from app.members.schemas import InvalidMember, parse_create_member, parse_update_member
 from app.models.access import MembershipRoleLink, Role
 from app.models.audit import AuditLog
+from app.models.loan import SaccoSettings
 from app.models.membership import MembershipRole, MembershipStatus, SaccoMembership
 from app.models.user import User
+from app.security.permissions import LEGACY_ROLE_CODES, is_platform_owner
 from app.security.tenant import (
     AccessDenied,
     current_user,
@@ -155,6 +159,16 @@ def get_member(sacco_id, membership_id):
     return jsonify(_member_json(*rows[0]))
 
 
+def _code_ttl(sacco_id: int) -> timedelta:
+    """How long a join code lives: the SACCO's setting, 15 minutes by default."""
+    minutes = db.session.execute(
+        select(SaccoSettings.join_code_ttl_minutes).where(
+            SaccoSettings.sacco_id == sacco_id
+        )
+    ).scalar_one_or_none()
+    return timedelta(minutes=minutes or 15)
+
+
 def _invite_member(sacco_id):
     """An officer adds a phone: invited membership plus a one-time join code."""
     body = request.get_json(silent=True) or {}
@@ -163,7 +177,7 @@ def _invite_member(sacco_id):
         role = MembershipRole(body.get("role", "member"))
     except ValueError:
         return error_response(400, "A valid phone and role are required.")
-    if role is ADMIN and not g.access.user.is_platform_owner:
+    if role is ADMIN and not is_platform_owner(g.access.user):
         return error_response(
             403, "Only the platform owner can add a SACCO administrator."
         )
@@ -181,8 +195,12 @@ def _invite_member(sacco_id):
         db.session.rollback()
         return error_response(409, "That phone has already been invited to this SACCO.")
     row, code = issue_code(
-        membership.id, g.access.user.id, current_app.config["SECRET_KEY"]
+        membership.id,
+        g.access.user.id,
+        current_app.config["SECRET_KEY"],
+        ttl=_code_ttl(sacco_id),
     )
+    _grant_default_title(membership)
     _audit(membership, "member.invite")
     db.session.commit()
     return (
@@ -205,11 +223,15 @@ def add_member(sacco_id):
     raw = request.get_json(silent=True)
     if isinstance(raw, dict) and raw.get("phone") and not raw.get("email"):
         return _invite_member(sacco_id)
-    owner = g.access.user.is_platform_owner
+    owner = is_platform_owner(g.access.user)
     try:
         email, role, status = parse_create_member(_body())
     except InvalidMember as exc:
         return error_response(400, str(exc))
+    if status is MembershipStatus.INVITED:
+        # An invitation is a phone plus a join code (send "phone"); an email
+        # member is added active or inactive.
+        return error_response(400, "Invite by phone; add an email member as active.")
     if role is ADMIN and not owner:
         return error_response(
             403, "Only the platform owner can add a SACCO administrator."
@@ -219,7 +241,7 @@ def add_member(sacco_id):
     ).scalar_one_or_none()
     # The platform owner gets the same answer as an unknown email, so an admin
     # cannot discover the owner's address. The owner never needs a membership.
-    if target is None or target.is_platform_owner:
+    if target is None or is_platform_owner(target):
         return error_response(404, "No registered user with that email.")
     # Whoever registered an address may not be its owner. Only a user who has
     # opened the emailed link can be given access to a SACCO.
@@ -234,6 +256,7 @@ def add_member(sacco_id):
     except IntegrityError:  # unique (user_id, sacco_id)
         db.session.rollback()
         return error_response(409, "That user is already a member of this SACCO.")
+    _grant_default_title(membership)
     _audit(membership, "member.add")
     db.session.commit()
     return jsonify(_member_json(membership, target.email)), 201
@@ -252,10 +275,16 @@ def _reset_titles(membership: SaccoMembership) -> None:
             MembershipRoleLink.membership_id == membership.id
         )
     )
-    if membership.role is not ADMIN:
-        return
+    _grant_default_title(membership)
+
+
+def _grant_default_title(membership: SaccoMembership) -> None:
+    """Store the job title the role implies (admin -> circle_admin, staff ->
+    secretary, member -> member), so `can()` reads a title row for every
+    membership the API creates or changes, never the role column."""
+    code = LEGACY_ROLE_CODES[membership.role]
     role_id = db.session.execute(
-        select(Role.id).where(Role.code == "circle_admin")
+        select(Role.id).where(Role.code == code)
     ).scalar_one_or_none()
     if role_id is not None:  # no catalogue (create_all): the role column answers
         db.session.add(MembershipRoleLink(membership_id=membership.id, role_id=role_id))
@@ -276,20 +305,31 @@ def update_member(sacco_id, membership_id):
     membership, email = rows[0]
     # An admin cannot touch an admin row (their own included) or create one.
     touches_admin = membership.role is ADMIN or changes.get("role") is ADMIN
-    if touches_admin and not g.access.user.is_platform_owner:
+    if touches_admin and not is_platform_owner(g.access.user):
         db.session.rollback()
         return error_response(
             403, "Only the platform owner can change SACCO administrators."
         )
     new_status = changes.get("status")
+    reinvite = False
     if new_status is not None and new_status is not membership.status:
         if new_status is MembershipStatus.INVITED:
-            db.session.rollback()
-            return error_response(409, "A membership cannot be moved back to invited.")
+            # Agreed rule: only inactive -> invited, a re-add by phone with a
+            # fresh join code. An active member never goes back to invited.
+            inactive = membership.status is MembershipStatus.INACTIVE
+            if not inactive or not membership.phone:
+                db.session.rollback()
+                return error_response(
+                    409,
+                    "Only an inactive member with a phone can be invited again.",
+                )
+            reinvite = True
         # Nobody has joined a phone invitation yet (no user): only the join flow,
         # with its code, makes it active. Also closes invited -> inactive -> active.
         if new_status is MembershipStatus.ACTIVE and (
-            membership.status is MembershipStatus.INVITED or membership.user_id is None
+            membership.status is MembershipStatus.INVITED
+            or membership.user_id is None
+            or (membership.phone is not None and membership.pin_hash is None)
         ):
             db.session.rollback()
             return error_response(
@@ -305,7 +345,26 @@ def update_member(sacco_id, membership_id):
         setattr(membership, field, value)
     if membership.role is not old_role:
         _reset_titles(membership)
+    if new_status is MembershipStatus.INACTIVE:
+        # Cancelling (or ending) a membership kills its unused join codes.
+        burn_codes(membership.id)
+    code = None
+    if reinvite:
+        # A re-add starts over: the person joins and sets a new PIN, and holds
+        # only the default title of their role until an admin gives more.
+        _reset_titles(membership)
+        membership.pin_hash = None
+        membership.pin_attempts = 0
+        membership.pin_locked_until = None
+        row, code = issue_code(
+            membership.id,
+            g.access.user.id,
+            current_app.config["SECRET_KEY"],
+            ttl=_code_ttl(sacco_id),
+        )
     _audit(membership, "member.update", before)
     body = _member_json(membership, email)
+    if code is not None:
+        body.update(join_code=code, expires_at=row.expires_at.isoformat())
     db.session.commit()
     return jsonify(body)

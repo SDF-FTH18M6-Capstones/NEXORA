@@ -329,9 +329,25 @@ def test_a_money_request_without_a_reference_is_400(schema_app, suffix, body):
 # ---------- separation of duties ----------
 
 
+def give_title(user_id, sacco_id, code):
+    """Give a membership a job title, as PUT .../roles would."""
+    from app.models.access import MembershipRoleLink, Role
+
+    membership_id = (
+        db.session.query(SaccoMembership.id)
+        .filter_by(user_id=user_id, sacco_id=sacco_id)
+        .scalar()
+    )
+    role_id = db.session.query(Role.id).filter_by(code=code).scalar()
+    db.session.add(MembershipRoleLink(membership_id=membership_id, role_id=role_id))
+    db.session.commit()
+    db.session.remove()
+
+
 def test_nobody_posts_money_on_their_own_account(schema_app):
     s = Setup(balance=500)
     staff = add_member(s, MembershipRole.STAFF)  # has an account of their own
+    give_title(staff.id, s.sacco.id, "finance_officer")  # may post, just not here
     client = schema_app.test_client()
     for suffix in ("deposits", "withdrawals"):
         resp = client.post(
@@ -349,12 +365,16 @@ def test_nobody_posts_money_on_their_own_account(schema_app):
 def test_nobody_reverses_an_entry_on_their_own_account(schema_app):
     s = Setup(balance=500)
     staff = add_member(s, MembershipRole.STAFF)
+    give_title(staff.id, s.sacco.id, "finance_officer")  # may reverse, not here
     posted = service.deposit(s.admin.id, staff.account_id, 300, "for-staff")
     client = schema_app.test_client()
     url = f"{SAVINGS}/transactions/{posted.id}/reversals"
 
     own = client.post(url, json={"reference": "self-rev"}, headers=auth(staff))
     assert own.status_code == 403
+    assert own.get_json()["error"]["message"] == (
+        "You cannot post money on your own account."
+    )
     assert ledger_balance(staff.account_id) == 300
 
     other = client.post(url, json={"reference": "admin-rev"}, headers=auth(s.admin))

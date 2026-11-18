@@ -76,41 +76,54 @@ Restrictions:
 - Cannot access administrative functions.
 - Cannot change financial records directly.
 
-## 5. Permission Matrix
+## 5. Job titles and permissions (agreed 2026-11-17)
 
-| Capability | Platform Owner | SACCO Administrator | SACCO Member |
-|---|---|---|---|
-| Manage SACCOs | Yes | No | No |
-| Platform configuration | Yes | No | No |
-| Manage SACCO members | Platform policy | Own SACCO | No |
-| View SACCO reports | Platform policy | Own SACCO | No |
-| View personal profile | Yes, as authorized | Own SACCO scope | Own profile |
-| View personal transactions | Authorized policy | Own SACCO scope | Own transactions |
-| Manage financial operations | Platform policy | Approved SACCO scope | No |
-| Access another SACCO | Authorized platform scope | No | No |
+Every membership holds job titles; `can()` in `backend/app/security/permissions.py`
+answers every permission question from them. The legacy role column only says
+whether a membership is the SACCO admin (`sacco_admin`); every membership the
+API creates or changes stores the title its role implies (admin: circle_admin,
+staff: secretary, member: member).
 
-## 6. Authorization Rules
+| Permission | SACCO admin | Secretary | Finance officer | Loans officer | Member |
+|---|---|---|---|---|---|
+| member.view (member list) | yes | yes | | yes | |
+| member.manage (add, invite, set titles) | yes | | | | |
+| savings.view_all (every account) | yes | yes | yes | | own only |
+| savings.post (deposit, withdraw, interest, fee, open account) | yes | | yes | | |
+| savings.reverse | yes | | yes | | |
+| report.view | yes | yes | yes | yes | |
+| audit.view (SACCO audit log) | **never** | yes | | | |
+| loan.view (every loan) | yes | yes | yes | yes | own only |
+| loan.approve | **never** | | | yes | |
+| loan.disburse | **never** | | yes | | |
+| loan.request | | | | | yes |
+| loan.repay | | | yes | | own loan |
 
-- Every protected API endpoint must verify authentication.
-- Every protected operation must verify the user's role.
-- SACCO Administrators must be restricted to their assigned SACCO.
-- Members must only access their own records.
-- The backend must never rely on frontend role checks alone.
-- Unauthorized requests must return HTTP 403.
-- Unauthenticated requests must return HTTP 401.
-- Privileged actions should be recorded in an audit log.
+The platform owner holds every permission, needs no membership, and is the only
+one who creates SACCOs, changes loan settings, makes or removes SACCO admins and
+grants or revokes platform owners.
 
-## 7. Decisions Requiring Team Approval
+## 6. Rules the backend enforces
 
-The team must agree on:
+- A SACCO admin never approves or disburses loans and never reads the audit log,
+  whatever titles the membership holds.
+- Nobody changes their own titles; only the platform owner touches an admin;
+  `circle_admin` moves only with the admin role.
+- At least two platform owners always remain; nobody revokes themselves.
+- Nobody posts or reverses money on their own account. Every movement is one
+  ledger row; balances change only through the ledger. Ledger rows, loan
+  decisions, loan repayments and the audit log are append only.
+- A loan within the SACCO cap and the savings multiple needs one approval;
+  above either it needs the SACCO's count (1 or 2; a cap of 0 means always).
+  Each step needs a different loans officer; the disbursing officer approved no
+  step; one open loan per member; a rejection needs a reason; loan ledger rows
+  cannot be reversed.
+- Memberships: invited -> active only by joining with a code and setting a PIN;
+  active -> inactive; inactive -> invited (a re-add by phone, fresh code);
+  never active -> invited.
+- Another SACCO's records answer 404, never 403. A suspended SACCO answers 423.
 
-- Whether Platform Owners can view individual member financial details.
-- Which financial operations SACCO Administrators can approve.
-- Whether SACCO Administrators can create other administrators.
-- Whether additional approval is required for sensitive operations.
-- Whether a user can hold multiple roles or SACCO memberships.
+## 7. Approval
 
-## 8. Approval
-
-These permissions are proposed for team review.
-They are not production authorization rules until approved.
+Agreed for the demo on 2026-11-17. `tests/test_schema_rules.py` holds one test
+per rule.
