@@ -14,7 +14,6 @@ from app import members_bp, saccos_bp
 from app.auth.join import burn_codes, issue_code, normalize_phone
 from app.auth.limits import read_limit, write_limit
 from app.auth.routes import _body
-from app.auth.suspension import check_sacco_not_suspended
 from app.errors import error_response
 from app.extensions import db
 from app.members import self_service
@@ -47,16 +46,13 @@ def _me_error(message: str, status: int):
 def _me_user() -> tuple[User | None, tuple | None]:
     """The signed-in caller for /me, or (None, error response).
 
-    401 for no or a bad token. 423 when the caller's SACCO is suspended, so a token
-    issued before the suspension stops working (same rule as login and refresh).
-    The platform owner is never blocked: check_sacco_not_suspended lets them through.
+    401 for no or a bad token. The profile is the user's own, not a SACCO's, so a
+    suspended SACCO does not block it (the SACCO's own endpoints answer 423).
     """
     try:
         user = current_user()
     except AccessDenied as exc:
         return None, error_response(exc.status, exc.message)
-    if message := check_sacco_not_suspended(user):
-        return None, error_response(423, message)
     return user, None
 
 

@@ -670,8 +670,8 @@ paths:
         **Rate limit:** 5 per minute (per IP).
 
 
-        Five failed logins lock the account for 15 minutes (423). A user whose SACCOs are all suspended
-        gets 423.'
+        Five failed logins lock the account for 15 minutes (423). A suspended SACCO does not block login:
+        the user sees it in GET /members/me/saccos, and the SACCO''s own endpoints answer 423.'
       responses:
         '200':
           description: Token pair. Access token lasts 15 minutes, refresh token 7 days.
@@ -1446,7 +1446,8 @@ paths:
         **Rate limit:** 30 per minute.
 
 
-        Suspending blocks login, refresh and every SACCO route for its users (423).'
+        Suspending makes every endpoint of that SACCO answer 423 (reads and writes, joining and PIN
+        login); login, refresh, /members/me and /members/me/saccos keep working and show the status.'
       responses:
         '200':
           description: The SACCO, now active.
@@ -1492,7 +1493,8 @@ paths:
         **Rate limit:** 30 per minute.
 
 
-        Suspending blocks login, refresh and every SACCO route for its users (423).'
+        Suspending makes every endpoint of that SACCO answer 423 (reads and writes, joining and PIN
+        login); login, refresh, /members/me and /members/me/saccos keep working and show the status.'
       responses:
         '200':
           description: The SACCO, now suspended.

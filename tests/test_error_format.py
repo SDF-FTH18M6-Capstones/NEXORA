@@ -96,8 +96,13 @@ def test_413_payload_too_large(client):
 
 def test_423_locked_for_a_suspended_sacco(client):
     register(client)
-    join_sacco(SaccoStatus.SUSPENDED)
-    assert_error(login(client), 423, "locked")
+    sacco = join_sacco(SaccoStatus.SUSPENDED)
+    token = login(client).get_json()["access_token"]
+    resp = client.get(
+        f"/api/v1/saccos/{sacco.id}/settings",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert_error(resp, 423, "locked")
 
 
 def test_429_rate_limited(limited_client):  # noqa: F811
