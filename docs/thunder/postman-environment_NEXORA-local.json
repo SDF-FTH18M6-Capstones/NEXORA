@@ -1,0 +1,25 @@
+{
+  "id": "d716cb63-1394-4123-ad3e-9228d73b354b",
+  "name": "NEXORA local",
+  "values": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:5000",
+      "type": "default",
+      "enabled": true
+    },
+    {
+      "key": "password",
+      "value": "Dev-Seed-Pass-2026",
+      "type": "default",
+      "enabled": true
+    },
+    {
+      "key": "run",
+      "value": "01",
+      "type": "default",
+      "enabled": true
+    }
+  ],
+  "_postman_variable_scope": "environment"
+}
