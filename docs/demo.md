@@ -30,7 +30,7 @@ If your app role is not `postgres`, add `OWNER <role>` to each statement.
 
 ```bash
 cd backend
-flask --app app db upgrade                  # creates the tables (migrations 0001 to 0018)
+flask --app app db upgrade                  # creates the tables (migrations 0001 to 0020)
 cd .. && python backend/scripts/seed.py     # demo data; safe to run twice
 cd backend && python app.py                 # API on http://localhost:5000
 ```

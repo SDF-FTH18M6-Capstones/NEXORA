@@ -381,11 +381,14 @@ def test_a_disbursement_without_its_link_is_still_not_reversible(schema_app):  #
 
     s = Setup(balance=10_000)
     loan_id, tx_id, finance = _disbursed_loan(s, "disb-nolink")
-    # The state a loan disbursed before migration 0017 is in.
+    # The state a loan disbursed before migration 0017 is in. The database no
+    # longer lets anyone clear the link, so the guard is lifted for the setup.
+    db.session.execute(text("ALTER TABLE loans DISABLE TRIGGER trg_loans_guard_update"))
     db.session.execute(
         text("UPDATE loans SET disbursement_transaction_id = NULL WHERE id = :i"),
         {"i": loan_id},
     )
+    db.session.execute(text("ALTER TABLE loans ENABLE TRIGGER trg_loans_guard_update"))
     db.session.commit()
     db.session.remove()
     with pytest.raises(reversals.Conflict, match="Loan disbursements"):
@@ -963,3 +966,51 @@ def test_a_re_add_starts_from_the_default_title(schema_app):  # noqa: F811
     client.patch(url, json={"status": "invited"}, headers=auth(s.admin))
     titles = client.get(f"{url}/roles", headers=auth(s.admin)).json["roles"]
     assert titles == ["member"]
+
+
+# ---- the database itself refuses ----------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "statement",
+    [
+        "UPDATE transactions SET amount = 1",
+        "DELETE FROM transactions",
+    ],
+)
+def test_ledger_rows_cannot_be_edited_or_deleted(schema_app, statement):  # noqa: F811
+    Setup(balance=1_000)
+    with pytest.raises(Exception, match="append-only"):
+        db.session.execute(text(statement))
+    db.session.rollback()
+
+
+@pytest.mark.parametrize(
+    ("change", "message"),
+    [
+        ("principal = 1", "loan terms cannot change"),
+        ("term_months = 99", "loan terms cannot change"),
+        ("required_approvals = 1", "loan terms cannot change"),
+        ("status = 'disbursed'", "is not allowed"),  # requested cannot skip ahead
+        ("status = 'repaid'", "is not allowed"),
+    ],
+)
+def test_loan_terms_and_steps_are_held_by_the_database(schema_app, change, message):  # noqa: F811
+    s = Setup(balance=10_000)
+    loan = loans.request_loan(s.member.id, s.sacco.id, 1_000, 6)
+    with pytest.raises(Exception, match=message):
+        db.session.execute(text(f"UPDATE loans SET {change} WHERE id = {loan.id}"))
+    db.session.rollback()
+
+
+def test_a_repaid_loan_cannot_go_back(schema_app):  # noqa: F811
+    s = Setup(balance=10_000)
+    loan_id, _, _ = _disbursed_loan(s, "disb-back")
+    loans.repay_loan(s.member.id, loan_id, 1_000, "rep-back")
+    for status in ("requested", "approved", "disbursed"):
+        with pytest.raises(Exception, match="is not allowed"):
+            db.session.execute(
+                text("UPDATE loans SET status = :s WHERE id = :i"),
+                {"s": status, "i": loan_id},
+            )
+        db.session.rollback()
