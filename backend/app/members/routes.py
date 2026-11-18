@@ -287,7 +287,13 @@ def _grant_default_title(membership: SaccoMembership) -> None:
         select(Role.id).where(Role.code == code)
     ).scalar_one_or_none()
     if role_id is not None:  # no catalogue (create_all): the role column answers
-        db.session.add(MembershipRoleLink(membership_id=membership.id, role_id=role_id))
+        db.session.add(
+            MembershipRoleLink(
+                membership_id=membership.id,
+                role_id=role_id,
+                granted_by_user_id=g.access.user.id,
+            )
+        )
 
 
 @saccos_bp.patch("/<int:sacco_id>/members/<int:membership_id>")

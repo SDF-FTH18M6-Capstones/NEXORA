@@ -70,6 +70,11 @@ class MembershipRoleLink(db.Model):
     role_id: Mapped[int] = mapped_column(
         ForeignKey("roles.id", ondelete="CASCADE"), primary_key=True
     )
+    # Who gave the title. Null for system grants (migration backfill, seed). The
+    # database refuses a granter who owns this membership (migration 0021).
+    granted_by_user_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", name="fk_membership_roles_granted_by"), nullable=True
+    )
 
 
 class PlatformGrant(db.Model):

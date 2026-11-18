@@ -188,5 +188,7 @@ If your database password contains special characters (`@`, `#`, `/`, `:`), URL-
 - [x] Move 4 hardening: one error format, access-token revocation, email verification, forgot-password, required `reference`, separation of duties
 - [x] OpenAPI spec for every route (`docs/openapi.yaml`)
 - [ ] Move 4 remainder: final sign-off
-- [ ] Loans (waiting for the interest decision)
+- [x] Loans: request, one or two approvals, disbursement, repayment
+
+Release 1 loans are interest-free. Interest is planned for release 2 (open decisions in [`docs/parked.md`](docs/parked.md)).
 - [ ] Frontend connected to backend

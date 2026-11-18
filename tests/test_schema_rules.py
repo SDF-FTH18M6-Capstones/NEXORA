@@ -1014,3 +1014,133 @@ def test_a_repaid_loan_cannot_go_back(schema_app):  # noqa: F811
                 {"s": status, "i": loan_id},
             )
         db.session.rollback()
+
+
+# ---- release 1 follow-ups --------------------------------------------------------
+
+
+def _link(membership_id, code, granted_by):
+    from app.models.access import MembershipRoleLink, Role
+
+    role_id = db.session.query(Role.id).filter_by(code=code).scalar()
+    db.session.add(
+        MembershipRoleLink(
+            membership_id=membership_id, role_id=role_id, granted_by_user_id=granted_by
+        )
+    )
+    db.session.commit()
+
+
+def test_the_database_refuses_a_self_granted_title(schema_app):  # noqa: F811
+    s = Setup()
+    with pytest.raises(Exception, match="nobody grants job titles to their own"):
+        _link(s.member_membership.id, "loans_officer", granted_by=s.member.id)
+    db.session.rollback()
+    # Someone else may grant it, and the grant records who did.
+    _link(s.member_membership.id, "loans_officer", granted_by=s.admin.id)
+    db.session.remove()
+
+
+def test_a_platform_owner_may_grant_titles_on_their_own_membership(schema_app):  # noqa: F811
+    s = Setup()
+    boss = make_user(owner=True)
+    membership = SaccoMembership(
+        user_id=boss.id, sacco_id=s.sacco.id, role=MembershipRole.STAFF
+    )
+    db.session.add(membership)
+    db.session.commit()
+    mid = membership.id
+    _link(mid, "finance_officer", granted_by=boss.id)  # owners are exempt
+    db.session.remove()
+
+
+def test_the_api_records_who_granted_every_title(schema_app):  # noqa: F811
+    from app.models.access import MembershipRoleLink
+
+    s = Setup()
+    client = schema_app.test_client()
+    invited = client.post(
+        f"/api/v1/saccos/{s.sacco.id}/members",
+        json={"phone": "+254700000222"},
+        headers=auth(s.admin),
+    )
+    mid = invited.json["id"]
+    client.put(
+        f"/api/v1/saccos/{s.sacco.id}/members/{mid}/roles",
+        json={"roles": ["member", "loans_officer"]},
+        headers=auth(s.admin),
+    )
+    granters = set(
+        db.session.execute(
+            select(MembershipRoleLink.granted_by_user_id).where(
+                MembershipRoleLink.membership_id == mid
+            )
+        ).scalars()
+    )
+    db.session.remove()
+    assert granters == {s.admin.id}
+
+
+@pytest.mark.parametrize("order", ["first_then_second", "second_then_first"])
+def test_one_phone_invited_to_two_saccos_joins_both(schema_app, order):  # noqa: F811
+    first, second = Setup(), Setup()
+    client = schema_app.test_client()
+    person = make_user()
+    # One phone per parametrised run: a phone belongs to one account for good.
+    phone = "+25470000012" + ("3" if order == "first_then_second" else "5")
+    codes = {}
+    for s in (first, second):
+        resp = client.post(
+            f"/api/v1/saccos/{s.sacco.id}/members",
+            json={"phone": phone},
+            headers=auth(s.admin),
+        )
+        assert resp.status_code == 201
+        codes[s] = (resp.json["id"], resp.json["join_code"])
+    sequence = (first, second) if order == "first_then_second" else (second, first)
+    for s in sequence:
+        mid, code = codes[s]
+        joined = client.post(
+            "/api/v1/auth/join",
+            json={"phone": phone, "code": code},
+            headers=auth(person),
+        )
+        assert joined.status_code == 200, joined.json
+        assert joined.json["membership_id"] == mid
+        pinned = client.post(
+            "/api/v1/auth/join/pin",
+            json={"setup_token": joined.json["setup_token"], "pin": "4826"},
+            headers=auth(person),
+        )
+        assert pinned.status_code == 200 and pinned.json["status"] == "active"
+
+
+def test_a_wrong_code_counts_against_every_live_invite_for_the_phone(schema_app):  # noqa: F811
+    from app.auth.join import MAX_ATTEMPTS
+    from app.models.identity import JoinCode
+
+    first, second = Setup(), Setup()
+    client = schema_app.test_client()
+    person = make_user()
+    phone = "+254700000124"
+    ids = []
+    for s in (first, second):
+        resp = client.post(
+            f"/api/v1/saccos/{s.sacco.id}/members",
+            json={"phone": phone},
+            headers=auth(s.admin),
+        )
+        ids.append(resp.json["id"])
+    for _ in range(MAX_ATTEMPTS):
+        wrong = client.post(
+            "/api/v1/auth/join",
+            json={"phone": phone, "code": "not-a-code"},
+            headers=auth(person),
+        )
+        assert wrong.status_code != 200
+    attempts = db.session.execute(
+        select(JoinCode.attempts).where(JoinCode.membership_id.in_(ids))
+    ).scalars().all()
+    db.session.remove()
+    # Five guesses in total burn both codes: two invites give no extra guesses.
+    assert attempts == [MAX_ATTEMPTS, MAX_ATTEMPTS]

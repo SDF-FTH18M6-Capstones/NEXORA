@@ -562,7 +562,7 @@ paths:
       description: |-
         **Who:** a signed-in user holding a join code.
 
-        The code is six digits, valid for the SACCO's `join_code_ttl_minutes` (15 by default) and usable once. Five wrong entries burn it. Only a membership that is currently `invited` can be joined; a cancelled invite answers like a wrong code. On success the phone is linked to the user and a setup token (valid 10 minutes, tied to this code) is returned for setting the circle PIN; a re-invite makes older setup tokens invalid.
+        The code is six digits, valid for the SACCO's `join_code_ttl_minutes` (15 by default) and usable once. Five wrong entries burn it. Only a membership that is currently `invited` can be joined; a cancelled invite answers like a wrong code. A phone may be invited to several SACCOs: the code decides which one is joined, and a wrong code counts against every live code for that phone. On success the phone is linked to the user and a setup token (valid 10 minutes, tied to this code) is returned for setting the circle PIN; a re-invite makes older setup tokens invalid.
       security:
       - bearerAuth: []
       requestBody:

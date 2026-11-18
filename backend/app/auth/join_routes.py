@@ -1,5 +1,6 @@
 """Join, set PIN, circle login. Section 2."""
 
+import hmac
 from datetime import UTC, datetime
 
 from flask import current_app, g, jsonify, request
@@ -8,7 +9,13 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 
 from app import auth_bp
-from app.auth.join import JoinError, check_code, normalize_phone
+from app.auth.join import (
+    MAX_ATTEMPTS,
+    JoinError,
+    check_code,
+    digest_code,
+    normalize_phone,
+)
 from app.auth.limits import write_limit
 from app.auth.pin import PinError, check_pin, set_pin
 from app.errors import CODE_WRONG, error_response, interface_error
@@ -55,8 +62,10 @@ def join():
     except ValueError:
         return interface_error(CODE_WRONG, "That code is not correct.")
     code = str(body.get("code", ""))
-    # An unknown phone gets the same answer as a wrong code.
-    membership = db.session.execute(
+    # Every live invitation for this phone, one per SACCO, locked in id order.
+    # The code's digest is tied to its membership, so the code itself says which
+    # SACCO is being joined. An unknown phone answers like a wrong code.
+    invited = db.session.execute(
         select(SaccoMembership)
         .where(
             SaccoMembership.phone == phone,
@@ -64,26 +73,44 @@ def join():
             # membership answers like an unknown phone.
             SaccoMembership.status == MembershipStatus.INVITED,
         )
-        .order_by(SaccoMembership.id.desc())
-        .limit(1)
+        .order_by(SaccoMembership.id)
         .with_for_update()
-    ).scalar_one_or_none()
-    row = None
-    if membership is not None:
-        row = db.session.execute(
+    ).scalars().all()
+    latest = []
+    for candidate in invited:
+        code_row = db.session.execute(
             select(JoinCode)
-            .where(JoinCode.membership_id == membership.id)
+            .where(JoinCode.membership_id == candidate.id)
             .order_by(JoinCode.id.desc())
             .limit(1)
             .with_for_update()
         ).scalar_one_or_none()
-    if row is None:
-        db.session.rollback()
+        if code_row is not None:
+            latest.append((candidate, code_row))
+    secret = current_app.config["SECRET_KEY"]
+    match = next(
+        (
+            (candidate, code_row)
+            for candidate, code_row in latest
+            if hmac.compare_digest(
+                code_row.code_digest, digest_code(candidate.id, code, secret)
+            )
+        ),
+        None,
+    )
+    if match is None:
+        # A wrong guess counts against every live code for this phone, so two
+        # invitations never give an extra set of guesses.
+        for _, code_row in latest:
+            if code_row.used_at is None:
+                code_row.attempts = min(code_row.attempts + 1, MAX_ATTEMPTS)
+        db.session.commit()
         return interface_error(CODE_WRONG, "That code is not correct.")
+    membership, row = match
     try:
-        check_code(row, code, current_app.config["SECRET_KEY"])
+        check_code(row, code, secret)  # used, burned or expired
     except JoinError as exc:
-        db.session.commit()  # keep the wrong-attempt count
+        db.session.commit()
         return interface_error(exc.name, exc.message)
 
     user = g.user
