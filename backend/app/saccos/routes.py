@@ -20,7 +20,7 @@ from app.errors import error_response
 from app.extensions import db
 from app.models.audit import AuditLog
 from app.models.sacco import Sacco, SaccoStatus
-from app.security.tenant import sacco_scoped
+from app.security.tenant import permission_scoped
 
 MAX_NAME_LENGTH = 255
 CURRENCY_RE = re.compile(r"[A-Z]{3}")
@@ -133,14 +133,14 @@ def deactivate_sacco(sacco_id):
 
 @saccos_bp.get("/<int:sacco_id>")
 @read_limit
-@sacco_scoped()
+@permission_scoped("sacco.view")
 def get_sacco(sacco_id):
     return jsonify(_sacco_json(g.access.sacco))
 
 
 @saccos_bp.patch("/<int:sacco_id>")
 @write_limit
-@sacco_scoped()
+@permission_scoped("sacco.update")
 def update_sacco(sacco_id):
     """Rename the SACCO. `name` is the only editable field.
 

@@ -225,9 +225,8 @@ def test_loan_history_is_append_only(schema_app, table):  # noqa: F811
 def test_membership_transitions_follow_the_schema(schema_app):  # noqa: F811
     s = Setup()
     client = schema_app.test_client()
-    owner = make_user(owner=True)
     member_url = f"/api/v1/saccos/{s.sacco.id}/members/{s.member_membership.id}"
-    back = client.patch(member_url, json={"status": "invited"}, headers=auth(owner))
+    back = client.patch(member_url, json={"status": "invited"}, headers=auth(s.admin))
     assert back.status_code == 409  # active cannot go back to invited
 
     invited = client.post(
@@ -359,7 +358,7 @@ def test_an_admin_holds_no_other_job_title(schema_app):  # noqa: F811
     )
     assert promoted.status_code == 200
     titles = client.get(
-        f"/api/v1/saccos/{s.sacco.id}/members/{mid}/roles", headers=boss
+        f"/api/v1/saccos/{s.sacco.id}/members/{mid}/roles", headers=auth(s.admin)
     )
     assert titles.json["roles"] == ["circle_admin"]
 

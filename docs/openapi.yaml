@@ -32,6 +32,12 @@ components:
       scheme: bearer
       bearerFormat: JWT
   parameters:
+    request_id:
+      name: request_id
+      in: path
+      required: true
+      schema:
+        type: integer
     loan_id:
       name: loan_id
       in: path
@@ -184,6 +190,53 @@ components:
           type: integer
           nullable: true
           description: The ledger row that paid the loan out. It cannot be reversed.
+        created_at:
+          type: string
+          format: date-time
+    SupportAccess:
+      type: object
+      properties:
+        id:
+          type: integer
+        sacco_id:
+          type: integer
+        requested_by_user_id:
+          type: integer
+        reason:
+          type: string
+        scope:
+          type: string
+          enum:
+          - audit
+          - members
+          - savings
+          - loans
+        status:
+          type: string
+          enum:
+          - requested
+          - approved
+          - denied
+          - revoked
+          - expired
+        decided_by_membership_id:
+          type: integer
+          nullable: true
+        decided_at:
+          type: string
+          format: date-time
+          nullable: true
+        expires_at:
+          type: string
+          format: date-time
+          nullable: true
+        revoked_by_membership_id:
+          type: integer
+          nullable: true
+        revoked_at:
+          type: string
+          format: date-time
+          nullable: true
         created_at:
           type: string
           format: date-time
@@ -670,8 +723,8 @@ paths:
         **Rate limit:** 5 per minute (per IP).
 
 
-        Five failed logins lock the account for 15 minutes (423). A user whose SACCOs are all suspended
-        gets 423.'
+        Five failed logins lock the account for 15 minutes (423). A suspended SACCO does not block login:
+        the user sees it in GET /members/me/saccos, and the SACCO''s own endpoints answer 423.'
       responses:
         '200':
           description: Token pair. Access token lasts 15 minutes, refresh token 7 days.
@@ -1318,7 +1371,7 @@ paths:
     - $ref: '#/components/parameters/sacco_id'
     get:
       summary: Get a SACCO
-      description: '**Who:** platform owner, or that SACCO''s admin (staff and members get 403)
+      description: '**Who:** any active member of the SACCO (`sacco.view`), or the platform owner
 
 
         **Rate limit:** 120 per minute.'
@@ -1364,7 +1417,7 @@ paths:
       - bearerAuth: []
     patch:
       summary: Rename a SACCO
-      description: '**Who:** platform owner, or that SACCO''s admin
+      description: '**Who:** holders of `sacco.update` (the SACCO admin), or the platform owner
 
 
         **Rate limit:** 30 per minute.
@@ -1446,7 +1499,8 @@ paths:
         **Rate limit:** 30 per minute.
 
 
-        Suspending blocks login, refresh and every SACCO route for its users (423).'
+        Suspending makes every endpoint of that SACCO answer 423 (reads and writes, joining and PIN
+        login); login, refresh, /members/me and /members/me/saccos keep working and show the status.'
       responses:
         '200':
           description: The SACCO, now active.
@@ -1492,7 +1546,8 @@ paths:
         **Rate limit:** 30 per minute.
 
 
-        Suspending blocks login, refresh and every SACCO route for its users (423).'
+        Suspending makes every endpoint of that SACCO answer 423 (reads and writes, joining and PIN
+        login); login, refresh, /members/me and /members/me/saccos keep working and show the status.'
       responses:
         '200':
           description: The SACCO, now suspended.
@@ -1584,7 +1639,7 @@ paths:
       - bearerAuth: []
     post:
       summary: Add a registered user, or invite a phone, to a SACCO
-      description: '**Who:** SACCO admin or platform owner (only the platform owner may add an admin)
+      description: '**Who:** holders of `member.manage` (the SACCO admin) or the platform owner; adding an admin needs `admin.manage` (platform owner only)
 
 
         **Rate limit:** 30 per minute.
@@ -1728,7 +1783,7 @@ paths:
       - bearerAuth: []
     patch:
       summary: Change a member's role or status
-      description: '**Who:** SACCO admin or platform owner (only the platform owner may touch admins)
+      description: '**Who:** holders of `member.manage` (the SACCO admin) or the platform owner; touching an admin needs `admin.manage` (platform owner only)
 
 
         **Rate limit:** 30 per minute.
@@ -2752,7 +2807,7 @@ paths:
     - $ref: '#/components/parameters/membership_id'
     get:
       summary: A member's job titles
-      description: '**Who:** the SACCO admin or the platform owner.'
+      description: '**Who:** holders of `member.manage` (the SACCO admin), or the platform owner.'
       responses:
         '200':
           description: The titles held.
@@ -2772,7 +2827,7 @@ paths:
       - bearerAuth: []
     put:
       summary: Set a member's job titles
-      description: '**Who:** the SACCO admin or the platform owner. Replaces the whole list. Only the
+      description: '**Who:** holders of `member.manage` (the SACCO admin), or the platform owner. Replaces the whole list. Only the
         platform owner edits an admin''s titles; nobody changes their own titles; the membership must
         be active (409). `circle_admin` follows the SACCO admin role: keep it on an admin and leave it
         off everyone else (409), and make or remove admins with PATCH /saccos/{sacco_id}/members/{membership_id},
@@ -2817,7 +2872,7 @@ paths:
     - $ref: '#/components/parameters/sacco_id'
     get:
       summary: The SACCO's loan rules
-      description: '**Who:** any active member of the SACCO, or the platform owner. Defaults are returned
+      description: '**Who:** any active member of the SACCO (`sacco.view`), or the platform owner. Defaults are returned
         until the owner changes them.'
       responses:
         '200':
@@ -3221,6 +3276,207 @@ paths:
                     type: array
                     items:
                       $ref: '#/components/schemas/Owner'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+      security:
+      - bearerAuth: []
+  /api/v1/members/me/saccos:
+    get:
+      summary: Every SACCO I belong to
+      description: '**Who:** any signed-in user. One login covers every SACCO: a SACCO-scoped request
+        names its SACCO, and the membership is checked again on every request (no re-login to switch).
+        A suspended SACCO is listed with `status: suspended`.'
+      responses:
+        '200':
+          description: My SACCOs, by name.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  saccos:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: integer
+                        name:
+                          type: string
+                        status:
+                          type: string
+                          enum:
+                          - active
+                          - suspended
+                        currency:
+                          type: string
+                        membership_id:
+                          type: integer
+                        membership_status:
+                          type: string
+                          enum:
+                          - invited
+                          - active
+                          - inactive
+                        roles:
+                          type: array
+                          items:
+                            type: string
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+      security:
+      - bearerAuth: []
+  /api/v1/saccos/{sacco_id}/support-access:
+    parameters:
+    - $ref: '#/components/parameters/sacco_id'
+    get:
+      summary: Support-access requests for a SACCO, newest first
+      description: '**Who:** the SACCO''s admin, or a platform owner. Approvals whose time is up are shown
+        as expired.'
+      responses:
+        '200':
+          description: The requests.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  requests:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/SupportAccess'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      security:
+      - bearerAuth: []
+    post:
+      summary: Ask to read one scope of a SACCO's data
+      description: '**Who:** a platform owner. A platform owner reads SACCO data (audit, members, savings,
+        loans) only through an approved grant for that scope, read-only, while it lasts (at most 24
+        hours). Every read under a grant writes an audit row with the grant id. There is no bypass.'
+      responses:
+        '201':
+          description: The request, status `requested`.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SupportAccess'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      security:
+      - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reason:
+                  type: string
+                  maxLength: 500
+                scope:
+                  type: string
+                  enum:
+                  - audit
+                  - members
+                  - savings
+                  - loans
+              required:
+              - reason
+              - scope
+  /api/v1/support-access/{request_id}/approve:
+    parameters:
+    - $ref: '#/components/parameters/request_id'
+    post:
+      summary: Approve a support-access request
+      description: '**Who:** an active admin of the request''s SACCO, never the requester. Sets the expiry 1 to 24 hours ahead.'
+      responses:
+        '200':
+          description: The request after the change.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SupportAccess'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+      security:
+      - bearerAuth: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                hours:
+                  type: integer
+                  minimum: 1
+                  maximum: 24
+                  default: 4
+  /api/v1/support-access/{request_id}/deny:
+    parameters:
+    - $ref: '#/components/parameters/request_id'
+    post:
+      summary: Deny a support-access request
+      description: '**Who:** an active admin of the request''s SACCO, never the requester.'
+      responses:
+        '200':
+          description: The request after the change.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SupportAccess'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+      security:
+      - bearerAuth: []
+  /api/v1/support-access/{request_id}/revoke:
+    parameters:
+    - $ref: '#/components/parameters/request_id'
+    post:
+      summary: Revoke an approved grant at any time
+      description: '**Who:** an active admin of the request''s SACCO, never the requester.'
+      responses:
+        '200':
+          description: The request after the change.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SupportAccess'
+        '400':
+          $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':

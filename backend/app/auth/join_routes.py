@@ -18,11 +18,13 @@ from app.auth.join import (
 )
 from app.auth.limits import write_limit
 from app.auth.pin import PinError, check_pin, set_pin
+from app.auth.suspension import SUSPENDED_MESSAGE
 from app.errors import CODE_WRONG, error_response, interface_error
 from app.extensions import db
 from app.models.audit import AuditLog
 from app.models.identity import JoinCode, UserPhone
 from app.models.membership import MembershipStatus, SaccoMembership
+from app.models.sacco import Sacco, SaccoStatus
 from app.security.tenant import AccessDenied, current_user
 
 SETUP_TTL = 600  # seconds the setup token stays valid
@@ -41,6 +43,14 @@ def _audit(membership, action, note):
             target=f"membership:{membership.id} {note}",
         )
     )
+
+
+def _sacco_suspended(sacco_id: int):
+    """The 423 answer if this SACCO is suspended, else None."""
+    sacco = db.session.get(Sacco, sacco_id)
+    if sacco is not None and sacco.status is SaccoStatus.SUSPENDED:
+        return error_response(423, SUSPENDED_MESSAGE)
+    return None
 
 
 def _signed_in():
@@ -107,6 +117,9 @@ def join():
         db.session.commit()
         return interface_error(CODE_WRONG, "That code is not correct.")
     membership, row = match
+    if (sacco_error := _sacco_suspended(membership.sacco_id)) is not None:
+        db.session.rollback()
+        return sacco_error
     try:
         check_code(row, code, secret)  # used, burned or expired
     except JoinError as exc:
@@ -155,6 +168,9 @@ def join_pin():
     if membership.status is not MembershipStatus.INVITED:
         db.session.rollback()
         return error_response(409, "This membership is already set up.")
+    if (sacco_error := _sacco_suspended(membership.sacco_id)) is not None:
+        db.session.rollback()
+        return sacco_error
     newest = db.session.execute(
         select(JoinCode)
         .where(JoinCode.membership_id == membership.id)
@@ -197,10 +213,16 @@ def circle_login():
     if membership is None or membership.status is not MembershipStatus.ACTIVE:
         db.session.rollback()
         return error_response(403, "Not allowed.")
+    if (sacco_error := _sacco_suspended(membership.sacco_id)) is not None:
+        db.session.rollback()
+        return sacco_error
     try:
         check_pin(membership, str(body.get("pin", "")))
     except PinError as exc:
+        # Refused attempts are recorded too, with the reason.
+        _audit(membership, "member.circle_login", f"refused: {exc.name}")
         db.session.commit()  # keep the wrong-attempt count
         return interface_error(exc.name, exc.message)
+    _audit(membership, "member.circle_login", "ok")
     db.session.commit()
     return jsonify(ok=True, membership_id=membership.id, role=membership.role.value)

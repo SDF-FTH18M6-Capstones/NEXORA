@@ -127,35 +127,34 @@ def test_a_token_for_a_deleted_user_is_401(client, world):
 # --- 423: suspended SACCO ---------------------------------------------------
 
 
-@pytest.mark.parametrize("method", ["get", "patch"])
-def test_a_suspended_saccos_member_is_423_with_an_old_token(client, world, method):
+def test_a_suspension_blocks_the_sacco_not_the_members_own_profile(client, world):
     headers = auth(world["sam"])  # issued before the suspension
+    suspend(world["sacco"])
+    # The profile is the user's own, not the SACCO's.
     assert client.get(ME, headers=headers).status_code == 200
-    suspend(world["sacco"])
-    response = getattr(client, method)(
-        ME,
-        headers=headers,
-        json={"email": "new@example.com", "current_password": PASSWORD},
+    scoped = client.get(
+        f"/api/v1/saccos/{world['sacco'].id}/settings", headers=headers
     )
-    assert response.status_code == 423
-    assert response.get_json()["error"]["message"] == SUSPENDED_MESSAGE
+    assert scoped.status_code == 423
+    assert scoped.get_json()["error"]["message"] == SUSPENDED_MESSAGE
 
 
-def test_a_suspended_refusal_changes_nothing(client, world):
+def test_a_member_of_a_suspended_sacco_can_still_change_their_email(client, world):
     suspend(world["sacco"])
-    client.patch(
+    resp = client.patch(
         ME,
         headers=auth(world["sam"]),
         json={"email": "new@example.com", "current_password": PASSWORD},
     )
-    sam = fresh(world["sam"])
-    assert sam.email == "sam@example.com"
-    assert sam.failed_login_count in (0, None)
+    assert resp.status_code == 200
+    assert fresh(world["sam"]).email == "new@example.com"
 
 
 def test_the_message_does_not_name_the_sacco(client, world):
     suspend(world["sacco"])
-    body = client.get(ME, headers=auth(world["sam"])).get_json()
+    body = client.get(
+        f"/api/v1/saccos/{world['sacco'].id}/settings", headers=auth(world["sam"])
+    ).get_json()
     assert world["sacco"].name not in str(body)
 
 
@@ -176,11 +175,12 @@ def test_the_platform_owner_still_gets_through(client, world):
 
 def test_reactivating_the_sacco_restores_access(client, world):
     headers = auth(world["sam"])
+    url = f"/api/v1/saccos/{world['sacco'].id}/settings"
     suspend(world["sacco"])
-    assert client.get(ME, headers=headers).status_code == 423
+    assert client.get(url, headers=headers).status_code == 423
     world["sacco"].status = SaccoStatus.ACTIVE
     db.session.commit()
-    assert client.get(ME, headers=headers).status_code == 200
+    assert client.get(url, headers=headers).status_code == 200
 
 
 # --- wrong password on an email change counts toward lockout ----------------

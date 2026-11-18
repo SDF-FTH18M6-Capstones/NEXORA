@@ -57,17 +57,24 @@
     },
     {
       "_id": "b966fea3-d857-5fbb-aaf8-8b6a63c51e14",
-      "name": "8. Platform owners",
+      "name": "8. Support access: the SACCO consents, the owner reads",
       "containerId": "",
       "created": "2026-11-17T20:00:00.000Z",
       "sortNum": 80000
     },
     {
       "_id": "3a328034-37cc-5f2e-92e9-22708dea1ecd",
-      "name": "9. Join a SACCO by phone (once per database)",
+      "name": "9. Platform owners",
       "containerId": "",
       "created": "2026-11-17T20:00:00.000Z",
       "sortNum": 90000
+    },
+    {
+      "_id": "b8eb125c-f267-5e5a-af55-d716b00a6a58",
+      "name": "10. Join a SACCO by phone (once per database)",
+      "containerId": "",
+      "created": "2026-11-17T20:00:00.000Z",
+      "sortNum": 100000
     }
   ],
   "requests": [
@@ -2148,7 +2155,7 @@
       "_id": "f9014574-0a74-5ff9-9daf-71183ca072f2",
       "colId": "c10fe5b5-b489-5b3a-b28d-fde84b4cbc77",
       "containerId": "e0e7adea-b5e5-5952-b50c-16411b116441",
-      "name": "07 Owner: the SACCO audit log",
+      "name": "07 Owner: no SACCO audit log without consent (403)",
       "url": "{{baseUrl}}/api/v1/admin/saccos/{{saccoId}}/audit",
       "method": "GET",
       "sortNum": 70000,
@@ -2161,7 +2168,7 @@
           "type": "res-code",
           "custom": "",
           "action": "equal",
-          "value": "200"
+          "value": "403"
         }
       ],
       "auth": {
@@ -2198,6 +2205,231 @@
       "_id": "c04c8c32-5955-58d3-9b8c-8bb738feaa88",
       "colId": "c10fe5b5-b489-5b3a-b28d-fde84b4cbc77",
       "containerId": "b966fea3-d857-5fbb-aaf8-8b6a63c51e14",
+      "name": "01 Owner: ask to read Alpha's audit log",
+      "url": "{{baseUrl}}/api/v1/saccos/{{saccoId}}/support-access",
+      "method": "POST",
+      "sortNum": 10000,
+      "created": "2026-11-17T20:00:00.000Z",
+      "modified": "2026-11-17T20:00:00.000Z",
+      "headers": [
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        }
+      ],
+      "params": [],
+      "tests": [
+        {
+          "type": "res-code",
+          "custom": "",
+          "action": "equal",
+          "value": "201"
+        },
+        {
+          "type": "json-query",
+          "custom": "json.status",
+          "action": "equal",
+          "value": "requested"
+        },
+        {
+          "type": "set-env-var",
+          "custom": "json.id",
+          "action": "setto",
+          "value": "{{supportId}}"
+        }
+      ],
+      "body": {
+        "type": "json",
+        "raw": "{\"reason\": \"Demo: checking a member complaint\", \"scope\": \"audit\"}",
+        "form": []
+      },
+      "auth": {
+        "type": "bearer",
+        "bearer": "{{ownerToken}}"
+      }
+    },
+    {
+      "_id": "6ea36ab0-d2f7-5079-9b2e-7e53edeb1705",
+      "colId": "c10fe5b5-b489-5b3a-b28d-fde84b4cbc77",
+      "containerId": "b966fea3-d857-5fbb-aaf8-8b6a63c51e14",
+      "name": "02 Admin: see the request",
+      "url": "{{baseUrl}}/api/v1/saccos/{{saccoId}}/support-access",
+      "method": "GET",
+      "sortNum": 20000,
+      "created": "2026-11-17T20:00:00.000Z",
+      "modified": "2026-11-17T20:00:00.000Z",
+      "headers": [],
+      "params": [],
+      "tests": [
+        {
+          "type": "res-code",
+          "custom": "",
+          "action": "equal",
+          "value": "200"
+        },
+        {
+          "type": "json-query",
+          "custom": "json.requests[0].status",
+          "action": "equal",
+          "value": "requested"
+        }
+      ],
+      "auth": {
+        "type": "bearer",
+        "bearer": "{{adminToken}}"
+      }
+    },
+    {
+      "_id": "e4c57d78-39dd-51e9-8f36-70aa28522703",
+      "colId": "c10fe5b5-b489-5b3a-b28d-fde84b4cbc77",
+      "containerId": "b966fea3-d857-5fbb-aaf8-8b6a63c51e14",
+      "name": "03 Admin: approve it for 1 hour",
+      "url": "{{baseUrl}}/api/v1/support-access/{{supportId}}/approve",
+      "method": "POST",
+      "sortNum": 30000,
+      "created": "2026-11-17T20:00:00.000Z",
+      "modified": "2026-11-17T20:00:00.000Z",
+      "headers": [
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        }
+      ],
+      "params": [],
+      "tests": [
+        {
+          "type": "res-code",
+          "custom": "",
+          "action": "equal",
+          "value": "200"
+        },
+        {
+          "type": "json-query",
+          "custom": "json.status",
+          "action": "equal",
+          "value": "approved"
+        }
+      ],
+      "body": {
+        "type": "json",
+        "raw": "{\"hours\": 1}",
+        "form": []
+      },
+      "auth": {
+        "type": "bearer",
+        "bearer": "{{adminToken}}"
+      }
+    },
+    {
+      "_id": "db7e87ce-10ca-582d-a8de-0c8e3eba1969",
+      "colId": "c10fe5b5-b489-5b3a-b28d-fde84b4cbc77",
+      "containerId": "b966fea3-d857-5fbb-aaf8-8b6a63c51e14",
+      "name": "04 Owner: read the audit log under the grant",
+      "url": "{{baseUrl}}/api/v1/admin/saccos/{{saccoId}}/audit",
+      "method": "GET",
+      "sortNum": 40000,
+      "created": "2026-11-17T20:00:00.000Z",
+      "modified": "2026-11-17T20:00:00.000Z",
+      "headers": [],
+      "params": [],
+      "tests": [
+        {
+          "type": "res-code",
+          "custom": "",
+          "action": "equal",
+          "value": "200"
+        }
+      ],
+      "auth": {
+        "type": "bearer",
+        "bearer": "{{ownerToken}}"
+      }
+    },
+    {
+      "_id": "02416f80-cfa9-5279-8151-571d4d3ccde3",
+      "colId": "c10fe5b5-b489-5b3a-b28d-fde84b4cbc77",
+      "containerId": "b966fea3-d857-5fbb-aaf8-8b6a63c51e14",
+      "name": "05 Owner: members are another scope (403)",
+      "url": "{{baseUrl}}/api/v1/saccos/{{saccoId}}/members",
+      "method": "GET",
+      "sortNum": 50000,
+      "created": "2026-11-17T20:00:00.000Z",
+      "modified": "2026-11-17T20:00:00.000Z",
+      "headers": [],
+      "params": [],
+      "tests": [
+        {
+          "type": "res-code",
+          "custom": "",
+          "action": "equal",
+          "value": "403"
+        }
+      ],
+      "auth": {
+        "type": "bearer",
+        "bearer": "{{ownerToken}}"
+      }
+    },
+    {
+      "_id": "e94ae906-b8ea-5e48-9851-d343f5762e42",
+      "colId": "c10fe5b5-b489-5b3a-b28d-fde84b4cbc77",
+      "containerId": "b966fea3-d857-5fbb-aaf8-8b6a63c51e14",
+      "name": "06 Admin: revoke the grant",
+      "url": "{{baseUrl}}/api/v1/support-access/{{supportId}}/revoke",
+      "method": "POST",
+      "sortNum": 60000,
+      "created": "2026-11-17T20:00:00.000Z",
+      "modified": "2026-11-17T20:00:00.000Z",
+      "headers": [],
+      "params": [],
+      "tests": [
+        {
+          "type": "res-code",
+          "custom": "",
+          "action": "equal",
+          "value": "200"
+        },
+        {
+          "type": "json-query",
+          "custom": "json.status",
+          "action": "equal",
+          "value": "revoked"
+        }
+      ],
+      "auth": {
+        "type": "bearer",
+        "bearer": "{{adminToken}}"
+      }
+    },
+    {
+      "_id": "d8f09d49-2737-54b1-bc38-38aa69605953",
+      "colId": "c10fe5b5-b489-5b3a-b28d-fde84b4cbc77",
+      "containerId": "b966fea3-d857-5fbb-aaf8-8b6a63c51e14",
+      "name": "07 Owner: refused again after the revoke (403)",
+      "url": "{{baseUrl}}/api/v1/admin/saccos/{{saccoId}}/audit",
+      "method": "GET",
+      "sortNum": 70000,
+      "created": "2026-11-17T20:00:00.000Z",
+      "modified": "2026-11-17T20:00:00.000Z",
+      "headers": [],
+      "params": [],
+      "tests": [
+        {
+          "type": "res-code",
+          "custom": "",
+          "action": "equal",
+          "value": "403"
+        }
+      ],
+      "auth": {
+        "type": "bearer",
+        "bearer": "{{ownerToken}}"
+      }
+    },
+    {
+      "_id": "7567c855-80c1-552a-8e82-9fedfc1290f7",
+      "colId": "c10fe5b5-b489-5b3a-b28d-fde84b4cbc77",
+      "containerId": "3a328034-37cc-5f2e-92e9-22708dea1ecd",
       "name": "01 Owner: list owners (saves the second owner)",
       "url": "{{baseUrl}}/api/v1/admin/owners",
       "method": "GET",
@@ -2232,9 +2464,9 @@
       }
     },
     {
-      "_id": "6ea36ab0-d2f7-5079-9b2e-7e53edeb1705",
+      "_id": "ad7b7471-bf35-577e-8ee3-f8ed74e479c8",
       "colId": "c10fe5b5-b489-5b3a-b28d-fde84b4cbc77",
-      "containerId": "b966fea3-d857-5fbb-aaf8-8b6a63c51e14",
+      "containerId": "3a328034-37cc-5f2e-92e9-22708dea1ecd",
       "name": "02 Admin: not a platform owner (403)",
       "url": "{{baseUrl}}/api/v1/admin/owners",
       "method": "GET",
@@ -2257,9 +2489,9 @@
       }
     },
     {
-      "_id": "e4c57d78-39dd-51e9-8f36-70aa28522703",
+      "_id": "397c8703-ddf9-5b06-b176-d058e9cf1f4a",
       "colId": "c10fe5b5-b489-5b3a-b28d-fde84b4cbc77",
-      "containerId": "b966fea3-d857-5fbb-aaf8-8b6a63c51e14",
+      "containerId": "3a328034-37cc-5f2e-92e9-22708dea1ecd",
       "name": "03 Owner: revoking the second owner would leave one (409)",
       "url": "{{baseUrl}}/api/v1/admin/owners/{{owner2Id}}",
       "method": "DELETE",
@@ -2282,13 +2514,50 @@
       }
     },
     {
-      "_id": "7567c855-80c1-552a-8e82-9fedfc1290f7",
+      "_id": "f10685a0-4bfe-56d1-b4c7-a51b26ca232e",
       "colId": "c10fe5b5-b489-5b3a-b28d-fde84b4cbc77",
-      "containerId": "3a328034-37cc-5f2e-92e9-22708dea1ecd",
-      "name": "01 Owner: invite a phone into Beta (shows join_code)",
-      "url": "{{baseUrl}}/api/v1/saccos/{{betaSaccoId}}/members",
+      "containerId": "b8eb125c-f267-5e5a-af55-d716b00a6a58",
+      "name": "01 Login: Beta admin",
+      "url": "{{baseUrl}}/api/v1/auth/login",
       "method": "POST",
       "sortNum": 10000,
+      "created": "2026-11-17T20:00:00.000Z",
+      "modified": "2026-11-17T20:00:00.000Z",
+      "headers": [
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        }
+      ],
+      "params": [],
+      "tests": [
+        {
+          "type": "res-code",
+          "custom": "",
+          "action": "equal",
+          "value": "200"
+        },
+        {
+          "type": "set-env-var",
+          "custom": "json.access_token",
+          "action": "setto",
+          "value": "{{betaAdminToken}}"
+        }
+      ],
+      "body": {
+        "type": "json",
+        "raw": "{\"email\": \"beta-admin@example.com\", \"password\": \"{{password}}\"}",
+        "form": []
+      }
+    },
+    {
+      "_id": "8ca01d3e-d10b-5920-b806-89da0789c7b3",
+      "colId": "c10fe5b5-b489-5b3a-b28d-fde84b4cbc77",
+      "containerId": "b8eb125c-f267-5e5a-af55-d716b00a6a58",
+      "name": "02 Beta admin: invite a phone into Beta (shows join_code)",
+      "url": "{{baseUrl}}/api/v1/saccos/{{betaSaccoId}}/members",
+      "method": "POST",
+      "sortNum": 20000,
       "created": "2026-11-17T20:00:00.000Z",
       "modified": "2026-11-17T20:00:00.000Z",
       "headers": [
@@ -2319,17 +2588,17 @@
       },
       "auth": {
         "type": "bearer",
-        "bearer": "{{ownerToken}}"
+        "bearer": "{{betaAdminToken}}"
       }
     },
     {
-      "_id": "ad7b7471-bf35-577e-8ee3-f8ed74e479c8",
+      "_id": "8a49873a-182d-5242-a169-ed04b54baac1",
       "colId": "c10fe5b5-b489-5b3a-b28d-fde84b4cbc77",
-      "containerId": "3a328034-37cc-5f2e-92e9-22708dea1ecd",
-      "name": "02 Member m1: join Beta with the code",
+      "containerId": "b8eb125c-f267-5e5a-af55-d716b00a6a58",
+      "name": "03 Member m1: join Beta with the code",
       "url": "{{baseUrl}}/api/v1/auth/join",
       "method": "POST",
-      "sortNum": 20000,
+      "sortNum": 30000,
       "created": "2026-11-17T20:00:00.000Z",
       "modified": "2026-11-17T20:00:00.000Z",
       "headers": [
@@ -2364,13 +2633,13 @@
       }
     },
     {
-      "_id": "397c8703-ddf9-5b06-b176-d058e9cf1f4a",
+      "_id": "7e1ec420-2cdd-5091-aca8-b96824ce7ba7",
       "colId": "c10fe5b5-b489-5b3a-b28d-fde84b4cbc77",
-      "containerId": "3a328034-37cc-5f2e-92e9-22708dea1ecd",
-      "name": "03 Member m1: set a 4-digit PIN",
+      "containerId": "b8eb125c-f267-5e5a-af55-d716b00a6a58",
+      "name": "04 Member m1: set a 4-digit PIN",
       "url": "{{baseUrl}}/api/v1/auth/join/pin",
       "method": "POST",
-      "sortNum": 30000,
+      "sortNum": 40000,
       "created": "2026-11-17T20:00:00.000Z",
       "modified": "2026-11-17T20:00:00.000Z",
       "headers": [
@@ -2405,13 +2674,13 @@
       }
     },
     {
-      "_id": "249125a4-1dc8-5121-8696-3cf2d1f695f5",
+      "_id": "64f80d55-74a4-5fc8-9fad-2fccc6ace59e",
       "colId": "c10fe5b5-b489-5b3a-b28d-fde84b4cbc77",
-      "containerId": "3a328034-37cc-5f2e-92e9-22708dea1ecd",
-      "name": "04 Member m1: circle login with the PIN",
+      "containerId": "b8eb125c-f267-5e5a-af55-d716b00a6a58",
+      "name": "05 Member m1: circle login with the PIN",
       "url": "{{baseUrl}}/api/v1/auth/circle-login",
       "method": "POST",
-      "sortNum": 40000,
+      "sortNum": 50000,
       "created": "2026-11-17T20:00:00.000Z",
       "modified": "2026-11-17T20:00:00.000Z",
       "headers": [
@@ -2446,13 +2715,13 @@
       }
     },
     {
-      "_id": "6b334ebf-7a47-55c3-8772-d8c36feb4674",
+      "_id": "66639250-1ec0-5ddc-9485-9f8248e562ea",
       "colId": "c10fe5b5-b489-5b3a-b28d-fde84b4cbc77",
-      "containerId": "3a328034-37cc-5f2e-92e9-22708dea1ecd",
-      "name": "05 Member m1: wrong PIN is refused",
+      "containerId": "b8eb125c-f267-5e5a-af55-d716b00a6a58",
+      "name": "06 Member m1: wrong PIN is refused",
       "url": "{{baseUrl}}/api/v1/auth/circle-login",
       "method": "POST",
-      "sortNum": 50000,
+      "sortNum": 60000,
       "created": "2026-11-17T20:00:00.000Z",
       "modified": "2026-11-17T20:00:00.000Z",
       "headers": [

@@ -9,6 +9,7 @@ from app.extensions import db
 from app.models.audit import AuditLog
 from app.models.membership import MembershipRole
 from savings_support import Setup, release_session, schema_app  # noqa: F401
+from support_grants import approve_support
 from test_accounts import make_owner
 from test_history_admin import add_member, auth, suspend
 
@@ -79,6 +80,8 @@ def test_audit_access_rules(schema_app):
     assert client.get(url, headers=auth(staff)).status_code == 200
     assert client.get(url, headers=auth(outsider.admin)).status_code == 404
     assert client.get(url, headers=auth(s.admin)).status_code == 403
+    assert client.get(url, headers=auth(owner)).status_code == 403  # no consent
+    approve_support(owner.id, s.sacco.id, "audit", s.admin_membership.id)
     assert client.get(url, headers=auth(owner)).status_code == 200
     assert client.get(sacco_url(2_000_000_000), headers=auth(owner)).status_code == 404
 
@@ -90,6 +93,8 @@ def test_audit_of_a_suspended_sacco_is_423_for_the_secretary(schema_app):
     client = schema_app.test_client()
     url = sacco_url(s.sacco.id)
     assert client.get(url, headers=auth(reader(s))).status_code == 423
+    # A platform owner reads a suspended SACCO only with its consent.
+    approve_support(owner.id, s.sacco.id, "audit", s.admin_membership.id)
     assert client.get(url, headers=auth(owner)).status_code == 200
 
 

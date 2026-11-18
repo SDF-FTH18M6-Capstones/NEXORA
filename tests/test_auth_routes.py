@@ -361,13 +361,22 @@ def test_member_of_active_sacco_can_log_in(client):
 
 
 @pytest.mark.parametrize("role", list(MembershipRole))
-def test_suspended_sacco_blocks_login_and_issues_no_token(client, role):
+def test_a_suspended_sacco_does_not_block_login_its_endpoints_answer_423(
+    client, role
+):
+    # Login is not SACCO-scoped: the user still sees the suspension in
+    # GET /members/me/saccos. The suspended SACCO itself answers 423.
     register(client)
-    join_sacco(SaccoStatus.SUSPENDED, role)
+    sacco = join_sacco(SaccoStatus.SUSPENDED, role)
     resp = login(client)
-    assert resp.status_code == 423
-    assert resp.get_json()["error"]["message"] == SUSPENDED_MESSAGE
-    assert db.session.query(RefreshToken).count() == 0
+    assert resp.status_code == 200
+    token = resp.get_json()["access_token"]
+    scoped = client.get(
+        f"/api/v1/saccos/{sacco.id}/settings",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert scoped.status_code == 423
+    assert scoped.get_json()["error"]["message"] == SUSPENDED_MESSAGE
 
 
 def test_a_user_with_an_active_sacco_still_logs_in_when_another_is_suspended(client):
@@ -380,7 +389,7 @@ def test_a_user_with_an_active_sacco_still_logs_in_when_another_is_suspended(cli
     assert login(client).status_code == 200
 
 
-def test_an_inactive_membership_does_not_keep_a_suspended_user_logged_in(client):
+def test_a_user_whose_only_usable_sacco_is_suspended_still_logs_in(client):
     register(client)
     active = join_sacco(SaccoStatus.ACTIVE)
     db.session.query(SaccoMembership).filter_by(sacco_id=active.id).update(
@@ -388,7 +397,7 @@ def test_an_inactive_membership_does_not_keep_a_suspended_user_logged_in(client)
     )
     db.session.commit()
     join_sacco(SaccoStatus.SUSPENDED)
-    assert login(client).status_code == 423
+    assert login(client).status_code == 200
 
 
 def test_suspension_is_not_revealed_to_a_wrong_password(client):
@@ -398,11 +407,17 @@ def test_suspension_is_not_revealed_to_a_wrong_password(client):
     assert body["error"]["message"] == "Invalid email or password."
 
 
-def test_suspending_a_sacco_cuts_off_sessions_already_open(client):
+def test_suspending_a_sacco_cuts_off_open_sessions_from_that_sacco(client):
+    # The session itself lives on (other SACCOs, my SACCOs); the suspended
+    # SACCO answers 423 at once, even to a token issued before the suspension.
     tokens = logged_in(client)
-    join_sacco(SaccoStatus.SUSPENDED)
-    assert refresh(client, tokens["refresh_token"]).status_code == 423
-    assert db.session.query(RefreshToken).filter_by(revoked_at=None).count() == 0
+    sacco = join_sacco(SaccoStatus.SUSPENDED)
+    assert refresh(client, tokens["refresh_token"]).status_code == 200
+    scoped = client.get(
+        f"/api/v1/saccos/{sacco.id}/settings",
+        headers={"Authorization": f"Bearer {tokens['access_token']}"},
+    )
+    assert scoped.status_code == 423
 
 
 # ---------- rate limiting ----------

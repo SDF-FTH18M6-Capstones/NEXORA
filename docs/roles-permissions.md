@@ -92,6 +92,8 @@ staff: secretary, member: member).
 | savings.post (deposit, withdraw, interest, fee, open account) | yes | | yes | | |
 | savings.reverse | yes | | yes | | |
 | report.view | yes | yes | yes | yes | |
+| sacco.view (SACCO name, status, settings) | yes | yes | yes | yes | yes |
+| sacco.update (rename the SACCO) | yes | | | | |
 | audit.view (SACCO audit log) | **never** | yes | | | |
 | loan.view (every loan) | yes | yes | yes | yes | own only |
 | loan.approve | **never** | | | yes | |
@@ -100,8 +102,10 @@ staff: secretary, member: member).
 | loan.repay | | | yes | | own loan |
 
 The platform owner holds every permission, needs no membership, and is the only
-one who creates SACCOs, changes loan settings, makes or removes SACCO admins and
-grants or revokes platform owners.
+one who creates SACCOs, changes loan settings, makes or removes SACCO admins
+(`admin.manage`, which no job title holds) and grants or revokes platform
+owners. Every SACCO-scoped route checks one permission with `can()`; no route
+decides by role name (`tests/test_access_by_permission.py` enforces this).
 
 ## 6. Rules the backend enforces
 

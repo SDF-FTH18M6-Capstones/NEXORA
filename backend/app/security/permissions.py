@@ -22,7 +22,7 @@ role-based one; callers may pass it now without changing their call shape.
 
 from dataclasses import dataclass
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from app.extensions import db
 from app.models.access import (
@@ -52,6 +52,10 @@ PERMISSIONS: dict[str, str] = {
     "audit.view": "Read the audit trail",
     "dashboard.view": "See the dashboard for the caller's role",
     "report.view": "Read the SACCO's reports",
+    "sacco.update": "Rename the SACCO",
+    # Held by no job title: only the platform owner (who holds every permission)
+    # adds, removes or edits a SACCO admin.
+    "admin.manage": "Make, change or remove a SACCO admin",
     "savings.view_all": "Read every savings account in the SACCO",
 }
 
@@ -70,6 +74,7 @@ ROLE_PERMISSIONS: dict[str, frozenset[str]] = {
             "loan.view",
             "report.view",
             "savings.view_all",
+            "sacco.update",
             "dashboard.view",
         }
     ),
@@ -231,17 +236,52 @@ def _role_codes(membership: SaccoMembership) -> set[str]:
     return {legacy} if legacy else set()
 
 
-def permissions_for(user, sacco) -> frozenset[str]:
-    """Every permission the user holds in this SACCO, computed the same way.
+def is_admin_membership(membership: SaccoMembership) -> bool:
+    """Is this membership the SACCO admin? (The role column says so; migration
+    0010 and the role routes keep the circle_admin title in step with it.)"""
+    return membership.role is MembershipRole.SACCO_ADMIN
 
-    A platform owner holds all of them. Everyone else needs an active
-    membership; a member of no SACCO holds none.
-    """
-    if user is None:
-        return frozenset()
-    if is_platform_owner(user):
-        return frozenset(PERMISSIONS)
-    sacco_id = sacco.id if isinstance(sacco, Sacco) else int(sacco)
+
+def is_admin_role(role: MembershipRole | None) -> bool:
+    """Does a requested role value make someone the SACCO admin?"""
+    return role is MembershipRole.SACCO_ADMIN
+
+
+# What a platform owner holds in every SACCO without asking: running the
+# platform (name and status, suspension, settings, SACCO admins). SACCO data
+# (members, savings, loans, the audit log) needs the SACCO's consent: an
+# approved support-access grant, read-only, for its scope (migration 0023).
+OWNER_PLATFORM = frozenset(
+    {"sacco.view", "sacco.manage", "sacco.update", "admin.manage", "dashboard.view"}
+)
+SUPPORT_SCOPE_PERMISSIONS = {
+    "audit": frozenset({"audit.view"}),
+    "members": frozenset({"member.view"}),
+    "savings": frozenset({"savings.view", "savings.view_all"}),
+    "loans": frozenset({"loan.view"}),
+}
+
+
+def active_support_grants(user_id: int, sacco_id: int) -> dict[str, int]:
+    """{permission: grant id} this owner may read through, right now."""
+    from app.models.support import SupportAccessRequest, SupportStatus
+
+    rows = db.session.execute(
+        select(SupportAccessRequest.id, SupportAccessRequest.scope).where(
+            SupportAccessRequest.sacco_id == sacco_id,
+            SupportAccessRequest.requested_by_user_id == user_id,
+            SupportAccessRequest.status == SupportStatus.APPROVED,
+            SupportAccessRequest.expires_at > func.now(),
+        )
+    ).all()
+    granted: dict[str, int] = {}
+    for grant_id, scope in rows:
+        for permission in SUPPORT_SCOPE_PERMISSIONS[scope.value]:
+            granted.setdefault(permission, grant_id)
+    return granted
+
+
+def _membership_permissions(user, sacco_id: int) -> frozenset[str]:
     membership = _membership_for(user.id, sacco_id)
     if membership is None or membership.status is not MembershipStatus.ACTIVE:
         return frozenset()
@@ -253,11 +293,29 @@ def permissions_for(user, sacco) -> frozenset[str]:
             .where(Role.code.in_(_role_codes(membership)))
         ).scalars()
     )
-    if membership.role is MembershipRole.SACCO_ADMIN:
+    if is_admin_membership(membership):
         # Agreed schema: a SACCO admin never approves loans and never reads the
         # audit log, whatever other titles the membership holds.
         held -= ADMIN_NEVER
     return held
+
+
+def permissions_for(user, sacco) -> frozenset[str]:
+    """Every permission the user holds in this SACCO, computed the same way.
+
+    A member holds what their job titles give. A platform owner also holds the
+    platform permissions, plus read access to the scopes of their own active
+    support grants for this SACCO. Nobody holds anything in a SACCO they are
+    not part of.
+    """
+    if user is None:
+        return frozenset()
+    sacco_id = sacco.id if isinstance(sacco, Sacco) else int(sacco)
+    held = set(_membership_permissions(user, sacco_id))
+    if is_platform_owner(user):
+        held |= OWNER_PLATFORM
+        held |= set(active_support_grants(user.id, sacco_id))
+    return frozenset(held)
 
 
 def can(user, sacco, permission: str, resource=None) -> bool:  # noqa: ARG001
@@ -265,10 +323,31 @@ def can(user, sacco, permission: str, resource=None) -> bool:  # noqa: ARG001
 
     False for: no user, an unknown permission name, no membership, an inactive
     membership, a role that does not hold the permission, or a SACCO that does
-    not match the membership. Platform owners hold every permission without a
-    membership, which is what `platform_grants` exists for.
+    not match the membership. A platform owner holds the platform permissions
+    everywhere and SACCO data only through an active support grant (read-only).
     """
     if user is None or permission not in PERMISSIONS:
         # An unknown name is a typo or a new permission nobody granted: deny.
         return False
-    return permission in permissions_for(user, sacco)
+    sacco_id = sacco.id if isinstance(sacco, Sacco) else int(sacco)
+    if permission in _membership_permissions(user, sacco_id):
+        return True
+    if not is_platform_owner(user):
+        return False
+    if permission in OWNER_PLATFORM:
+        return True
+    grant_id = active_support_grants(user.id, sacco_id).get(permission)
+    if grant_id is None:
+        return False
+    # A read under consent: the request writes an audit row naming the grant.
+    note_support_read(grant_id, sacco_id)
+    return True
+
+
+def note_support_read(grant_id: int, sacco_id: int) -> None:
+    """Remember a grant this request read through (see app.support.audit)."""
+    from flask import g, has_request_context
+
+    if has_request_context():
+        used = g.setdefault("support_reads", set())
+        used.add((grant_id, sacco_id))

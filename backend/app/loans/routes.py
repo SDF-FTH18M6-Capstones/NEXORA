@@ -11,7 +11,6 @@ from app.errors import error_response
 from app.extensions import db
 from app.loans import service
 from app.models.loan import Loan, LoanDecision, LoanDecisionKind
-from app.models.membership import MembershipRole
 from app.savings.history import page_params
 from app.savings.routes import _body, signed_in
 from app.savings.validation import (
@@ -51,7 +50,7 @@ def create_loan(user_id: int, sacco_id: int):
 def list_loans(sacco_id: int):
     try:
         user = current_user()
-        access = sacco_access(user, sacco_id, tuple(MembershipRole))
+        access = sacco_access(user, sacco_id)
         page, per_page = page_params()
     except AccessDenied as exc:
         return error_response(exc.status, exc.message)
@@ -60,6 +59,8 @@ def list_loans(sacco_id: int):
 
     stmt = select(Loan).where(Loan.sacco_id == sacco_id)
     if not can(user, sacco_id, "loan.view"):
+        if access.membership is None:  # a platform owner without a loans grant
+            return error_response(403, "You are not allowed to do this.")
         stmt = stmt.where(Loan.membership_id == access.membership.id)
     loans = (
         db.session.execute(
@@ -85,13 +86,11 @@ def get_loan(loan_id: int):
         return error_response(404, "Not found.")
     try:
         user = current_user()
-        access = sacco_access(user, loan.sacco_id, tuple(MembershipRole))
+        access = sacco_access(user, loan.sacco_id)
     except AccessDenied as exc:
         return error_response(exc.status, exc.message)
-    if (
-        not can(user, loan.sacco_id, "loan.view")
-        and loan.membership_id != access.membership.id
-    ):
+    own = access.membership is not None and loan.membership_id == access.membership.id
+    if not own and not can(user, loan.sacco_id, "loan.view"):
         return error_response(404, "Not found.")
 
     decisions = (

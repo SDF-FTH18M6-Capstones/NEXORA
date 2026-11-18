@@ -13,7 +13,6 @@ from app.auth.guards import access_token_required
 from app.auth.limits import login_limit, register_limit, write_limit
 from app.auth.lockout import check_lockout, record_failed_login, reset_failed_logins
 from app.auth.passwords import hash_password, validate_password, verify_password
-from app.auth.suspension import check_sacco_not_suspended
 from app.auth.tokens import (
     TokenError,
     create_access_token,
@@ -213,9 +212,9 @@ def login():
         return error_response(401, "Invalid email or password.")
 
     reset_failed_logins(user)
-    if message := check_sacco_not_suspended(user):
-        db.session.commit()
-        return error_response(423, message)
+    # A suspended SACCO does not stop login: the user still reaches their other
+    # SACCOs and sees the suspension in GET /members/me/saccos. The suspended
+    # SACCO's own endpoints answer 423.
     refresh_token = create_refresh_token(user.id)
     db.session.commit()
     return _tokens(user.id, refresh_token)
@@ -236,10 +235,6 @@ def _with_refresh_token(action):
 def refresh():
     def rotate(token):
         user_id, new_token = rotate_refresh_token(token)
-        # A suspension must also cut off sessions that were already open.
-        if message := check_sacco_not_suspended(db.session.get(User, user_id)):
-            revoke_refresh_token(new_token)
-            return error_response(423, message)
         return _tokens(user_id, new_token)
 
     return _with_refresh_token(rotate)

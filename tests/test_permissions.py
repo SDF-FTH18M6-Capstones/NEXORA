@@ -20,6 +20,7 @@ from app.models.membership import MembershipRole, MembershipStatus, SaccoMembers
 from app.models.sacco import Sacco
 from app.models.user import User
 from app.security.permissions import (
+    OWNER_PLATFORM,
     PERMISSIONS,
     ROLE_PERMISSIONS,
     can,
@@ -138,11 +139,12 @@ def test_another_saccos_role_grants_nothing():
     assert can(user, other, "savings.view") is False
 
 
-def test_platform_owner_holds_every_permission_without_a_membership():
+def test_platform_owner_holds_the_platform_permissions_only_without_consent():
     user = make_user(owner=True)
     sacco = make_sacco()
-    assert permissions_for(user, sacco) == frozenset(PERMISSIONS)
-    assert all(can(user, sacco, code) for code in PERMISSIONS)
+    assert permissions_for(user, sacco) == OWNER_PLATFORM
+    data = PERMISSIONS.keys() - OWNER_PLATFORM
+    assert not any(can(user, sacco, code) for code in data)
 
 
 def test_a_platform_grant_alone_is_enough():

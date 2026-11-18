@@ -17,13 +17,20 @@
 ## Release 2: loan interest (not built; release 1 loans are interest-free)
 
 Release 1 lends the principal only: a loan is repaid when repayments equal the
-principal. Interest waits for these decisions from the team:
+principal. Release 1 stays interest-free.
 
-1. **Method:** flat (interest on the original principal for the whole term) or
-   reducing balance (interest on what is still owed each period).
-2. **Rate:** one rate per SACCO (in `sacco_settings`), or a rate set on each
-   loan at request time (frozen like `required_approvals`), or both (SACCO
-   default, overridable per loan within limits).
+**Decided (2026-11-18):** in release 2 each SACCO sets its own interest rate and
+method (flat or reducing balance) in its settings. The default is none, so a
+SACCO that sets nothing keeps interest-free loans. The rate and method in force
+when a loan is requested are frozen on the loan, like `required_approvals`.
+
+Still open:
+
+1. **Who sets it:** the SACCO admin, or the platform owner on the SACCO's
+   behalf (today only the platform owner changes settings; see the settings
+   ownership question).
+2. **Limits:** a maximum rate, and whether a SACCO may change its method once
+   loans exist.
 3. **When it is charged:** all up front at disbursement, monthly as it accrues,
    or with each repayment.
 4. **Repayment split:** whether a repayment pays interest first and then
@@ -31,8 +38,8 @@ principal. Interest waits for these decisions from the team:
 
 Planned schema change, once decided (one migration):
 
-- `sacco_settings`: `interest_rate_bps` (basis points, integer, >= 0) and
-  `interest_method` (enum `flat` | `reducing`).
+- `sacco_settings`: `interest_rate_bps` (basis points, integer, >= 0, default
+  0) and `interest_method` (enum `none` | `flat` | `reducing`, default `none`).
 - `loans`: `interest_rate_bps` and `interest_method`, frozen at request time,
   and `interest_total` (minor units) for the flat method.
 - `loan_repayments`: split into `principal_amount` and `interest_amount`
