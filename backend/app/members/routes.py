@@ -23,9 +23,11 @@ from app.models.access import MembershipRoleLink, Role
 from app.models.audit import AuditLog
 from app.models.loan import SaccoSettings
 from app.models.membership import MembershipRole, MembershipStatus, SaccoMembership
+from app.models.sacco import Sacco
 from app.models.user import User
 from app.security.permissions import (
     LEGACY_ROLE_CODES,
+    _role_codes,
     can,
     is_admin_membership,
     is_admin_role,
@@ -74,6 +76,41 @@ def get_me():
         return jsonify(self_service.get_profile(user.id))
     except self_service.ProfileError as exc:
         return error_response(exc.status, exc.message)
+
+
+@members_bp.get("/me/saccos")
+@read_limit
+def my_saccos():
+    """Every SACCO the caller belongs to, with its status and the caller's roles.
+
+    One login covers all of them: a SACCO-scoped request names its SACCO, and
+    the membership is checked again on every request. A suspended SACCO is
+    listed with status "suspended" (its own endpoints answer 423).
+    """
+    try:
+        user = current_user()
+    except AccessDenied as exc:
+        return error_response(exc.status, exc.message)
+    rows = db.session.execute(
+        select(SaccoMembership, Sacco)
+        .join(Sacco, Sacco.id == SaccoMembership.sacco_id)
+        .where(SaccoMembership.user_id == user.id)
+        .order_by(Sacco.name, Sacco.id)
+    ).all()
+    return jsonify(
+        saccos=[
+            {
+                "id": sacco.id,
+                "name": sacco.name,
+                "status": sacco.status.value,
+                "currency": sacco.currency,
+                "membership_id": membership.id,
+                "membership_status": membership.status.value,
+                "roles": sorted(_role_codes(membership)),
+            }
+            for membership, sacco in rows
+        ]
+    )
 
 
 @members_bp.patch("/me")

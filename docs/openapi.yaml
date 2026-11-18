@@ -3231,3 +3231,49 @@ paths:
           $ref: '#/components/responses/Conflict'
       security:
       - bearerAuth: []
+  /api/v1/members/me/saccos:
+    get:
+      summary: Every SACCO I belong to
+      description: '**Who:** any signed-in user. One login covers every SACCO: a SACCO-scoped request
+        names its SACCO, and the membership is checked again on every request (no re-login to switch).
+        A suspended SACCO is listed with `status: suspended`.'
+      responses:
+        '200':
+          description: My SACCOs, by name.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  saccos:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: integer
+                        name:
+                          type: string
+                        status:
+                          type: string
+                          enum:
+                          - active
+                          - suspended
+                        currency:
+                          type: string
+                        membership_id:
+                          type: integer
+                        membership_status:
+                          type: string
+                          enum:
+                          - invited
+                          - active
+                          - inactive
+                        roles:
+                          type: array
+                          items:
+                            type: string
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+      security:
+      - bearerAuth: []
