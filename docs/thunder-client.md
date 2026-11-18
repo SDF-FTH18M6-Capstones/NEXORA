@@ -28,7 +28,7 @@ with the virtualenv active:
 
 ```bash
 cd backend
-flask --app app db upgrade          # migrations 0001 to 0020
+flask --app app db upgrade          # migrations 0001 to 0021
 cd .. && python backend/scripts/seed.py
 cd backend && python app.py         # http://localhost:5000
 ```

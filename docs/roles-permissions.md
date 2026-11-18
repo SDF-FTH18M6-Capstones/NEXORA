@@ -108,7 +108,10 @@ grants or revokes platform owners.
 - A SACCO admin never approves or disburses loans and never reads the audit log,
   whatever titles the membership holds.
 - Nobody changes their own titles; only the platform owner touches an admin;
-  `circle_admin` moves only with the admin role.
+  `circle_admin` moves only with the admin role. The database records who
+  granted every title and refuses a title granted by the user who owns that
+  membership (platform owners exempt, migration 0021). Collusion between two
+  people is not blocked; title changes are in the audit log.
 - At least two platform owners always remain; nobody revokes themselves.
 - Nobody posts or reverses money on their own account. Every movement is one
   ledger row; balances change only through the ledger. Ledger rows, loan
@@ -118,7 +121,8 @@ grants or revokes platform owners.
   Each step needs a different loans officer; the disbursing officer approved no
   step; one open loan per member; a rejection needs a reason; loan ledger rows
   cannot be reversed.
-- Memberships: invited -> active only by joining with a code and setting a PIN;
+- Memberships: invited -> active only by joining with a code and setting a PIN
+  (one phone may hold invitations to several SACCOs; the code picks the SACCO);
   active -> inactive; inactive -> invited (a re-add by phone, fresh code);
   never active -> invited.
 - Another SACCO's records answer 404, never 403. A suspended SACCO answers 423.

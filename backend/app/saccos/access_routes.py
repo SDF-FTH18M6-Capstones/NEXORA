@@ -156,7 +156,11 @@ def set_roles(sacco_id, membership_id):
         )
         for code in sorted(wanted):
             db.session.add(
-                MembershipRoleLink(membership_id=membership.id, role_id=role_ids[code])
+                MembershipRoleLink(
+                    membership_id=membership.id,
+                    role_id=role_ids[code],
+                    granted_by_user_id=g.access.user.id,
+                )
             )
         _audit(
             sacco_id,
