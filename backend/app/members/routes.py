@@ -218,6 +218,10 @@ def _invite_member(sacco_id):
         return error_response(
             403, "Only the platform owner can add a SACCO administrator."
         )
+    if not is_admin_role(role) and not can(g.access.user, sacco_id, "member.manage"):
+        return error_response(
+            403, "Adding or changing members needs member.manage (the SACCO admin)."
+        )
     membership = SaccoMembership(
         user_id=None,
         sacco_id=sacco_id,
@@ -255,7 +259,7 @@ def _invite_member(sacco_id):
 
 @saccos_bp.post("/<int:sacco_id>/members")
 @write_limit
-@permission_scoped("member.manage")
+@permission_scoped("member.manage", "admin.manage")
 def add_member(sacco_id):
     raw = request.get_json(silent=True)
     if isinstance(raw, dict) and raw.get("phone") and not raw.get("email"):
@@ -272,6 +276,10 @@ def add_member(sacco_id):
     if is_admin_role(role) and not owner:
         return error_response(
             403, "Only the platform owner can add a SACCO administrator."
+        )
+    if not is_admin_role(role) and not can(g.access.user, sacco_id, "member.manage"):
+        return error_response(
+            403, "Adding or changing members needs member.manage (the SACCO admin)."
         )
     target = db.session.execute(
         select(User).where(User.email == email)
@@ -297,6 +305,10 @@ def add_member(sacco_id):
     _audit(membership, "member.add")
     db.session.commit()
     return jsonify(_member_json(membership, target.email)), 201
+    if not is_admin_role(role) and not can(g.access.user, sacco_id, "member.manage"):
+        return error_response(
+            403, "Adding or changing members needs member.manage (the SACCO admin)."
+        )
 
 
 def _reset_titles(membership: SaccoMembership) -> None:
@@ -335,7 +347,7 @@ def _grant_default_title(membership: SaccoMembership) -> None:
 
 @saccos_bp.patch("/<int:sacco_id>/members/<int:membership_id>")
 @write_limit
-@permission_scoped("member.manage")
+@permission_scoped("member.manage", "admin.manage")
 def update_member(sacco_id, membership_id):
     try:
         changes = parse_update_member(_body())
@@ -350,6 +362,11 @@ def update_member(sacco_id, membership_id):
     touches_admin = is_admin_membership(membership) or is_admin_role(
         changes.get("role")
     )
+    if not touches_admin and not can(g.access.user, sacco_id, "member.manage"):
+        db.session.rollback()
+        return error_response(
+            403, "Adding or changing members needs member.manage (the SACCO admin)."
+        )
     if touches_admin and not can(g.access.user, sacco_id, "admin.manage"):
         db.session.rollback()
         return error_response(

@@ -86,7 +86,7 @@ def _membership(
 
 @saccos_bp.get("/<int:sacco_id>/members/<int:membership_id>/roles")
 @read_limit
-@permission_scoped("member.manage")
+@permission_scoped("member.manage", "member.view")
 def get_roles(sacco_id, membership_id):
     membership = _membership(sacco_id, membership_id)
     if membership is None:
@@ -98,7 +98,7 @@ def get_roles(sacco_id, membership_id):
 
 @saccos_bp.put("/<int:sacco_id>/members/<int:membership_id>/roles")
 @write_limit
-@permission_scoped("member.manage")
+@permission_scoped("member.manage", "admin.manage")
 def set_roles(sacco_id, membership_id):
     raw = _body().get("roles")
     if (
@@ -126,6 +126,11 @@ def set_roles(sacco_id, membership_id):
     current = set(_titles(membership.id))
     is_admin = is_admin_membership(membership)
     touches_admin = is_admin or OWNER_ONLY_TITLE in (current | wanted)
+    if not touches_admin and not can(g.access.user, sacco_id, "member.manage"):
+        db.session.rollback()
+        return error_response(
+            403, "Setting job titles needs member.manage (the SACCO admin)."
+        )
     if touches_admin and not owner:
         db.session.rollback()
         return error_response(

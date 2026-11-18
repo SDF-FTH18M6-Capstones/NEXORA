@@ -59,6 +59,8 @@ def list_loans(sacco_id: int):
 
     stmt = select(Loan).where(Loan.sacco_id == sacco_id)
     if not can(user, sacco_id, "loan.view"):
+        if access.membership is None:  # a platform owner without a loans grant
+            return error_response(403, "You are not allowed to do this.")
         stmt = stmt.where(Loan.membership_id == access.membership.id)
     loans = (
         db.session.execute(
@@ -87,10 +89,8 @@ def get_loan(loan_id: int):
         access = sacco_access(user, loan.sacco_id)
     except AccessDenied as exc:
         return error_response(exc.status, exc.message)
-    if (
-        not can(user, loan.sacco_id, "loan.view")
-        and loan.membership_id != access.membership.id
-    ):
+    own = access.membership is not None and loan.membership_id == access.membership.id
+    if not own and not can(user, loan.sacco_id, "loan.view"):
         return error_response(404, "Not found.")
 
     decisions = (

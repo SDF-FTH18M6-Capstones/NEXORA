@@ -24,8 +24,17 @@ savings_bp = Blueprint("savings", __name__, url_prefix="/savings")
 admin_bp = Blueprint("admin", __name__, url_prefix="/admin")
 members_bp = Blueprint("members", __name__, url_prefix="/members")
 loans_bp = Blueprint("loans", __name__, url_prefix="/loans")
+support_bp = Blueprint("support", __name__, url_prefix="/support-access")
 
-BLUEPRINTS = (auth_bp, saccos_bp, savings_bp, admin_bp, members_bp, loans_bp)
+BLUEPRINTS = (
+    auth_bp,
+    saccos_bp,
+    savings_bp,
+    admin_bp,
+    members_bp,
+    loans_bp,
+    support_bp,
+)
 MAX_ID = 2**31 - 1  # ids are 32-bit integers in Postgres
 
 PRODUCTION = "production"
@@ -118,6 +127,7 @@ def create_app(config_class=Config):
         refresh_token,
         sacco,
         savings,
+        support,
         user,
     )
     from app.saccos import access_routes as saccos_access_routes  # noqa: F401
@@ -125,6 +135,7 @@ def create_app(config_class=Config):
     from app.savings import accounts as savings_accounts  # noqa: F401
     from app.savings import history as savings_history  # noqa: F401
     from app.savings import routes as savings_routes  # noqa: F401
+    from app.support import routes as support_routes  # noqa: F401
     init_limiter(app)
     init_cors(app)
     _install_security_headers(app)

@@ -18,6 +18,7 @@ from app.models.audit import AuditLog
 from app.models.membership import MembershipRole, MembershipStatus, SaccoMembership
 from app.models.sacco import Sacco, SaccoStatus
 from app.models.user import User
+from support_grants import approve_support
 
 PASSWORD_HASH = "not-a-real-hash"  # these tests mint tokens; they never log in
 
@@ -199,8 +200,18 @@ def test_the_admin_lists_only_their_own_sacco(client, world):
     assert emails == ["admin@example.com", "member@example.com"]
 
 
-def test_the_platform_owner_lists_any_sacco(client, world):
-    resp = client.get(collection(world.other_sacco), headers=auth(world.owner))
+def test_the_platform_owner_lists_a_sacco_only_with_a_members_grant(client, world):
+    url = collection(world.other_sacco)
+    assert client.get(url, headers=auth(world.owner)).status_code == 403
+    other_admin_membership = db.session.execute(
+        select(SaccoMembership.id).where(
+            SaccoMembership.user_id == world.other_admin.id
+        )
+    ).scalar_one()
+    approve_support(
+        world.owner.id, world.other_sacco.id, "members", other_admin_membership
+    )
+    resp = client.get(url, headers=auth(world.owner))
     emails = [m["email"] for m in resp.get_json()["members"]]
     assert emails == ["other-admin@example.com"]
 
@@ -535,7 +546,8 @@ def test_a_suspended_saccos_admin_is_423(client, world):
     assert client.get(url, headers=admin).status_code == 423
     resp = client.post(url, headers=admin, json={"email": "new@example.com"})
     assert resp.status_code == 423
-    assert client.get(url, headers=auth(world.owner)).status_code == 200
+    # Without the SACCO's consent a platform owner reads no member list.
+    assert client.get(url, headers=auth(world.owner)).status_code == 403
 
 
 @pytest.mark.parametrize("bad_id", [0, 2**31, 10**40, "9" * 5000, "01", "%D9%A1"])

@@ -12,6 +12,7 @@ from app.models.user import User
 from app.savings import service
 from app.savings.balance import ledger_balance
 from savings_support import Setup, release_session, schema_app  # noqa: F401
+from support_grants import approve_support
 from test_history_admin import add_member, auth, suspend
 
 pytestmark = pytest.mark.schema
@@ -118,12 +119,14 @@ def test_other_sacco_and_missing_account_are_404(schema_app):
     assert resp.status_code == 404
 
 
-def test_the_platform_owner_reads_any_account(schema_app):
+def test_the_platform_owner_reads_an_account_only_with_a_savings_grant(schema_app):
     s = Setup(balance=500)
     owner = make_owner()
-    resp = schema_app.test_client().get(
-        account_url(s.account.id), headers=auth(owner)
-    )
+    client = schema_app.test_client()
+    url = account_url(s.account.id)
+    assert client.get(url, headers=auth(owner)).status_code == 404  # no consent
+    approve_support(owner.id, s.sacco.id, "savings", s.admin_membership.id)
+    resp = client.get(url, headers=auth(owner))
     assert resp.status_code == 200
     assert resp.get_json()["balance"] == 500
 
@@ -275,6 +278,8 @@ def test_the_admin_list_access_rules(schema_app):
     assert client.get(url, headers=auth(s.member)).status_code == 403
     assert client.get(url, headers=auth(outsider.admin)).status_code == 404
     assert client.get(url, headers=auth(staff)).status_code == 200
+    assert client.get(url, headers=auth(owner)).status_code == 403  # no consent
+    approve_support(owner.id, s.sacco.id, "savings", s.admin_membership.id)
     assert client.get(url, headers=auth(owner)).status_code == 200
     assert client.get(list_url(2_000_000_000), headers=auth(owner)).status_code == 404
 

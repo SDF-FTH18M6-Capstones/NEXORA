@@ -52,19 +52,19 @@ MATRIX = [
     }),
     ("get", "/api/v1/saccos/{sacco}/members", None, {
         "anonymous": 401, "member": 403, "sacco_admin": 200,
-        "other_admin": 404, "platform_owner": 200,
+        "other_admin": 404, "platform_owner": 403,
     }),
     ("post", "/api/v1/saccos/{sacco}/members", {"email": "new@example.com"}, {
         "anonymous": 401, "member": 403, "sacco_admin": 201,
-        "other_admin": 404, "platform_owner": 201,
+        "other_admin": 404, "platform_owner": 403,
     }),
     ("get", "/api/v1/saccos/{sacco}/members/{membership}", None, {
         "anonymous": 401, "member": 403, "sacco_admin": 200,
-        "other_admin": 404, "platform_owner": 200,
+        "other_admin": 404, "platform_owner": 403,
     }),
     ("patch", "/api/v1/saccos/{sacco}/members/{membership}", {"role": "staff"}, {
         "anonymous": 401, "member": 403, "sacco_admin": 200,
-        "other_admin": 404, "platform_owner": 200,
+        "other_admin": 404, "platform_owner": 403,
     }),
 ]
 
@@ -192,7 +192,7 @@ def test_the_other_saccos_administrator_cannot_reach_members_or_a_membership(
 def test_a_listing_never_contains_another_saccos_members(client, world):
     body = client.get(
         f"/api/v1/saccos/{world.sacco.id}/members",
-        headers=world.headers["platform_owner"],
+        headers=world.headers["sacco_admin"],
     ).get_json()
     emails = {m["email"] for m in body["members"]}
     assert emails == {"admin@example.com", "member@example.com"}

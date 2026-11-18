@@ -92,8 +92,9 @@ def sacco_access(user: User, sacco_id: int) -> Access:
     return Access(user, sacco, membership)
 
 
-def permission_scoped(permission: str):
-    """Guard a `<int:sacco_id>` route by one permission, decided by `can()`.
+def permission_scoped(*permissions: str):
+    """Guard a `<int:sacco_id>` route by permission, decided by `can()`: the
+    caller needs at least one of `permissions` (the view may ask for more).
 
     401 no token, 404 for a SACCO the caller is not in, 403 inactive or without
     the permission, 423 suspended (platform owner exempt). On success the view
@@ -109,7 +110,7 @@ def permission_scoped(permission: str):
                 access = sacco_access(user, kwargs["sacco_id"])
             except AccessDenied as exc:
                 return error_response(exc.status, exc.message)
-            if not can(user, access.sacco, permission):
+            if not any(can(user, access.sacco, p) for p in permissions):
                 return error_response(403, "You are not allowed to do this.")
             g.access = access
             return view(*args, **kwargs)

@@ -47,10 +47,12 @@ def test_only_the_admin_title_manages_members_and_titles(schema_app):  # noqa: F
     base = f"/api/v1/saccos/{s.sacco.id}/members"
     add = client.post(base, json={"phone": "+254700000901"}, headers=auth(secretary))
     assert add.status_code == 403
-    roles = client.get(
-        f"{base}/{s.member_membership.id}/roles", headers=auth(secretary)
-    )
-    assert roles.status_code == 403
+    # Reading titles needs member.view (the secretary has it); setting needs
+    # member.manage (the admin).
+    url = f"{base}/{s.member_membership.id}/roles"
+    assert client.get(url, headers=auth(secretary)).status_code == 200
+    put = client.put(url, json={"roles": ["member"]}, headers=auth(secretary))
+    assert put.status_code == 403
     assert (
         client.post(
             base, json={"phone": "+254700000902"}, headers=auth(s.admin)
