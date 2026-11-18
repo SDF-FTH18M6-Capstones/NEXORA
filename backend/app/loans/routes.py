@@ -11,7 +11,6 @@ from app.errors import error_response
 from app.extensions import db
 from app.loans import service
 from app.models.loan import Loan, LoanDecision, LoanDecisionKind
-from app.models.membership import MembershipRole
 from app.savings.history import page_params
 from app.savings.routes import _body, signed_in
 from app.savings.validation import (
@@ -51,7 +50,7 @@ def create_loan(user_id: int, sacco_id: int):
 def list_loans(sacco_id: int):
     try:
         user = current_user()
-        access = sacco_access(user, sacco_id, tuple(MembershipRole))
+        access = sacco_access(user, sacco_id)
         page, per_page = page_params()
     except AccessDenied as exc:
         return error_response(exc.status, exc.message)
@@ -85,7 +84,7 @@ def get_loan(loan_id: int):
         return error_response(404, "Not found.")
     try:
         user = current_user()
-        access = sacco_access(user, loan.sacco_id, tuple(MembershipRole))
+        access = sacco_access(user, loan.sacco_id)
     except AccessDenied as exc:
         return error_response(exc.status, exc.message)
     if (

@@ -22,11 +22,9 @@ from app.auth.suspension import SUSPENDED_MESSAGE
 from app.auth.tokens import TokenError, decode_access_token
 from app.errors import error_response
 from app.extensions import db
-from app.models.membership import MembershipRole, MembershipStatus, SaccoMembership
+from app.models.membership import MembershipStatus, SaccoMembership
 from app.models.sacco import Sacco, SaccoStatus
 from app.models.user import User
-
-ADMIN_ONLY = (MembershipRole.SACCO_ADMIN,)
 
 
 class AccessDenied(Exception):
@@ -61,8 +59,12 @@ def current_user() -> User:
     return user
 
 
-def sacco_access(user: User, sacco_id: int, roles=ADMIN_ONLY) -> Access:
-    """Open `sacco_id` for `user`, or raise AccessDenied."""
+def sacco_access(user: User, sacco_id: int) -> Access:
+    """Open `sacco_id` for `user`, or raise AccessDenied.
+
+    Answers only "may this person act in this SACCO at all" (an active
+    membership, or a platform owner). What they may do there is `can()`'s job.
+    """
     # The URL converter (app/__init__.py) only lets through ids Postgres can hold.
     sacco = db.session.get(Sacco, sacco_id)
     from app.security.permissions import is_platform_owner
@@ -82,7 +84,7 @@ def sacco_access(user: User, sacco_id: int, roles=ADMIN_ONLY) -> Access:
         ).scalar_one_or_none()
     if membership is None:
         raise AccessDenied("Not found.", 404)
-    if membership.status is not MembershipStatus.ACTIVE or membership.role not in roles:
+    if membership.status is not MembershipStatus.ACTIVE:
         raise AccessDenied("You are not allowed to do this.", 403)
     if sacco.status is SaccoStatus.SUSPENDED:
         # Also stops access tokens that were issued before the suspension.
@@ -90,31 +92,12 @@ def sacco_access(user: User, sacco_id: int, roles=ADMIN_ONLY) -> Access:
     return Access(user, sacco, membership)
 
 
-def sacco_scoped(roles=ADMIN_ONLY):
-    """Guard a route that has `<int:sacco_id>` in its URL.
-
-    On success the view runs with `g.access` set to the opened Access.
-    """
-
-    def decorator(view):
-        @wraps(view)
-        def wrapper(*args, **kwargs):
-            try:
-                g.access = sacco_access(current_user(), kwargs["sacco_id"], roles)
-            except AccessDenied as exc:
-                return error_response(exc.status, exc.message)
-            return view(*args, **kwargs)
-
-        return wrapper
-
-    return decorator
-
-
 def permission_scoped(permission: str):
-    """Guard a `<int:sacco_id>` route by a permission instead of the role column.
+    """Guard a `<int:sacco_id>` route by one permission, decided by `can()`.
 
-    Same answers as `sacco_scoped`: 401 no token, 404 for a SACCO the caller is
-    not in, 403 inactive or without the permission, 423 suspended (owner exempt).
+    401 no token, 404 for a SACCO the caller is not in, 403 inactive or without
+    the permission, 423 suspended (platform owner exempt). On success the view
+    runs with `g.access` set.
     """
     from app.security.permissions import can
 
@@ -123,7 +106,7 @@ def permission_scoped(permission: str):
         def wrapper(*args, **kwargs):
             try:
                 user = current_user()
-                access = sacco_access(user, kwargs["sacco_id"], tuple(MembershipRole))
+                access = sacco_access(user, kwargs["sacco_id"])
             except AccessDenied as exc:
                 return error_response(exc.status, exc.message)
             if not can(user, access.sacco, permission):

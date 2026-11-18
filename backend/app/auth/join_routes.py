@@ -200,7 +200,10 @@ def circle_login():
     try:
         check_pin(membership, str(body.get("pin", "")))
     except PinError as exc:
+        # Refused attempts are recorded too, with the reason.
+        _audit(membership, "member.circle_login", f"refused: {exc.name}")
         db.session.commit()  # keep the wrong-attempt count
         return interface_error(exc.name, exc.message)
+    _audit(membership, "member.circle_login", "ok")
     db.session.commit()
     return jsonify(ok=True, membership_id=membership.id, role=membership.role.value)

@@ -23,10 +23,15 @@ from app.extensions import db
 from app.models.access import MembershipRoleLink, Role
 from app.models.audit import AuditLog
 from app.models.loan import SaccoSettings
-from app.models.membership import MembershipRole, MembershipStatus, SaccoMembership
+from app.models.membership import MembershipStatus, SaccoMembership
 from app.models.sacco import Sacco
-from app.security.permissions import ROLE_NAMES, _role_codes, is_platform_owner
-from app.security.tenant import sacco_scoped
+from app.security.permissions import (
+    ROLE_NAMES,
+    _role_codes,
+    can,
+    is_admin_membership,
+)
+from app.security.tenant import permission_scoped
 
 OWNER_ONLY_TITLE = "circle_admin"
 ADMIN_TITLES = {OWNER_ONLY_TITLE, "member"}
@@ -81,7 +86,7 @@ def _membership(
 
 @saccos_bp.get("/<int:sacco_id>/members/<int:membership_id>/roles")
 @read_limit
-@sacco_scoped()
+@permission_scoped("member.manage")
 def get_roles(sacco_id, membership_id):
     membership = _membership(sacco_id, membership_id)
     if membership is None:
@@ -93,7 +98,7 @@ def get_roles(sacco_id, membership_id):
 
 @saccos_bp.put("/<int:sacco_id>/members/<int:membership_id>/roles")
 @write_limit
-@sacco_scoped()
+@permission_scoped("member.manage")
 def set_roles(sacco_id, membership_id):
     raw = _body().get("roles")
     if (
@@ -110,7 +115,7 @@ def set_roles(sacco_id, membership_id):
     membership = _membership(sacco_id, membership_id, lock=True)
     if membership is None:
         return error_response(404, "Member not found.")
-    owner = is_platform_owner(g.access.user)
+    owner = can(g.access.user, sacco_id, "admin.manage")
     if membership.user_id == g.access.user.id:
         db.session.rollback()
         return error_response(403, "You cannot change your own roles.")
@@ -119,7 +124,7 @@ def set_roles(sacco_id, membership_id):
         return error_response(409, "Roles can only be given to an active member.")
 
     current = set(_titles(membership.id))
-    is_admin = membership.role is MembershipRole.SACCO_ADMIN
+    is_admin = is_admin_membership(membership)
     touches_admin = is_admin or OWNER_ONLY_TITLE in (current | wanted)
     if touches_admin and not owner:
         db.session.rollback()
@@ -202,7 +207,7 @@ def _settings_json(sacco_id: int, row: SaccoSettings | None) -> dict:
 
 @saccos_bp.get("/<int:sacco_id>/settings")
 @read_limit
-@sacco_scoped(roles=tuple(MembershipRole))
+@permission_scoped("sacco.view")
 def get_settings(sacco_id):
     return jsonify(_settings_json(sacco_id, db.session.get(SaccoSettings, sacco_id)))
 

@@ -1318,7 +1318,7 @@ paths:
     - $ref: '#/components/parameters/sacco_id'
     get:
       summary: Get a SACCO
-      description: '**Who:** platform owner, or that SACCO''s admin (staff and members get 403)
+      description: '**Who:** any active member of the SACCO (`sacco.view`), or the platform owner
 
 
         **Rate limit:** 120 per minute.'
@@ -1364,7 +1364,7 @@ paths:
       - bearerAuth: []
     patch:
       summary: Rename a SACCO
-      description: '**Who:** platform owner, or that SACCO''s admin
+      description: '**Who:** holders of `sacco.update` (the SACCO admin), or the platform owner
 
 
         **Rate limit:** 30 per minute.
@@ -1584,7 +1584,7 @@ paths:
       - bearerAuth: []
     post:
       summary: Add a registered user, or invite a phone, to a SACCO
-      description: '**Who:** SACCO admin or platform owner (only the platform owner may add an admin)
+      description: '**Who:** holders of `member.manage` (the SACCO admin) or the platform owner; adding an admin needs `admin.manage` (platform owner only)
 
 
         **Rate limit:** 30 per minute.
@@ -1728,7 +1728,7 @@ paths:
       - bearerAuth: []
     patch:
       summary: Change a member's role or status
-      description: '**Who:** SACCO admin or platform owner (only the platform owner may touch admins)
+      description: '**Who:** holders of `member.manage` (the SACCO admin) or the platform owner; touching an admin needs `admin.manage` (platform owner only)
 
 
         **Rate limit:** 30 per minute.
@@ -2752,7 +2752,7 @@ paths:
     - $ref: '#/components/parameters/membership_id'
     get:
       summary: A member's job titles
-      description: '**Who:** the SACCO admin or the platform owner.'
+      description: '**Who:** holders of `member.manage` (the SACCO admin), or the platform owner.'
       responses:
         '200':
           description: The titles held.
@@ -2772,7 +2772,7 @@ paths:
       - bearerAuth: []
     put:
       summary: Set a member's job titles
-      description: '**Who:** the SACCO admin or the platform owner. Replaces the whole list. Only the
+      description: '**Who:** holders of `member.manage` (the SACCO admin), or the platform owner. Replaces the whole list. Only the
         platform owner edits an admin''s titles; nobody changes their own titles; the membership must
         be active (409). `circle_admin` follows the SACCO admin role: keep it on an admin and leave it
         off everyone else (409), and make or remove admins with PATCH /saccos/{sacco_id}/members/{membership_id},
@@ -2817,7 +2817,7 @@ paths:
     - $ref: '#/components/parameters/sacco_id'
     get:
       summary: The SACCO's loan rules
-      description: '**Who:** any active member of the SACCO, or the platform owner. Defaults are returned
+      description: '**Who:** any active member of the SACCO (`sacco.view`), or the platform owner. Defaults are returned
         until the owner changes them.'
       responses:
         '200':

@@ -43,7 +43,7 @@ MATRIX = [
         "other_admin": 403, "platform_owner": 200,
     }),
     ("get", "/api/v1/saccos/{sacco}", None, {
-        "anonymous": 401, "member": 403, "sacco_admin": 200,
+        "anonymous": 401, "member": 200, "sacco_admin": 200,
         "other_admin": 404, "platform_owner": 200,
     }),
     ("patch", "/api/v1/saccos/{sacco}", {"name": "Renamed SACCO"}, {

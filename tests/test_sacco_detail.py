@@ -183,10 +183,13 @@ def test_user_with_no_membership_is_404(client):
 
 
 @pytest.mark.parametrize("role", [STAFF, MEMBER])
-def test_staff_and_members_of_the_same_sacco_are_403(client, role):
+def test_staff_and_members_read_their_sacco_but_cannot_rename_it(client, role):
+    # Every active member holds sacco.view; renaming needs sacco.update (admin).
     sacco_id = make_sacco()
-    resp = client.get(f"{BASE}/{sacco_id}", headers=person(sacco_id, role))
-    assert resp.status_code == 403
+    headers = person(sacco_id, role)
+    assert client.get(f"{BASE}/{sacco_id}", headers=headers).status_code == 200
+    renamed = client.patch(f"{BASE}/{sacco_id}", json={"name": "X"}, headers=headers)
+    assert renamed.status_code == 403
 
 
 def test_inactive_admin_is_403(client):
@@ -201,8 +204,15 @@ def test_admin_of_two_saccos_is_still_confined_to_the_one_they_administer(client
     join(user_id, a, ADMIN)
     join(user_id, b, MEMBER)
     headers = auth(user_id)
-    assert client.get(f"{BASE}/{a}", headers=headers).status_code == 200
-    assert client.get(f"{BASE}/{b}", headers=headers).status_code == 403
+    assert (
+        client.patch(f"{BASE}/{a}", json={"name": "A2"}, headers=headers).status_code
+        == 200
+    )
+    # Admin powers stay in A: in B (a plain member) renaming is refused.
+    assert (
+        client.patch(f"{BASE}/{b}", json={"name": "B2"}, headers=headers).status_code
+        == 403
+    )
     assert client.get(f"{BASE}/{make_sacco('C')}", headers=headers).status_code == 404
 
 

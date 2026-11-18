@@ -52,6 +52,10 @@ PERMISSIONS: dict[str, str] = {
     "audit.view": "Read the audit trail",
     "dashboard.view": "See the dashboard for the caller's role",
     "report.view": "Read the SACCO's reports",
+    "sacco.update": "Rename the SACCO",
+    # Held by no job title: only the platform owner (who holds every permission)
+    # adds, removes or edits a SACCO admin.
+    "admin.manage": "Make, change or remove a SACCO admin",
     "savings.view_all": "Read every savings account in the SACCO",
 }
 
@@ -70,6 +74,7 @@ ROLE_PERMISSIONS: dict[str, frozenset[str]] = {
             "loan.view",
             "report.view",
             "savings.view_all",
+            "sacco.update",
             "dashboard.view",
         }
     ),
@@ -231,6 +236,17 @@ def _role_codes(membership: SaccoMembership) -> set[str]:
     return {legacy} if legacy else set()
 
 
+def is_admin_membership(membership: SaccoMembership) -> bool:
+    """Is this membership the SACCO admin? (The role column says so; migration
+    0010 and the role routes keep the circle_admin title in step with it.)"""
+    return membership.role is MembershipRole.SACCO_ADMIN
+
+
+def is_admin_role(role: MembershipRole | None) -> bool:
+    """Does a requested role value make someone the SACCO admin?"""
+    return role is MembershipRole.SACCO_ADMIN
+
+
 def permissions_for(user, sacco) -> frozenset[str]:
     """Every permission the user holds in this SACCO, computed the same way.
 
@@ -253,7 +269,7 @@ def permissions_for(user, sacco) -> frozenset[str]:
             .where(Role.code.in_(_role_codes(membership)))
         ).scalars()
     )
-    if membership.role is MembershipRole.SACCO_ADMIN:
+    if is_admin_membership(membership):
         # Agreed schema: a SACCO admin never approves loans and never reads the
         # audit log, whatever other titles the membership holds.
         held -= ADMIN_NEVER

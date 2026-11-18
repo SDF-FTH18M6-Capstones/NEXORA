@@ -24,12 +24,17 @@ from app.models.audit import AuditLog
 from app.models.loan import SaccoSettings
 from app.models.membership import MembershipRole, MembershipStatus, SaccoMembership
 from app.models.user import User
-from app.security.permissions import LEGACY_ROLE_CODES, is_platform_owner
+from app.security.permissions import (
+    LEGACY_ROLE_CODES,
+    can,
+    is_admin_membership,
+    is_admin_role,
+    is_platform_owner,
+)
 from app.security.tenant import (
     AccessDenied,
     current_user,
     permission_scoped,
-    sacco_scoped,
 )
 
 
@@ -92,7 +97,6 @@ def patch_me():
 # Only the platform owner creates, edits or removes administrator memberships.
 # ---------------------------------------------------------------------------
 
-ADMIN = MembershipRole.SACCO_ADMIN
 
 
 def _member_json(membership: SaccoMembership, email: str | None) -> dict:
@@ -177,7 +181,7 @@ def _invite_member(sacco_id):
         role = MembershipRole(body.get("role", "member"))
     except ValueError:
         return error_response(400, "A valid phone and role are required.")
-    if role is ADMIN and not is_platform_owner(g.access.user):
+    if is_admin_role(role) and not can(g.access.user, sacco_id, "admin.manage"):
         return error_response(
             403, "Only the platform owner can add a SACCO administrator."
         )
@@ -218,12 +222,12 @@ def _invite_member(sacco_id):
 
 @saccos_bp.post("/<int:sacco_id>/members")
 @write_limit
-@sacco_scoped()
+@permission_scoped("member.manage")
 def add_member(sacco_id):
     raw = request.get_json(silent=True)
     if isinstance(raw, dict) and raw.get("phone") and not raw.get("email"):
         return _invite_member(sacco_id)
-    owner = is_platform_owner(g.access.user)
+    owner = can(g.access.user, sacco_id, "admin.manage")
     try:
         email, role, status = parse_create_member(_body())
     except InvalidMember as exc:
@@ -232,7 +236,7 @@ def add_member(sacco_id):
         # An invitation is a phone plus a join code (send "phone"); an email
         # member is added active or inactive.
         return error_response(400, "Invite by phone; add an email member as active.")
-    if role is ADMIN and not owner:
+    if is_admin_role(role) and not owner:
         return error_response(
             403, "Only the platform owner can add a SACCO administrator."
         )
@@ -298,7 +302,7 @@ def _grant_default_title(membership: SaccoMembership) -> None:
 
 @saccos_bp.patch("/<int:sacco_id>/members/<int:membership_id>")
 @write_limit
-@sacco_scoped()
+@permission_scoped("member.manage")
 def update_member(sacco_id, membership_id):
     try:
         changes = parse_update_member(_body())
@@ -310,8 +314,10 @@ def update_member(sacco_id, membership_id):
         return error_response(404, "Member not found.")
     membership, email = rows[0]
     # An admin cannot touch an admin row (their own included) or create one.
-    touches_admin = membership.role is ADMIN or changes.get("role") is ADMIN
-    if touches_admin and not is_platform_owner(g.access.user):
+    touches_admin = is_admin_membership(membership) or is_admin_role(
+        changes.get("role")
+    )
+    if touches_admin and not can(g.access.user, sacco_id, "admin.manage"):
         db.session.rollback()
         return error_response(
             403, "Only the platform owner can change SACCO administrators."
