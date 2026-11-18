@@ -9,16 +9,25 @@ One collection walks the whole backend in a single pass:
 5. a loan with two approvals, disbursement and repayment;
 6. a one-approval loan and a rejection;
 7. tenant isolation and the audit log;
-8. platform owners;
-9. joining a SACCO by phone.
+8. support access: the SACCO consents before a platform owner reads;
+9. platform owners;
+10. joining a SACCO by phone.
 
 Every request knows its expected status, and saves the tokens and ids the next
 requests need, so nothing is copied by hand.
 
 Files:
 
-- `docs/thunder/thunder-collection_NEXORA.json`: 9 folders, 69 requests.
+- `docs/thunder/thunder-collection_NEXORA.json`: 10 folders, 77 requests.
 - `docs/thunder/thunder-environment_NEXORA-local.json`: the variables.
+- `docs/thunder/postman-collection_NEXORA-1of2.json` and
+  `-2of2.json`: the same requests in Postman 2.1 format, split in two (folders
+  1 to 4: 31 requests, then 5 to 10: 46). Use these if the Thunder Client
+  format will not import, or if the free plan's 50-request cap stops it.
+- `docs/thunder/postman-environment_NEXORA-local.json`: the same three
+  variables in Postman format.
+- `docs/thunder/NEXORA-local.env`: the same three variables as a plain dotenv
+  file, for the Env tab's `.env` import.
 
 ## 1. Start the API with fresh demo data
 
@@ -28,7 +37,7 @@ with the virtualenv active:
 
 ```bash
 cd backend
-flask --app app db upgrade          # migrations 0001 to 0021
+flask --app app db upgrade          # migrations 0001 to 0023
 cd .. && python backend/scripts/seed.py
 cd backend && python app.py         # http://localhost:5000
 ```
@@ -63,9 +72,34 @@ remain.
 5. If the API is not on `http://localhost:5000`, change `baseUrl` in the
    environment.
 
+### If the import fails
+
+If Thunder Client answers **"No matching import provider found"**, or the free
+plan's **50 requests per collection** cap stops the 77-request file, use the
+Postman 2.1 copies. `postman-collection_NEXORA-1of2.json` holds folders 1 to 4
+(31 requests) and `postman-collection_NEXORA-2of2.json` holds folders 5 to 10
+(46 requests), so neither part reaches the cap:
+
+1. **Collections** tab → menu (≡) → **Import** → `postman-collection_NEXORA-1of2.json`.
+2. Run folders 1 to 4, then import and run `postman-collection_NEXORA-2of2.json`.
+   Part 2 reuses the tokens and ids part 1 saved.
+
+The environment is only three variables, and the JSON forms of it can also be
+refused. In that order, try:
+
+1. **Env** tab → menu (≡) → **Import** → `NEXORA-local.env`. A plain dotenv file
+   is read without format detection, so it does not need a matching provider.
+2. **Env** tab → menu (≡) → **Import** → `postman-environment_NEXORA-local.json`.
+3. Build it by hand: **Env** tab → **New Environment** → name it `NEXORA local`
+   → add `baseUrl` = `http://localhost:5000`,
+   `password` = `Dev-Seed-Pass-2026`, and `run` = `01`.
+
+Whichever way it lands, click **NEXORA local** and then **Set Active**, or every
+`{{baseUrl}}` stays literal.
+
 ## 3. Run it
 
-Open folders 1 to 9 in order, and click **Send** on each request from top to
+Open folders 1 to 10 in order, and click **Send** on each request from top to
 bottom. After each response:
 
 - the **Tests** tab shows the status check (green) and any variable it saved;
@@ -79,12 +113,12 @@ Amounts are whole numbers in minor units: `10000` is KES 100.00.
   6th login is the first request of folder 5. Clicking through by hand takes
   longer than a minute, so it passes. If it answers **429**, wait a minute and
   send it again.
-- **Run All.** Run folders 1 to 4, wait 60 seconds, then run folders 5 to 9.
+- **Run All.** Run folders 1 to 4, wait 60 seconds, then run folders 5 to 10.
 - **Running a second time on the same database.**
   - Wait a minute.
   - Change the environment variable `run` (`01` → `02`), because references
     must be unique per SACCO.
-  - Folder 9 works once per database (a person joins a SACCO once). Re-seed a
+  - Folder 10 works once per database (a person joins a SACCO once). Re-seed a
     fresh database to show it again.
   - Folder 3, request 05 changes alpha-staff's titles and folder 5, request 11
     changes loans officer 1's titles, so they are not first-run state. The
@@ -104,7 +138,7 @@ needed, and exits with 1 if anything differs. On a freshly seeded database the
 last line is:
 
 ```
-69/69 requests returned what the collection expects
+77/77 requests returned what the collection expects
 ```
 
 ## 5. The rules the collection shows
@@ -134,8 +168,8 @@ Savings:
 Access:
 
 - Another SACCO's records answer 404, never 403.
-- The SACCO admin can't read the audit log (the secretary and the platform owner
-  can).
+- The SACCO admin can't read the audit log; the secretary can. A platform owner
+  reads it only while that SACCO's support grant is approved.
 - Only the platform owner changes loan settings or SACCO admins.
 - Nobody changes their own titles.
 - `circle_admin` moves only with the admin role.
@@ -237,10 +271,26 @@ Access:
 | 04 | **No token (401)**<br>`GET /api/v1/savings/accounts/me` | none |  | **401** |  |
 | 05 | **Admin: SACCO summary report**<br>`GET /api/v1/admin/saccos/{{saccoId}}/reports/summary` | adminToken |  | **200** |  |
 | 06 | **Admin: cannot read the audit log (403)**<br>`GET /api/v1/admin/saccos/{{saccoId}}/audit` | adminToken |  | **403** |  |
-| 07 | **Owner: the SACCO audit log**<br>`GET /api/v1/admin/saccos/{{saccoId}}/audit` | ownerToken |  | **200** |  |
+| 07 | **Owner: no SACCO audit log without consent (403)**<br>`GET /api/v1/admin/saccos/{{saccoId}}/audit` | ownerToken |  | **403** |  |
 | 08 | **Owner: platform audit log**<br>`GET /api/v1/admin/audit` | ownerToken |  | **200** |  |
 
-### 8. Platform owners
+### 8. Support access: the SACCO consents, the owner reads
+
+A platform owner reads another SACCO's audit log only while that SACCO has
+approved a support-access request. Membership is a separate scope and is never
+part of the grant.
+
+| # | Request | Token | Body | Expect | Saves |
+|---|---|---|---|---|---|
+| 01 | **Owner: ask to read Alpha's audit log**<br>`POST /api/v1/saccos/{{saccoId}}/support-access` | ownerToken | `{"reason": "Demo: checking a member complaint", "scope": "audit"}` | **201**<br>`status` = requested | `supportId` |
+| 02 | **Admin: see the request**<br>`GET /api/v1/saccos/{{saccoId}}/support-access` | adminToken |  | **200**<br>`requests[0].status` = requested |  |
+| 03 | **Admin: approve it for 1 hour**<br>`POST /api/v1/support-access/{{supportId}}/approve` | adminToken | `{"hours": 1}` | **200**<br>`status` = approved |  |
+| 04 | **Owner: read the audit log under the grant**<br>`GET /api/v1/admin/saccos/{{saccoId}}/audit` | ownerToken |  | **200** |  |
+| 05 | **Owner: members are another scope (403)**<br>`GET /api/v1/saccos/{{saccoId}}/members` | ownerToken |  | **403** |  |
+| 06 | **Admin: revoke the grant**<br>`POST /api/v1/support-access/{{supportId}}/revoke` | adminToken |  | **200**<br>`status` = revoked |  |
+| 07 | **Owner: refused again after the revoke (403)**<br>`GET /api/v1/admin/saccos/{{saccoId}}/audit` | ownerToken |  | **403** |  |
+
+### 9. Platform owners
 
 | # | Request | Token | Body | Expect | Saves |
 |---|---|---|---|---|---|
@@ -248,15 +298,16 @@ Access:
 | 02 | **Admin: not a platform owner (403)**<br>`GET /api/v1/admin/owners` | adminToken |  | **403** |  |
 | 03 | **Owner: revoking the second owner would leave one (409)**<br>`DELETE /api/v1/admin/owners/{{owner2Id}}` | ownerToken |  | **409** |  |
 
-### 9. Join a SACCO by phone (once per database)
+### 10. Join a SACCO by phone (once per database)
 
 | # | Request | Token | Body | Expect | Saves |
 |---|---|---|---|---|---|
-| 01 | **Owner: invite a phone into Beta (shows join_code)**<br>`POST /api/v1/saccos/{{betaSaccoId}}/members` | ownerToken | `{"phone": "+2547000100{{run}}", "role": "member"}` | **201** | `joinCode` |
-| 02 | **Member m1: join Beta with the code**<br>`POST /api/v1/auth/join` | memberToken | `{"phone": "+2547000100{{run}}", "code": "{{joinCode}}"}` | **200** | `setupToken` |
-| 03 | **Member m1: set a 4-digit PIN**<br>`POST /api/v1/auth/join/pin` | memberToken | `{"setup_token": "{{setupToken}}", "pin": "4826"}` | **200**<br>`status` = active |  |
-| 04 | **Member m1: circle login with the PIN**<br>`POST /api/v1/auth/circle-login` | memberToken | `{"sacco_id": {{betaSaccoId}}, "pin": "4826"}` | **200**<br>`ok` = true |  |
-| 05 | **Member m1: wrong PIN is refused**<br>`POST /api/v1/auth/circle-login` | memberToken | `{"sacco_id": {{betaSaccoId}}, "pin": "0000"}` | **401** |  |
+| 01 | **Login: Beta admin**<br>`POST /api/v1/auth/login` | none | `{"email": "beta-admin@example.com", "password": "{{password}}"}` | **200** | `betaAdminToken` |
+| 02 | **Beta admin: invite a phone into Beta (shows join_code)**<br>`POST /api/v1/saccos/{{betaSaccoId}}/members` | betaAdminToken | `{"phone": "+2547000100{{run}}", "role": "member"}` | **201** | `joinCode` |
+| 03 | **Member m1: join Beta with the code**<br>`POST /api/v1/auth/join` | memberToken | `{"phone": "+2547000100{{run}}", "code": "{{joinCode}}"}` | **200** | `setupToken` |
+| 04 | **Member m1: set a 4-digit PIN**<br>`POST /api/v1/auth/join/pin` | memberToken | `{"setup_token": "{{setupToken}}", "pin": "4826"}` | **200**<br>`status` = active |  |
+| 05 | **Member m1: circle login with the PIN**<br>`POST /api/v1/auth/circle-login` | memberToken | `{"sacco_id": {{betaSaccoId}}, "pin": "4826"}` | **200**<br>`ok` = true |  |
+| 06 | **Member m1: wrong PIN is refused**<br>`POST /api/v1/auth/circle-login` | memberToken | `{"sacco_id": {{betaSaccoId}}, "pin": "0000"}` | **401** |  |
 
 ## 7. Troubleshooting
 
@@ -267,5 +318,5 @@ Access:
 | `{{saccoId}}` appears literally in a URL | The environment is not active, or folder 2 was skipped. |
 | A deposit answers 409 `DUPLICATE_REFERENCE` on its first send | That reference was used in an earlier run: change `run`. |
 | Loan request answers 409 "open loan" | The member still has a requested, approved or disbursed loan. Finish folder 5 first, or re-seed. |
-| Folder 9 join answers 409 or 401 | Already joined in an earlier run (once per database). |
+| Folder 10 join answers 409 or 401 | Already joined in an earlier run (once per database). |
 | Health answers `disconnected` | PostgreSQL is not running, or `DATABASE_URL` in `backend/.env` is wrong. |
