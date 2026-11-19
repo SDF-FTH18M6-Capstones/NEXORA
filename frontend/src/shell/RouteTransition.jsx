@@ -34,7 +34,7 @@ function Signature({ duration, sequence }) {
           </g>
           <path d="M40 29l8.5 11.5H40z" fill="#000" opacity=".2" />
           <ellipse cx="38" cy="26" rx="27" ry="14" fill="url(#lg-gloss)" transform="rotate(-20 38 26)" />
-          <g className="orbit"><circle cx="50" cy="4" r="4.4" fill="#F2B441" /></g>
+          <g className="orbit"><circle cx="50" cy="4" r="4.4" fill="var(--saffron)" /></g>
         </svg>
       </div>
       <svg className="sig-svg" viewBox="60 70 1260 440" aria-hidden="true">
@@ -62,7 +62,7 @@ function Signature({ duration, sequence }) {
           fontFamily="'Dancing Script', 'Segoe Script', cursive"
           fontWeight="700"
           fontSize="460"
-          fill="#FFF6E6"
+          fill="var(--ring-a)"
         >
           Nexora
         </text>
