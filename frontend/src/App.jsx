@@ -13,7 +13,7 @@ import { describe } from './lib/errors.js';
 import { can as canPermission, homeFor, ROUTES } from './lib/perms.js';
 import { clearTokens, onSessionEnded } from './lib/http.js';
 import { SessionContext, useSession } from './lib/session.jsx';
-import { restoreSession, signIn, signOut } from './api/session.js';
+import { restoreSession, selectSacco, signIn, signOut } from './api/session.js';
 import RequireAuth from './shell/RequireAuth.jsx';
 import RouteTransition from './shell/RouteTransition.jsx';
 import { PAGE_IMPORTS } from './shell/pages.js';
@@ -88,6 +88,7 @@ function SessionProvider({ children }) {
   const [restoreError, setRestoreError] = useState(null);
   const [sessionEnded, setSessionEnded] = useState(false);
   const [toastMessage, setToastMessage] = useState(null);
+  const [panelRequest, setPanelRequest] = useState('');
   const openRef = useRef('');
   const toastTimer = useRef(null);
   const routerNavigateRef = useRef(routerNavigate);
@@ -115,6 +116,7 @@ function SessionProvider({ children }) {
     }
     const { open, ...navigationOptions } = options;
     openRef.current = open || '';
+    setPanelRequest(open || '');
     routerNavigate(to, navigationOptions);
   }, [routerNavigate]);
 
@@ -142,7 +144,17 @@ function SessionProvider({ children }) {
     navigate('/login', { replace: true });
   }, [navigate]);
 
+  const switchSacco = useCallback(async saccoId => {
+    const nextSession = await selectSacco(session, saccoId);
+    setSession(nextSession);
+    navigate('/overview');
+  }, [session, navigate]);
+
   const clearSessionEnded = useCallback(() => setSessionEnded(false), []);
+  const clearPanelRequest = useCallback(() => {
+    openRef.current = '';
+    setPanelRequest('');
+  }, []);
   const takeOpen = useCallback(kind => {
     const value = openRef.current;
     if (value.startsWith(kind + ':')) {
@@ -203,14 +215,18 @@ function SessionProvider({ children }) {
     can,
     saccoId: session ? session.saccoId : null,
     sacco: session ? session.sacco : null,
+    saccos: session ? session.saccos : [],
+    panelRequest,
+    clearPanelRequest,
     navigate,
+    switchSacco,
     takeOpen,
     toast,
     login,
     logout,
     sessionEnded,
     clearSessionEnded,
-  }), [session, can, navigate, takeOpen, toast, login, logout, sessionEnded, clearSessionEnded]);
+  }), [session, can, navigate, switchSacco, takeOpen, toast, login, logout, sessionEnded, clearSessionEnded, panelRequest, clearPanelRequest]);
 
   return (
     <SessionContext.Provider value={value}>

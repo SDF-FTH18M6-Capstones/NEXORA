@@ -1,6 +1,7 @@
-import { ApiError, MOCK, clearTokens, getTokens, http, setTokens } from '../lib/http.js';
+import { ApiError, MOCK, clearTokens, getTokens, http, mockDelay, setTokens } from '../lib/http.js';
 import { ROLES } from '../lib/perms.js';
 import { loginRequest, logoutRequest, mockAccountFromTokens } from './auth.js';
+import { audit } from '../mocks/data.js';
 
 const roleAliases = {
   admin: 'admin',
@@ -45,6 +46,10 @@ function permissionsForRoles(roleKeys) {
   return [...new Set(roleKeys.flatMap(role => ROLES[role].perms))];
 }
 
+function isSuspended(sacco) {
+  return Boolean(sacco && String(sacco.status).toLowerCase() === 'suspended');
+}
+
 async function loadPermissions(saccoId, roleKeys) {
   try {
     const response = await http.get('/members/me/permissions', {
@@ -62,21 +67,42 @@ async function loadPermissions(saccoId, roleKeys) {
   }
 }
 
-async function buildSession(user, saccos) {
+async function buildSession(user, saccos, selectedSaccoId = null) {
   const memberships = Array.isArray(user.memberships) ? user.memberships : [];
-  const membership = memberships.find(item => item.status === 'active') || memberships[0] || null;
+  const accountSaccos = Array.isArray(saccos) ? saccos : [];
+  const selectedSacco = selectedSaccoId == null
+    ? null
+    : accountSaccos.find(item => String(item.id) === String(selectedSaccoId)) || null;
+
+  if (selectedSaccoId != null && !selectedSacco) {
+    throw new Error('The selected SACCO is not available to this account.');
+  }
+
+  const membership = selectedSacco
+    ? memberships.find(item => String(item.sacco_id) === String(selectedSacco.id)) || null
+    : memberships.find(item => item.status === 'active') || memberships[0] || null;
   const roleKeys = membership ? roleKeysForMembership(membership) : [];
   const isPlatform = Boolean(user.is_platform_owner) || roleKeys.includes('platform');
+
+  if (selectedSacco && !membership) {
+    throw new Error('The selected SACCO does not have an active membership.');
+  }
 
   if (membership && roleKeys.length === 0 && !isPlatform) {
     throw new Error('The signed-in membership has an unsupported role.');
   }
 
   const role = isPlatform ? 'platform' : roleKeys[0] || 'member';
-  const saccoId = isPlatform || !membership ? null : membership.sacco_id;
-  const sacco = saccoId == null ? null : saccos.find(item => String(item.id) === String(saccoId)) || null;
+  const saccoId = isPlatform || !membership
+    ? null
+    : selectedSacco
+      ? selectedSacco.id
+      : membership.sacco_id;
+  const sacco = saccoId == null
+    ? null
+    : accountSaccos.find(item => String(item.id) === String(saccoId)) || null;
   const fallbackRoles = isPlatform ? ['platform'] : roleKeys;
-  const perms = MOCK
+  const perms = MOCK || isSuspended(sacco)
     ? permissionsForRoles(fallbackRoles)
     : await loadPermissions(saccoId, fallbackRoles);
 
@@ -87,6 +113,9 @@ async function buildSession(user, saccos) {
     can: permission => perms.includes(permission),
     saccoId,
     sacco,
+    saccos: accountSaccos,
+    memberships,
+    sourceUser: user,
   };
 }
 
@@ -123,6 +152,33 @@ export async function signIn(email, password, selectedRole) {
     clearTokens();
     throw error;
   }
+}
+
+export async function selectSacco(session, saccoId) {
+  if (!session || !session.sourceUser) {
+    throw new Error('A signed-in session is required to switch SACCOs.');
+  }
+  return buildSession(session.sourceUser, session.saccos, saccoId);
+}
+
+export async function listRecentAudit(saccoId) {
+  if (saccoId == null) return [];
+
+  if (MOCK) {
+    await mockDelay();
+    return audit.slice(0, 5).map(([date, actor, action, target], index) => ({
+      id: index + 1,
+      date,
+      actor,
+      action,
+      target,
+    }));
+  }
+
+  const response = await http.get(`/admin/saccos/${saccoId}/audit`, {
+    params: { page: 1, per_page: 5 },
+  });
+  return listFromResponse(response, 'entries');
 }
 
 export async function signOut() {

@@ -6,7 +6,7 @@ import Shell from './Shell.jsx';
 
 export default function RequireAuth({ path, title, children, checkPermission = true }) {
   const location = useLocation();
-  const { user, perms, navigate } = useSession();
+  const { user, perms, sacco, navigate } = useSession();
 
   if (!user) {
     return (
@@ -18,13 +18,20 @@ export default function RequireAuth({ path, title, children, checkPermission = t
     );
   }
 
-  const denied = path && checkPermission ? guardRoute(perms, path) : (path ? null : '404');
+  const suspended = sacco && String(sacco.status).toLowerCase() === 'suspended';
+  const suspensionExempt = path === 'account';
+  const denied = path && suspended && !suspensionExempt
+    ? '423'
+    : path && checkPermission
+      ? guardRoute(perms, path)
+      : (path ? null : '404');
 
   function onAction(action) {
     if (action === 'home') navigate('/' + homeFor(perms));
     else if (action === 'back') navigate(-1);
     else if (action === 'login') navigate('/login');
     else if (action === 'landing') navigate('/');
+    else if (action === 'switcher') navigate('/overview', { open: 'sacco:switcher' });
     else if (action === 'account') navigate('/account');
   }
 

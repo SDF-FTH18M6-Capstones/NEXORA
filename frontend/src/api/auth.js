@@ -16,7 +16,12 @@ function makeMockAccount(role, email) {
   const platformOwner = permissions.includes('platform');
   const memberships = platformOwner
     ? []
-    : [{ membership_id: 1, sacco_id: 1, role: mockRoleNames[role], status: 'active' }];
+    : mySaccos.map((sacco, index) => ({
+      membership_id: index + 1,
+      sacco_id: sacco.id,
+      role: mockRoleNames[role],
+      status: 'active',
+    }));
   return {
     user: {
       id: `mock-${role}`,
