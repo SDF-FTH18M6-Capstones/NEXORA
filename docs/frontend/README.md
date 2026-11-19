@@ -391,7 +391,7 @@ Today only an officer can post money (`savings.post`); a member cannot call the 
 
 **New permission:** `savings.request` ("Send a deposit or withdrawal request for my own account"). Held by the `member` role only. Officers keep `savings.post`.
 
-**New table `payment_requests`** (model in `backend/app/models/payment_request.py`, migration `0024`):
+**New table `payment_requests`** (model in `backend/app/models/payment_request.py`, migration `0025`):
 
 | Column | Type | Notes |
 |---|---|---|

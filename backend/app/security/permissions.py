@@ -57,6 +57,9 @@ PERMISSIONS: dict[str, str] = {
     # adds, removes or edits a SACCO admin.
     "admin.manage": "Make, change or remove a SACCO admin",
     "savings.view_all": "Read every savings account in the SACCO",
+    # The SACCO's consent to a platform owner reading its records: its admin
+    # approves, denies or revokes a support-access request.
+    "support.approve": "Approve or revoke a platform owner's support access",
 }
 
 # The five job titles, each with the permissions it holds (docs/roles-permissions.md):
@@ -75,6 +78,7 @@ ROLE_PERMISSIONS: dict[str, frozenset[str]] = {
             "report.view",
             "savings.view_all",
             "sacco.update",
+            "support.approve",
             "dashboard.view",
         }
     ),

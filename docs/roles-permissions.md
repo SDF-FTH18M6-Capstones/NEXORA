@@ -94,6 +94,7 @@ staff: secretary, member: member).
 | report.view | yes | yes | yes | yes | |
 | sacco.view (SACCO name, status, settings) | yes | yes | yes | yes | yes |
 | sacco.update (rename the SACCO) | yes | | | | |
+| support.approve (approve, deny or revoke a platform owner's support access) | yes | | | | |
 | audit.view (SACCO audit log) | **never** | yes | | | |
 | loan.view (every loan) | yes | yes | yes | yes | own only |
 | loan.approve | **never** | | | yes | |
