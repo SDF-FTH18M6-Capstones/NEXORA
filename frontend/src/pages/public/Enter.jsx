@@ -69,9 +69,10 @@ export default function Enter() {
     && lockedSeconds > 0;
 
   useEffect(() => {
+    if (location.pathname !== '/enter') return;
     if (!currentIsEntered || showChooser || location.state?.justJoined) return;
     navigate(location.state?.from || '/' + homeFor(perms), { replace: true });
-  }, [currentIsEntered, showChooser, location.state, navigate, perms]);
+  }, [currentIsEntered, showChooser, location.pathname, location.state, navigate, perms]);
 
   function setDigit(index, value) {
     const digit = value.replace(/\D/g, '').slice(-1);
