@@ -25,6 +25,199 @@ info:
     once after change-password, reset-password, logout-all or an email change.'
 servers:
 - url: http://localhost:5000
+  /api/v1/members/me/permissions:
+    get:
+      summary: The caller's job titles and permissions in one SACCO
+      description: '**Who:** a signed-in user. Without `sacco_id`, a platform owner
+        gets the platform permissions.
+
+
+        **Rate limit:** 120 per minute.'
+      parameters:
+      - name: sacco_id
+        in: query
+        required: false
+        schema:
+          type: integer
+      responses:
+        '200':
+          description: The job titles held and the permissions they give.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  roles:
+                    type: array
+                    items:
+                      type: string
+                  permissions:
+                    type: array
+                    items:
+                      type: string
+        '400':
+          description: sacco_id missing or not a number (`validation_error`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Not a member of that SACCO (`not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /api/v1/savings/requests:
+    post:
+      summary: Send a deposit or withdrawal request
+      description: '**Who:** a member holding `savings.request`. A request changes no
+        balance.
+
+
+        **Rate limit:** 20 per minute.'
+      responses:
+        '201':
+          description: The pending request.
+        '200':
+          description: The same reference again returns the original request.
+        '400':
+          description: A field is missing or not acceptable (`validation_error`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: No `savings.request` in this SACCO (`forbidden`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: '`INSUFFICIENT_FUNDS` for a withdrawal above the balance,
+            `DUPLICATE_REFERENCE` for a reused reference.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '423':
+          description: The SACCO is suspended (`locked`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /api/v1/savings/requests/me:
+    get:
+      summary: The caller's own requests in one SACCO
+      description: '**Who:** the member themselves. Newest first.
+
+
+        **Rate limit:** 30 per minute.'
+      parameters:
+      - name: sacco_id
+        in: query
+        required: true
+        schema:
+          type: integer
+      - name: kind
+        in: query
+        required: false
+        schema:
+          type: string
+          enum:
+          - deposit
+          - withdrawal
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+      - name: cursor
+        in: query
+        required: false
+        schema:
+          type: integer
+      responses:
+        '200':
+          description: '`{items, next}`; `next` is null on the last page.'
+        '404':
+          description: Not a member of that SACCO (`not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /api/v1/savings/saccos/{sacco_id}/requests:
+    get:
+      summary: One SACCO's request queue
+      description: '**Who:** a member holding `savings.post`. Each item also names the
+        requester''s email.
+
+
+        **Rate limit:** 30 per minute.'
+      parameters:
+      - $ref: '#/components/parameters/sacco_id'
+      - name: status
+        in: query
+        required: false
+        schema:
+          type: string
+          enum:
+          - pending
+          - confirmed
+          - rejected
+      responses:
+        '200':
+          description: '`{items, next}`; newest first.'
+        '403':
+          description: No `savings.post` in this SACCO (`forbidden`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /api/v1/savings/requests/{request_id}/confirm:
+    post:
+      summary: Confirm one pending request and post its ledger entry
+      description: '**Who:** a member holding `savings.post`, never the requester.
+
+
+        **Rate limit:** 20 per minute.'
+      responses:
+        '200':
+          description: The request with `status: confirmed` and `ledger_transaction_id`.
+        '403':
+          description: '`forbidden`, or `OWN_REQUEST` when the officer asked for it.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: '`REQUEST_ALREADY_DECIDED`, or `INSUFFICIENT_FUNDS` for a withdrawal.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /api/v1/savings/requests/{request_id}/reject:
+    post:
+      summary: Reject one pending request
+      description: '**Who:** a member holding `savings.post`, never the requester. A
+        reason is required; no balance changes.
+
+
+        **Rate limit:** 30 per minute.'
+      responses:
+        '200':
+          description: The request with `status: rejected` and `reject_reason`.
+        '400':
+          description: No reason, or one longer than 500 characters.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: '`REQUEST_ALREADY_DECIDED`.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
 components:
   securitySchemes:
     bearerAuth:
@@ -682,6 +875,29 @@ paths:
         '403': {description: "The setup token belongs to someone else (NOT_ALLOWED).", content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
         '409': {description: "The membership is already set up.", content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
         '429': {description: "Rate limit exceeded (rate_limited).", content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
+  /api/v1/auth/sacco-login:
+    post:
+      summary: Enter your circle with its PIN (the new name)
+      description: 'The same endpoint as `/auth/circle-login`, kept under both names
+        for one release so older clients keep working.
+
+
+        **Rate limit:** 30 per minute.'
+      responses:
+        '200':
+          description: '`{ok, membership_id, role}`; no new tokens are issued.'
+        '401':
+          description: Wrong PIN (`PIN_WRONG`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '423':
+          description: '`PIN_LOCKED` after five wrong tries, or the SACCO is suspended.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
   /api/v1/auth/circle-login:
     post:
       summary: Check the circle PIN
