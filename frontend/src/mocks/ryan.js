@@ -124,6 +124,33 @@ export const RYAN_JOIN_PHONES = {
 export const RYAN_CIRCLE_PIN = '1234';
 export const RYAN_JOIN_SACCO_ID = 2;
 
+export const RYAN_AUDIT = [
+  {
+    id: 'alpha-audit-1',
+    sacco_id: 1,
+    date: '2026-11-19',
+    actor: 'Peter Otieno',
+    action: 'Approved a deposit',
+    target: 'Member deposit',
+  },
+  {
+    id: 'alpha-audit-2',
+    sacco_id: 1,
+    date: '2026-11-18',
+    actor: 'Faith Njeri',
+    action: 'Updated a member',
+    target: 'Member profile',
+  },
+  {
+    id: 'beta-audit-1',
+    sacco_id: 2,
+    date: '2026-11-19',
+    actor: 'Jordan Mwangi',
+    action: 'Reviewed a loan',
+    target: 'Loan request',
+  },
+];
+
 export const RYAN_R5B_SCENARIOS = {
   wrongPassword: { email: 'wrong-password@example.test', password: 'wrong' },
   loginLocked: { email: 'locked-login@example.test', failedAttempts: 5 },

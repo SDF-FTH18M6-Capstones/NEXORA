@@ -2,12 +2,14 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { describe } from '../lib/errors.js';
 import { useSession } from '../lib/session.jsx';
 import { listRecentAudit } from '../api/session.js';
+import ErrorBanner from '../components/ErrorBanner.jsx';
 import Icon from './Icon.jsx';
 import usePopupFocus from './usePopupFocus.js';
 
 export default function Bell({ open, onToggle, onClose }) {
   const { can, saccoId, navigate } = useSession();
   const [result, setResult] = useState(null);
+  const [requestVersion, setRequestVersion] = useState(0);
   const triggerRef = useRef(null);
   const wrapRef = useRef(null);
 
@@ -44,7 +46,12 @@ export default function Bell({ open, onToggle, onClose }) {
       });
 
     return () => { active = false; };
-  }, [open, canViewAudit, saccoId, resultKey]);
+  }, [open, canViewAudit, saccoId, resultKey, requestVersion]);
+
+  function retry() {
+    setResult(null);
+    setRequestVersion(version => version + 1);
+  }
 
   function goToAudit(event) {
     event.preventDefault();
@@ -80,7 +87,9 @@ export default function Bell({ open, onToggle, onClose }) {
             <button type="button" className="link-btn" onClick={close}>Close</button>
           </div>
           {loading && <p className="p-3 text-muted">Loading...</p>}
-          {currentResult && currentResult.error && <p className="p-3 text-muted" role="alert">{currentResult.error}</p>}
+          {currentResult && currentResult.error && (
+            <ErrorBanner onRetry={retry}>{currentResult.error}</ErrorBanner>
+          )}
           {!loading && (!canViewAudit || saccoId == null || (currentResult && !currentResult.error && !currentResult.entries.length)) && (
             <p className="p-3 text-muted">Nothing new.</p>
           )}

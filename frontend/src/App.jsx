@@ -186,20 +186,23 @@ function SessionProvider({ children }) {
     const returnTo = location.state && typeof location.state.from === 'string'
       ? location.state.from
       : null;
-    setEnteredSaccoId(null);
     const nextSession = await selectSacco(session, saccoId);
-    setSession(nextSession);
     if (wasEntered) {
       setEnteredSaccoId(nextSession.saccoId);
+      setSession(nextSession);
       navigate(returnTo || '/overview');
       return;
     }
     navigate('/enter', {
+      replace: true,
       state: {
+        chooseCircle: false,
         enterSelected: true,
         ...(returnTo ? { from: returnTo } : {}),
       },
     });
+    setEnteredSaccoId(null);
+    setSession(nextSession);
   }, [session, enteredSaccoIds, location.state, navigate]);
 
   const enterCircle = useCallback(async (saccoId, pin) => {

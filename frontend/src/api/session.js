@@ -1,7 +1,6 @@
 import { ApiError, MOCK, clearTokens, getTokens, http, mockDelay, setTokens } from '../lib/http.js';
 import { ROLES } from '../lib/perms.js';
-import { RYAN_SACCOS } from '../mocks/ryan.js';
-import { audit } from '../mocks/data.js';
+import { RYAN_AUDIT, RYAN_SACCOS } from '../mocks/ryan.js';
 import {
   circleLoginRequest,
   loginRequest,
@@ -251,13 +250,10 @@ export async function listRecentAudit(saccoId) {
 
   if (MOCK) {
     await mockDelay();
-    return audit.slice(0, 5).map(([date, actor, action, target], index) => ({
-      id: index + 1,
-      date,
-      actor,
-      action,
-      target,
-    }));
+    return RYAN_AUDIT
+      .filter(entry => String(entry.sacco_id) === String(saccoId))
+      .slice(0, 5)
+      .map(entry => ({ ...entry }));
   }
 
   const response = await http.get(`/admin/saccos/${saccoId}/audit`, {

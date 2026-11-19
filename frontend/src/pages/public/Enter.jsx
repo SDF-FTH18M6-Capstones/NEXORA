@@ -52,7 +52,7 @@ export default function Enter() {
   );
   const showChooser = forceChooser || (
     !location.state?.enterSelected
-    && (location.state?.chooseCircle || activeSaccos.length > 1)
+    && Boolean(location.state?.chooseCircle)
   );
   const currentIsEntered = enteredSaccoId != null
     && String(enteredSaccoId) === String(saccoId);

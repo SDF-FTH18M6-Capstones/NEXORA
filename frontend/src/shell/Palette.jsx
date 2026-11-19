@@ -32,14 +32,18 @@ export default function Palette({ open, onClose, triggerRef }) {
       activeElement === inputRef.current || activeItem >= 0
     )) {
       event.preventDefault();
-      const next = (selectedIndex + 1) % routes.length;
+      const next = activeElement === inputRef.current
+        ? 0
+        : (selectedIndex + 1) % routes.length;
       setSelectedIndex(next);
       itemRefs.current[next].focus();
     } else if (event.key === 'ArrowUp' && routes.length && (
       activeElement === inputRef.current || activeItem >= 0
     )) {
       event.preventDefault();
-      const next = (selectedIndex - 1 + routes.length) % routes.length;
+      const next = activeElement === inputRef.current
+        ? routes.length - 1
+        : (selectedIndex - 1 + routes.length) % routes.length;
       setSelectedIndex(next);
       itemRefs.current[next].focus();
     } else if (event.key === 'Enter' && routes.length && activeElement === inputRef.current) {
