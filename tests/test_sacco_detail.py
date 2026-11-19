@@ -124,7 +124,15 @@ def test_admin_reads_their_own_sacco(client):
     resp = client.get(f"{BASE}/{sacco_id}", headers=person(sacco_id, ADMIN))
     assert resp.status_code == 200
     assert resp.get_json()["name"] == "Umoja"
-    assert set(resp.get_json()) == {"id", "name", "currency", "status", "created_at"}
+    assert set(resp.get_json()) == {
+        "id",
+        "name",
+        "currency",
+        "status",
+        "member_count",
+        "created_at",
+    }
+    assert resp.get_json()["member_count"] == 1  # the admin above
     assert resp.headers["Cache-Control"] == "no-store"
 
 

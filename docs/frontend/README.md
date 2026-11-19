@@ -464,7 +464,7 @@ Statuses in the API: `requested`, `approved`, `rejected`, `disbursed`, `repaid`.
 
 | Screen | Call |
 |---|---|
-| SACCOs | `GET /saccos`, `POST /saccos` (`name`, `currency`), `POST /saccos/<id>/activate`, `POST /saccos/<id>/deactivate` |
+| SACCOs | `GET /saccos`, `POST /saccos` (`name`, `currency`), `POST /saccos/<id>/activate`, `POST /saccos/<id>/deactivate`. Each SACCO is `{id, name, currency, status, member_count, created_at}`: **`member_count`** is active members (an invitation is not a member yet), so Overview and SACCOs show real counts |
 | Owners | `GET /admin/owners`, `POST /admin/owners`, `DELETE /admin/owners/<user_id>` |
 | Ask for access to a SACCO | `POST /saccos/<id>/support-access` (`reason`, `scope`) |
 | Platform audit | `GET /admin/audit` |
