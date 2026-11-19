@@ -93,7 +93,32 @@ The team must agree on:
 - Required indexes and deletion policies.
 - Final column types and constraints.
 
-## 7. Approval
+## 7. Member deposit and withdrawal requests (`payment_requests`)
+
+Added with migration `0025`. A request changes no balance; confirming one posts
+the ledger entry through the existing savings service, so the ledger rules stay
+in one place.
+
+| Column | Type | Notes |
+|---|---|---|
+| `id` | integer, primary key | |
+| `sacco_id` | FK `saccos.id`, not null, indexed | tenant |
+| `membership_id` | FK `sacco_memberships.id`, not null, indexed | who asked |
+| `kind` | text: `deposit` or `withdrawal` | check constraint |
+| `method` | text: `mpesa` or `bank` | check constraint |
+| `amount_minor` | bigint, greater than 0 | minor units |
+| `phone` | text, null | `2547XXXXXXXX` or `2541XXXXXXXX`; required for mpesa |
+| `bank_name` | text, null | required for bank |
+| `account_ref` | text, null | required for bank; receipt reference, or the member's account number for a withdrawal |
+| `reference` | text, unique, not null | the client-generated retry key |
+| `status` | text: `pending`, `confirmed`, `rejected` | default `pending` |
+| `decided_by` | FK `sacco_memberships.id`, null | the officer who decided |
+| `decided_at` | timestamp, null | |
+| `reject_reason` | text, null | required when rejected |
+| `ledger_transaction_id` | FK `transactions.id`, null | set when confirmed |
+| `created_at` | timestamp | |
+
+## 8. Approval
 
 This is a proposed initial schema, not an approved production
 database design.

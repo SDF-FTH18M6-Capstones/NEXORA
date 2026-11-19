@@ -44,6 +44,7 @@ PERMISSIONS: dict[str, str] = {
     "savings.view": "Read savings accounts and their history",
     "savings.post": "Post deposits, withdrawals, interest and fees",
     "savings.reverse": "Reverse a posted ledger entry",
+    "savings.request": "Send a deposit or withdrawal request for my own account",
     "loan.view": "Read loan requests and their decisions",
     "loan.request": "Request a loan",
     "loan.approve": "Approve or reject one step of a loan",
@@ -57,6 +58,9 @@ PERMISSIONS: dict[str, str] = {
     # adds, removes or edits a SACCO admin.
     "admin.manage": "Make, change or remove a SACCO admin",
     "savings.view_all": "Read every savings account in the SACCO",
+    # The SACCO's consent to a platform owner reading its records: its admin
+    # approves, denies or revokes a support-access request.
+    "support.approve": "Approve or revoke a platform owner's support access",
 }
 
 # The five job titles, each with the permissions it holds (docs/roles-permissions.md):
@@ -75,6 +79,7 @@ ROLE_PERMISSIONS: dict[str, frozenset[str]] = {
             "report.view",
             "savings.view_all",
             "sacco.update",
+            "support.approve",
             "dashboard.view",
         }
     ),
@@ -119,6 +124,7 @@ ROLE_PERMISSIONS: dict[str, frozenset[str]] = {
         {
             "sacco.view",
             "savings.view",
+            "savings.request",
             "loan.request",
             "loan.repay",
             "dashboard.view",

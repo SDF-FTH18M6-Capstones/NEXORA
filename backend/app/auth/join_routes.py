@@ -200,6 +200,7 @@ def join_pin():
     return jsonify(membership_id=membership.id, status="active")
 
 
+@auth_bp.post("/sacco-login")
 @auth_bp.post("/circle-login")
 @write_limit
 def circle_login():

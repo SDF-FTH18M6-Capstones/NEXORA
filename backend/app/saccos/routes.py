@@ -9,7 +9,7 @@ import re
 import unicodedata
 
 from flask import g, jsonify
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 
 from app import saccos_bp
@@ -19,6 +19,7 @@ from app.auth.routes import _body, _text
 from app.errors import error_response
 from app.extensions import db
 from app.models.audit import AuditLog
+from app.models.membership import MembershipStatus, SaccoMembership
 from app.models.sacco import Sacco, SaccoStatus
 from app.security.tenant import permission_scoped
 
@@ -59,12 +60,28 @@ def _no_store(response):
     return response
 
 
+def _member_count(sacco_id: int) -> int:
+    """How big the SACCO is. Active members only: an invitation is not a member.
+
+    The platform area shows this number and it is a count, never money.
+    """
+    return db.session.execute(
+        select(func.count())
+        .select_from(SaccoMembership)
+        .where(
+            SaccoMembership.sacco_id == sacco_id,
+            SaccoMembership.status == MembershipStatus.ACTIVE,
+        )
+    ).scalar_one()
+
+
 def _sacco_json(sacco: Sacco) -> dict:
     return {
         "id": sacco.id,
         "name": sacco.name,
         "currency": sacco.currency,
         "status": sacco.status.value,
+        "member_count": _member_count(sacco.id),
         "created_at": sacco.created_at.isoformat(),
     }
 

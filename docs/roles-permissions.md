@@ -90,10 +90,12 @@ staff: secretary, member: member).
 | member.manage (add, invite, set titles) | yes | | | | |
 | savings.view_all (every account) | yes | yes | yes | | own only |
 | savings.post (deposit, withdraw, interest, fee, open account) | yes | | yes | | |
+| savings.request (send a deposit or withdrawal request for my own account) | | | | | yes |
 | savings.reverse | yes | | yes | | |
 | report.view | yes | yes | yes | yes | |
 | sacco.view (SACCO name, status, settings) | yes | yes | yes | yes | yes |
 | sacco.update (rename the SACCO) | yes | | | | |
+| support.approve (approve, deny or revoke a platform owner's support access) | yes | | | | |
 | audit.view (SACCO audit log) | **never** | yes | | | |
 | loan.view (every loan) | yes | yes | yes | yes | own only |
 | loan.approve | **never** | | | yes | |
