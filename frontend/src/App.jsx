@@ -1,122 +1,179 @@
-import { useState } from 'react'
-import heroImg from './assets/hero.png'
-import reactLogo from './assets/react.svg'
-import viteLogo from './assets/vite.svg'
-import './App.css'
+import { lazy, Suspense, useMemo, useRef } from 'react';
+import {
+  BrowserRouter,
+  Navigate,
+  Route,
+  Routes,
+  useNavigate,
+} from 'react-router-dom';
+import ErrorPage from './components/ErrorPage.jsx';
+import { ROLES, ROUTES, homeFor } from './lib/perms.js';
+import { SessionContext } from './lib/session.jsx';
+import RequireAuth from './shell/RequireAuth.jsx';
+import { PAGE_IMPORTS } from './shell/pages.js';
 
-function App() {
-  const [count, setCount] = useState(0)
-
+function Placeholder({ title }) {
   return (
-    <>
-      <section id="center">
-        <div className="hero">
-          <img src={heroImg} className="base" width="170" height="179" alt="" />
-          <img src={reactLogo} className="framework" alt="React logo" />
-          <img src={viteLogo} className="vite" alt="Vite logo" />
-        </div>
-        <div>
-          <h1>Get started</h1>
-          <p>
-            Edit <code>src/App.jsx</code> and save to test <code>HMR</code>
-          </p>
-        </div>
-        <button
-          type="button"
-          className="counter"
-          onClick={() => setCount((count) => count + 1)}
-        >
-          Count is {count}
-        </button>
-      </section>
-
-      <div className="ticks"></div>
-
-      <section id="next-steps">
-        <div id="docs">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#documentation-icon"></use>
-          </svg>
-          <h2>Documentation</h2>
-          <p>Your questions, answered</p>
-          <ul>
-            <li>
-              <a href="https://vite.dev/" target="_blank">
-                <img className="logo" src={viteLogo} alt="" />
-                Explore Vite
-              </a>
-            </li>
-            <li>
-              <a href="https://react.dev/" target="_blank">
-                <img className="button-icon" src={reactLogo} alt="" />
-                Learn more
-              </a>
-            </li>
-          </ul>
-        </div>
-        <div id="social">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#social-icon"></use>
-          </svg>
-          <h2>Connect with us</h2>
-          <p>Join the Vite community</p>
-          <ul>
-            <li>
-              <a href="https://github.com/vitejs/vite" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#github-icon"></use>
-                </svg>
-                GitHub
-              </a>
-            </li>
-            <li>
-              <a href="https://chat.vite.dev/" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#discord-icon"></use>
-                </svg>
-                Discord
-              </a>
-            </li>
-            <li>
-              <a href="https://x.com/vite_js" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#x-icon"></use>
-                </svg>
-                X.com
-              </a>
-            </li>
-            <li>
-              <a href="https://bsky.app/profile/vite.dev" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#bluesky-icon"></use>
-                </svg>
-                Bluesky
-              </a>
-            </li>
-          </ul>
-        </div>
-      </section>
-
-      <div className="ticks"></div>
-      <section id="spacer"></section>
-    </>
-  )
+    <div className="glass grid min-h-[30vh] content-center gap-2 p-6 text-center">
+      <h1 className="font-serif">{title}</h1>
+      <p className="text-muted">This page is being built.</p>
+    </div>
+  );
 }
 
-export default App
+function makeLazyPage(path, title) {
+  return lazy(async () => {
+    const loader = PAGE_IMPORTS[path];
+    if (!loader) return { default: () => <Placeholder title={title} /> };
+    try {
+      return await loader();
+    } catch {
+      return { default: () => <Placeholder title={title} /> };
+    }
+  });
+}
+
+function PublicPlaceholder({ title }) {
+  return (
+    <main className="mx-auto max-w-2xl p-6">
+      <Placeholder title={title} />
+    </main>
+  );
+}
+
+function AppRouter() {
+  const routerNavigate = useNavigate();
+  const openRef = useRef('');
+  const role = 'admin';
+  const perms = ROLES[role].perms;
+
+  const session = useMemo(() => ({
+    user: {
+      id: 'ryan-r3',
+      email: 'admin@nexora.local',
+      name: 'R3 preview',
+      initials: 'R3',
+    },
+    role,
+    perms,
+    can: permission => perms.includes(permission),
+    saccoId: 1,
+    sacco: { id: 1, name: 'Preview SACCO', status: 'active' },
+    navigate: (to, options = {}) => {
+      openRef.current = options.open || '';
+      routerNavigate(to);
+    },
+    takeOpen: kind => {
+      const open = openRef.current;
+      if (open.startsWith(kind + ':')) {
+        openRef.current = '';
+        return open.slice(kind.length + 1);
+      }
+      return null;
+    },
+    toast: () => {},
+  }), [routerNavigate, role, perms]);
+
+  const publicRoutes = [
+    ['login', 'Sign in'],
+    ['register', 'Create an account'],
+    ['verify', 'Verify your email'],
+    ['forgot', 'Forgot password'],
+    ['reset', 'Reset password'],
+  ];
+  const protectedExtras = [
+    { path: 'join', title: 'Join a SACCO', checkPermission: false },
+    { path: 'enter', title: 'Enter your SACCO', checkPermission: false },
+    { path: 'account', title: 'Account settings', checkPermission: true },
+    'styleguide',
+  ];
+
+  return (
+    <SessionContext.Provider value={session}>
+      <Suspense fallback={<div className="glass p-6 text-muted">Loading...</div>}>
+        <Routes>
+          <Route path="/" element={<Navigate to={'/' + homeFor(perms)} replace />} />
+
+          {publicRoutes.map(([path, title]) => (
+            <Route
+              key={path}
+              path={'/' + path}
+              element={<PublicPlaceholder title={title} />}
+            />
+          ))}
+
+          {ROUTES.map(route => {
+            const Page = makeLazyPage(route.path, route.title);
+            return (
+              <Route
+                key={route.path}
+                path={'/' + route.path}
+                element={
+                  <RequireAuth path={route.path} title={route.title}>
+                    <Page />
+                  </RequireAuth>
+                }
+              />
+            );
+          })}
+
+          {protectedExtras.map(extra => {
+            if (typeof extra === 'string') {
+              const Page = makeLazyPage(extra, 'Style guide');
+              return (
+                <Route
+                  key={extra}
+                  path={'/' + extra}
+                  element={
+                    <RequireAuth path={extra} title="Style guide">
+                      <Page />
+                    </RequireAuth>
+                  }
+                />
+              );
+            }
+            const Page = makeLazyPage(extra.path, extra.title);
+            return (
+              <Route
+                key={extra.path}
+                path={'/' + extra.path}
+                element={
+                  <RequireAuth
+                    path={extra.path}
+                    title={extra.title}
+                    checkPermission={extra.checkPermission}
+                  >
+                    <Page />
+                  </RequireAuth>
+                }
+              />
+            );
+          })}
+
+          <Route
+            path="*"
+            element={
+              <RequireAuth path={null} title="">
+                <ErrorPage
+                  code="404"
+                  onAction={action => {
+                    if (action === 'home') session.navigate('/' + homeFor(perms));
+                    if (action === 'back') session.navigate(-1);
+                  }}
+                />
+              </RequireAuth>
+            }
+          />
+        </Routes>
+      </Suspense>
+    </SessionContext.Provider>
+  );
+}
+
+export default function App() {
+  return (
+    <BrowserRouter>
+      <AppRouter />
+    </BrowserRouter>
+  );
+}
