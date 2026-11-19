@@ -268,6 +268,7 @@ export default function Enter() {
                 <input
                   key={index}
                   ref={element => { pinRefs.current[index] = element; }}
+                  className="h-12 w-12 shrink-0 rounded-lg border border-teal-2 bg-pop text-center text-xl text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-2"
                   type="password"
                   inputMode="numeric"
                   autoComplete={index === 0 ? 'one-time-code' : 'off'}
