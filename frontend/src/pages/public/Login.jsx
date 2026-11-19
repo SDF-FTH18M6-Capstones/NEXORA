@@ -30,14 +30,19 @@ export default function Login() {
 
   return (
     <main className="auth">
-      <div className="grid w-full max-w-[24rem] gap-4">
-        {sessionEnded && (
-          <ErrorPage code="401" onAction={action => {
-            if (action === 'login') clearSessionEnded();
-          }} />
-        )}
-        <form className="glass auth-card grid grid-cols-1 gap-4" onSubmit={submit}>
-          <h1 className="font-serif text-2xl">Sign in</h1>
+      <div className="auth-inner">
+        <div className="auth-copy">
+          <h1 className="serif">Welcome <em>back.</em></h1>
+          <p>Sign in to continue to your SACCO.</p>
+        </div>
+        <form className="glass auth-card" onSubmit={submit}>
+          <div className="eyebrow">Sign in</div>
+          {sessionEnded && (
+            <ErrorPage code="401" onAction={action => {
+              if (action === 'login') clearSessionEnded();
+            }} />
+          )}
+          <h2 className="serif">Your SACCO awaits</h2>
           {error && <ErrorBanner>{error}</ErrorBanner>}
           <Field id="login-email" label="Email">
             <input
@@ -66,7 +71,7 @@ export default function Login() {
               </select>
             </Field>
           )}
-          <button className="btn block" type="submit" disabled={sending}>
+          <button className="btn" type="submit" disabled={sending}>
             {sending ? 'Signing in...' : 'Sign in'}
           </button>
         </form>
