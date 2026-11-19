@@ -1,12 +1,21 @@
 import { Navigate, useLocation } from 'react-router-dom';
 import ErrorPage from '../components/ErrorPage.jsx';
-import { guardRoute, homeFor } from '../lib/perms.js';
+import { guardRoute } from '../lib/perms.js';
 import { useSession } from '../lib/session.jsx';
+import PageBoundary from './PageBoundary.jsx';
 import Shell from './Shell.jsx';
 
 export default function RequireAuth({ path, title, children, checkPermission = true }) {
   const location = useLocation();
-  const { user, perms, sacco, saccoId, enteredSaccoId, navigate } = useSession();
+  const {
+    user,
+    perms,
+    sacco,
+    saccoId,
+    enteredSaccoId,
+    pageKey,
+    onErrorAction,
+  } = useSession();
 
   if (!user) {
     return (
@@ -43,18 +52,18 @@ export default function RequireAuth({ path, title, children, checkPermission = t
     );
   }
 
-  function onAction(action) {
-    if (action === 'home') navigate('/' + homeFor(perms));
-    else if (action === 'back') navigate(-1);
-    else if (action === 'login') navigate('/login');
-    else if (action === 'landing') navigate('/');
-    else if (action === 'switcher') navigate('/overview', { open: 'sacco:switcher' });
-    else if (action === 'account') navigate('/account');
-  }
-
   return (
     <Shell path={path} title={title}>
-      {denied ? <ErrorPage code={denied} onAction={onAction} /> : children}
+      {denied
+        ? <ErrorPage code={denied} onAction={onErrorAction} />
+        : (
+          <PageBoundary
+            key={`${path || 'not-found'}:${location.key}:${pageKey}`}
+            onAction={onErrorAction}
+          >
+            {children}
+          </PageBoundary>
+        )}
     </Shell>
   );
 }

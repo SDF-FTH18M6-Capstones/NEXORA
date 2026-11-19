@@ -1,6 +1,10 @@
 import { ApiError, MOCK, clearTokens, getTokens, http, mockDelay, setTokens } from '../lib/http.js';
 import { ROLES } from '../lib/perms.js';
-import { RYAN_AUDIT, RYAN_SACCOS } from '../mocks/ryan.js';
+import {
+  RYAN_AUDIT,
+  RYAN_MOCK_PAGE_FAILURES,
+  RYAN_SACCOS,
+} from '../mocks/ryan.js';
 import {
   circleLoginRequest,
   loginRequest,
@@ -260,6 +264,23 @@ export async function listRecentAudit(saccoId) {
     params: { page: 1, per_page: 5 },
   });
   return listFromResponse(response, 'entries');
+}
+
+export async function loadMockPlaceholderFailure(path, search) {
+  if (!MOCK || !path) return null;
+
+  const failureName = new URLSearchParams(search).get('__ryan_error');
+  const failure = RYAN_MOCK_PAGE_FAILURES[failureName];
+  if (!failure) return null;
+
+  await mockDelay(100);
+  if (failure.renderError) return { renderError: true };
+  throw new ApiError(
+    failure.status,
+    failure.code,
+    'Mock placeholder failure.',
+    failure.retryAfter,
+  );
 }
 
 export async function signOut() {

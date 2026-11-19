@@ -11,6 +11,7 @@ import ErrorPage from './components/ErrorPage.jsx';
 import { LogoDefs } from './components/Logo.jsx';
 import { describe } from './lib/errors.js';
 import { can as canPermission, homeFor, ROUTES } from './lib/perms.js';
+import { useAsync } from './lib/useAsync.js';
 import { clearTokens, onSessionEnded } from './lib/http.js';
 import { SessionContext, useSession } from './lib/session.jsx';
 import {
@@ -21,12 +22,50 @@ import {
   selectSacco,
   signIn,
   signOut,
+  loadMockPlaceholderFailure,
 } from './api/session.js';
+import NetBanner from './shell/NetBanner.jsx';
+import PageState from './shell/PageState.jsx';
 import RequireAuth from './shell/RequireAuth.jsx';
 import RouteTransition from './shell/RouteTransition.jsx';
 import { PAGE_IMPORTS } from './shell/pages.js';
 
-function Placeholder({ title }) {
+const NETWORK_STATUS_EVENT = 'nexora:network-status';
+
+function Placeholder({ title, path }) {
+  const location = useLocation();
+  const { pageKey, onErrorAction } = useSession();
+  const result = useAsync(
+    () => loadMockPlaceholderFailure(path, location.search),
+    [path, location.search, pageKey],
+  );
+
+  useEffect(() => {
+    if (
+      (result.status === 'ready' || result.status === 'empty')
+      && navigator.onLine
+    ) {
+      window.dispatchEvent(new CustomEvent(NETWORK_STATUS_EVENT, {
+        detail: { status: 200 },
+      }));
+    }
+  }, [result.status]);
+
+  if (result.status === 'ready' && result.data && result.data.renderError) {
+    throw new Error('Mock page render failure.');
+  }
+
+  if (result.status === 'error') {
+    return (
+      <PageState
+        status={result.status}
+        error={result.error}
+        reload={result.reload}
+        onAction={onErrorAction}
+      />
+    );
+  }
+
   return (
     <div className="glass grid min-h-[30vh] content-center gap-2 p-6 text-center">
       <h1 className="font-serif">{title}</h1>
@@ -38,19 +77,19 @@ function Placeholder({ title }) {
 function makeLazyPage(path, title) {
   return lazy(async () => {
     const loader = PAGE_IMPORTS[path];
-    if (!loader) return { default: () => <Placeholder title={title} /> };
+    if (!loader) return { default: () => <Placeholder title={title} path={path} /> };
     try {
       return await loader();
     } catch {
-      return { default: () => <Placeholder title={title} /> };
+      return { default: () => <Placeholder title={title} path={path} /> };
     }
   });
 }
 
-function PublicPlaceholder({ title }) {
+function PublicPlaceholder({ title, path }) {
   return (
     <main className="mx-auto max-w-2xl p-6">
-      <Placeholder title={title} />
+      <Placeholder title={title} path={path} />
     </main>
   );
 }
@@ -74,18 +113,7 @@ function LogoutRoute() {
 }
 
 function NotFoundRoute() {
-  const { navigate, perms } = useSession();
-  return (
-    <RequireAuth path={null} title="">
-      <ErrorPage
-        code="404"
-        onAction={action => {
-          if (action === 'home') navigate('/' + homeFor(perms));
-          if (action === 'back') navigate(-1);
-        }}
-      />
-    </RequireAuth>
-  );
+  return <RequireAuth path={null} title="" />;
 }
 
 function SessionProvider({ children }) {
@@ -97,6 +125,7 @@ function SessionProvider({ children }) {
   const [sessionEnded, setSessionEnded] = useState(false);
   const [toastMessage, setToastMessage] = useState(null);
   const [panelRequest, setPanelRequest] = useState('');
+  const [pageKey, setPageKey] = useState(0);
   const [enteredSaccoId, setEnteredSaccoId] = useState(null);
   const [enteredSaccoIds, setEnteredSaccoIds] = useState(() => new Set());
   const openRef = useRef('');
@@ -238,6 +267,28 @@ function SessionProvider({ children }) {
     window.clearTimeout(toastTimer.current);
     toastTimer.current = window.setTimeout(() => setToastMessage(null), 2800);
   }, []);
+  const retryPage = useCallback(() => {
+    setPageKey(key => key + 1);
+  }, []);
+  const onErrorAction = useCallback(action => {
+    const startPage = '/' + homeFor(session ? session.perms : []);
+    if (action === 'home') {
+      navigate(startPage);
+    } else if (action === 'back') {
+      const historyIndex = window.history.state && window.history.state.idx;
+      navigate(Number.isInteger(historyIndex) && historyIndex > 0 ? -1 : startPage);
+    } else if (action === 'login') {
+      navigate('/login');
+    } else if (action === 'landing') {
+      navigate('/');
+    } else if (action === 'switcher') {
+      navigate('/overview', { open: 'sacco:switcher' });
+    } else if (action === 'account') {
+      navigate('/account');
+    } else if (action === 'retry') {
+      retryPage();
+    }
+  }, [navigate, retryPage, session]);
 
   useEffect(() => {
     let active = true;
@@ -293,6 +344,9 @@ function SessionProvider({ children }) {
     completeJoin,
     panelRequest,
     clearPanelRequest,
+    pageKey,
+    retryPage,
+    onErrorAction,
     navigate,
     switchSacco,
     takeOpen,
@@ -301,17 +355,18 @@ function SessionProvider({ children }) {
     logout,
     sessionEnded,
     clearSessionEnded,
-  }), [session, can, navigate, switchSacco, enterCircle, completeJoin, takeOpen, toast, login, logout, sessionEnded, clearSessionEnded, panelRequest, clearPanelRequest, enteredSaccoId]);
+  }), [session, can, navigate, switchSacco, enterCircle, completeJoin, takeOpen, toast, login, logout, sessionEnded, clearSessionEnded, panelRequest, clearPanelRequest, pageKey, retryPage, onErrorAction, enteredSaccoId]);
 
   return (
     <SessionContext.Provider value={value}>
       <LogoDefs />
+      <NetBanner />
       {ready
         ? restoreError
-          ? <ErrorPage code={describe(restoreError, { mode: 'page' }).page || '500'} onAction={action => {
-            if (action === 'retry') window.location.reload();
-            if (action === 'login') navigate('/login');
-          }} />
+          ? <ErrorPage
+            code={describe(restoreError, { mode: 'page' }).page || '500'}
+            onAction={onErrorAction}
+          />
           : children
         : <main className="p-6 text-muted">Restoring your session...</main>}
       <div
@@ -351,7 +406,9 @@ function AppRouter() {
             <Route
               key={path}
               path={'/' + path}
-              element={path === 'login' ? <LoginPage /> : <PublicPlaceholder title={title} />}
+              element={path === 'login'
+                ? <LoginPage />
+                : <PublicPlaceholder title={title} path={path} />}
             />
           ))}
 
