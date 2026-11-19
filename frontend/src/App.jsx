@@ -1,4 +1,4 @@
-import { lazy, Suspense, useMemo, useRef } from 'react';
+import { lazy, useMemo, useRef } from 'react';
 import {
   BrowserRouter,
   Navigate,
@@ -7,9 +7,11 @@ import {
   useNavigate,
 } from 'react-router-dom';
 import ErrorPage from './components/ErrorPage.jsx';
+import { LogoDefs } from './components/Logo.jsx';
 import { ROLES, ROUTES, homeFor } from './lib/perms.js';
 import { SessionContext } from './lib/session.jsx';
 import RequireAuth from './shell/RequireAuth.jsx';
+import RouteTransition from './shell/RouteTransition.jsx';
 import { PAGE_IMPORTS } from './shell/pages.js';
 
 function Placeholder({ title }) {
@@ -90,8 +92,9 @@ function AppRouter() {
 
   return (
     <SessionContext.Provider value={session}>
-      <Suspense fallback={<div className="glass p-6 text-muted">Loading...</div>}>
-        <Routes>
+      <LogoDefs />
+      <Routes>
+        <Route element={<RouteTransition />}>
           <Route path="/" element={<Navigate to={'/' + homeFor(perms)} replace />} />
 
           {publicRoutes.map(([path, title]) => (
@@ -164,8 +167,8 @@ function AppRouter() {
               </RequireAuth>
             }
           />
-        </Routes>
-      </Suspense>
+        </Route>
+      </Routes>
     </SessionContext.Provider>
   );
 }
