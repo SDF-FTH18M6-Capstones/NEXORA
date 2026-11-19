@@ -87,9 +87,12 @@ function makeLazyPage(path, title) {
   });
 }
 
+const LandingPage = makeLazyPage('landing', 'NEXORA');
+
 function StartRoute() {
   const { user, perms } = useSession();
-  return <Navigate to={user ? '/' + homeFor(perms) : '/login'} replace />;
+  if (user) return <Navigate to={'/' + homeFor(perms)} replace />;
+  return <LandingPage />;
 }
 
 function LogoutRoute() {
