@@ -310,6 +310,9 @@ components:
           enum:
           - active
           - suspended
+        member_count:
+          type: integer
+          description: Active members. An invitation is not a member yet.
         created_at:
           type: string
           format: date-time

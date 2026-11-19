@@ -121,6 +121,18 @@ def test_the_answer_comes_from_the_database_not_the_enum():
     assert can(user, sacco, "savings.post") is True
 
 
+def test_the_sacco_admin_holds_support_approve_and_a_member_does_not():
+    """The Access requests page decides by this name (frontend `lib/perms.js`)."""
+    admin_user, sacco = holder("circle_admin")
+    member_user = make_user()
+    make_membership(member_user, sacco, job_title="member")
+
+    assert can(admin_user, sacco, "support.approve") is True
+    assert can(member_user, sacco, "support.approve") is False
+    assert "support.approve" in permissions_for(admin_user, sacco)
+    assert "support.approve" not in permissions_for(member_user, sacco)
+
+
 def test_inactive_membership_is_denied_everything():
     user, sacco = holder("circle_admin", status=MembershipStatus.INACTIVE)
     assert can(user, sacco, "savings.view") is False
