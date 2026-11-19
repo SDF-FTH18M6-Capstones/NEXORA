@@ -68,7 +68,9 @@ def test_a_preflight_is_204_with_methods_headers_and_max_age():
     )
     assert resp.status_code == 204
     assert resp.headers["Access-Control-Allow-Origin"] == ORIGIN
-    assert resp.headers["Access-Control-Allow-Methods"] == "GET, POST, PATCH, OPTIONS"
+    assert resp.headers["Access-Control-Allow-Methods"] == (
+        "GET, POST, PUT, PATCH, DELETE, OPTIONS"
+    )
     assert (
         resp.headers["Access-Control-Allow-Headers"] == "Authorization, Content-Type"
     )

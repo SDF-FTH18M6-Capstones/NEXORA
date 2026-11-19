@@ -1,6 +1,6 @@
 # NEXORA Backend: Remaining Work Plan
 
-Status: **Proposed, for team review.** Owners are suggestions until everyone agrees in the approval section.
+Status: **Superseded (2026-11-18).** Moves 1 to 6 are done. What is left is tracked as GitHub issues (#87 to #99, #30) and in `docs/security-checklist.md`. This file is kept as the original proposal.
 
 ## 1. Purpose
 

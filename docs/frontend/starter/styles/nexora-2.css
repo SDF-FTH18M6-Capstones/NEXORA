@@ -89,7 +89,7 @@
 .float.f2 { transform: translate3d(calc(var(--px, 0) * 2.4rem), calc(var(--py, 0) * 1.6rem), 0); }
 .hero-logo { position: absolute; right: -2%; bottom: -4%; width: clamp(5rem, 11vw, 8rem); z-index: 3; filter: drop-shadow(0 1.4rem 1.6rem rgba(15, 76, 71, .5)); transform: translate3d(calc(var(--px, 0) * 3rem), calc(var(--py, 0) * 2rem), 0) rotateY(calc(var(--px, 0) * 40deg)); }
 .hero-logo svg { width: 100%; height: auto; display: block; }
-.needs + .grid, .needs + .stack, #p-pf-overview > .needs { margin-bottom: var(--gap); }
+.needs + .grid12, .needs + .stack, #p-pf-overview > .needs { margin-bottom: var(--gap); }
 #ov-sacco > .needs { margin-bottom: 0; }
 @media (max-width: 40rem) { .kbd { display: none; } .palette-card { margin-top: 6vh; } }
 

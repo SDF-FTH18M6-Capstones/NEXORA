@@ -52,6 +52,7 @@ jobs:
 
       # The schema tests create nexora_schema_test themselves; the postgres
       # superuser created by the service above is allowed to do that.
+      # Fails when total coverage is below fail_under in pyproject.toml.
       - name: Tests
         run: pytest -m "schema or not schema" --cov --cov-report=term-missing
 

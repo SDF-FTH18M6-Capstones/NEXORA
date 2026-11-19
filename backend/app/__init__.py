@@ -89,6 +89,12 @@ def _json_server_error(exc: Exception):
     return error_response(500, "Internal error.")
 
 
+def _unencodable_text(exc: UnicodeEncodeError):
+    """A lone surrogate (for example \\ud800) in a text field cannot be stored."""
+    db.session.rollback()
+    return error_response(400, "Text contains characters that cannot be stored.")
+
+
 def create_app(config_class=Config):
     app = Flask(__name__)
     app.config.from_object(config_class)
@@ -101,6 +107,7 @@ def create_app(config_class=Config):
 
     app.url_map.converters["int"] = IdConverter
     app.register_error_handler(HTTPException, _json_http_error)
+    app.register_error_handler(UnicodeEncodeError, _unencodable_text)
     app.register_error_handler(Exception, _json_server_error)
     db.init_app(app)
     migrate.init_app(app, db)
@@ -115,6 +122,7 @@ def create_app(config_class=Config):
     # The ledger and history routes import from the savings routes, so they come after.
     from app.ledger import routes as ledger_routes  # noqa: F401
     from app.ledger.reconcile import reconcile_command
+    from app.ledger.status import eod_status_command
     from app.loans import routes as loans_routes  # noqa: F401
     from app.members import routes as members_routes  # noqa: F401
     from app.models import (  # noqa: F401
@@ -148,6 +156,7 @@ def create_app(config_class=Config):
 
     _register_health(app)
     app.cli.add_command(reconcile_command)
+    app.cli.add_command(eod_status_command)
 
     return app
 

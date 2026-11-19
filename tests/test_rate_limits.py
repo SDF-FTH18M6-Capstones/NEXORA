@@ -104,3 +104,15 @@ def test_logout_all_is_an_ordinary_write(limited):
     ]
     assert codes[-1] == 429
     assert 429 not in codes[:-1]
+
+
+@pytest.mark.parametrize(
+    "path", ["/api/v1/auth/forgot-password", "/api/v1/auth/resend-verification"]
+)
+def test_the_always_ok_routes_still_stop_at_the_login_limit(limited, path):
+    codes = [
+        limited.post(path, json={"email": "nobody@example.com"}).status_code
+        for _ in range(per_minute(LOGIN_LIMIT) + 1)
+    ]
+    assert codes[-1] == 429
+    assert set(codes[:-1]) == {200}

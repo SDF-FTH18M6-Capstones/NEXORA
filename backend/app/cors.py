@@ -7,7 +7,7 @@ because tokens travel in the Authorization header, not cookies.
 
 from flask import request
 
-ALLOWED_METHODS = ("GET", "POST", "PATCH", "OPTIONS")
+ALLOWED_METHODS = ("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS")
 ALLOWED_HEADERS = ("Authorization", "Content-Type")
 # The browser may read these on every answer: a 429 tells the page to wait.
 EXPOSE_HEADERS = ("Retry-After",)

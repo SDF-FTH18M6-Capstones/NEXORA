@@ -26,3 +26,7 @@ source = ["backend/app"]
 
 [tool.coverage.report]
 show_missing = true
+# Floor for total coverage; `pytest --cov` exits non-zero below it. The suite
+# measured 94.92% on 2026-11-18. Raise this when coverage rises, never lower it
+# to get a PR through: add the missing test instead.
+fail_under = 94

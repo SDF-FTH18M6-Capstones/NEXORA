@@ -59,11 +59,11 @@ bash backend/scripts/demo.sh
 
 It logs in as four users and walks through, with the real responses printed: the admin dashboard, the member dashboard, a deposit and its safe retry, the refusals (wrong role, another SACCO, no token), logout-all killing a session, and registration with password recovery. Login is limited to 5 per minute per address, so wait a minute before running it twice.
 
-For the interactive API reference, paste `docs/openapi.yaml` into <https://editor.swagger.io>. All 53 operations (44 paths) are there with request bodies, responses and error codes.
+For the interactive API reference, paste `docs/openapi.yaml` into <https://editor.swagger.io>. All 59 operations (49 paths) are there with request bodies, responses and error codes.
 
 To click through the whole API, including the loan flow, use Thunder Client: [`docs/thunder-client.md`](thunder-client.md).
 
-To show the tests: `pytest -m "schema or not schema" --cov` (602 tests, 97% coverage), and `ruff check backend/app tests`.
+To show the tests: `pytest -m "schema or not schema" --cov` (785 tests, 95% coverage), and `ruff check backend/app tests`.
 
 ## 4. Who built what
 

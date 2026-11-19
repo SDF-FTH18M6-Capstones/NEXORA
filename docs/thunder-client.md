@@ -20,8 +20,14 @@ Files:
 
 - `docs/thunder/thunder-collection_NEXORA.json`: 10 folders, 77 requests.
 - `docs/thunder/thunder-environment_NEXORA-local.json`: the variables.
+- `docs/thunder/thunder-collection_NEXORA-1of2.json` and `-2of2.json`: the same
+  requests in Thunder Client's own format, split in two to fit the free plan's
+  50-request cap (folders 1 to 4: 31 requests, then 5 to 10: 46). **Use these on
+  the free plan.** They save tokens with the Tests tab, not scripts.
 - `docs/thunder/postman-collection_NEXORA-1of2.json` and
-  `-2of2.json`: the same requests in Postman 2.1 format, split in two (folders
+  `-2of2.json`: the same requests in Postman 2.1 format, split in two. These carry JavaScript test
+  scripts, and Thunder Client's free plan answers "The scripting feature is
+  available only in the paid version" (folders
   1 to 4: 31 requests, then 5 to 10: 46). Use these if the Thunder Client
   format will not import, or if the free plan's 50-request cap stops it.
 - `docs/thunder/postman-environment_NEXORA-local.json`: the same three
@@ -76,12 +82,13 @@ remain.
 
 If Thunder Client answers **"No matching import provider found"**, or the free
 plan's **50 requests per collection** cap stops the 77-request file, use the
-Postman 2.1 copies. `postman-collection_NEXORA-1of2.json` holds folders 1 to 4
-(31 requests) and `postman-collection_NEXORA-2of2.json` holds folders 5 to 10
-(46 requests), so neither part reaches the cap:
+split copies. `thunder-collection_NEXORA-1of2.json` holds folders 1 to 4
+(31 requests) and `thunder-collection_NEXORA-2of2.json` holds folders 5 to 10
+(46 requests), so neither part reaches the cap. Use the Postman copies only if
+the Thunder Client format is refused; they need the paid scripting feature:
 
-1. **Collections** tab → menu (≡) → **Import** → `postman-collection_NEXORA-1of2.json`.
-2. Run folders 1 to 4, then import and run `postman-collection_NEXORA-2of2.json`.
+1. **Collections** tab → menu (≡) → **Import** → `thunder-collection_NEXORA-1of2.json`.
+2. Run folders 1 to 4, then import and run `thunder-collection_NEXORA-2of2.json`.
    Part 2 reuses the tokens and ids part 1 saved.
 
 The environment is only three variables, and the JSON forms of it can also be
