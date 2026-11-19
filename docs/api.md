@@ -121,6 +121,18 @@ Response **200**: PIN set, membership active.
 
 Error statuses: 400, 401, 403, 409, 429
 
+## POST /api/v1/auth/sacco-login
+
+**Enter your circle with its PIN (the new name)**
+
+The same endpoint as `/auth/circle-login`, kept under both names for one release so older clients keep working.
+
+**Rate limit:** 30 per minute.
+
+Response **200**: `{ok, membership_id, role}`; no new tokens are issued.
+
+Error statuses: 401, 423
+
 ## POST /api/v1/auth/circle-login
 
 **Check the circle PIN**
@@ -485,6 +497,7 @@ Response **200**: All SACCOs.
       "name": "name",
       "currency": "currency",
       "status": "active",
+      "member_count": 1,
       "created_at": "2026-11-18T09:00:00Z"
     }
   ]
@@ -520,6 +533,7 @@ Response **201**: Created.
   "name": "name",
   "currency": "currency",
   "status": "active",
+  "member_count": 1,
   "created_at": "2026-11-18T09:00:00Z"
 }
 ```
@@ -544,6 +558,7 @@ Response **200**: The SACCO.
   "name": "name",
   "currency": "currency",
   "status": "active",
+  "member_count": 1,
   "created_at": "2026-11-18T09:00:00Z"
 }
 ```
@@ -578,6 +593,7 @@ Response **200**: Updated.
   "name": "name",
   "currency": "currency",
   "status": "active",
+  "member_count": 1,
   "created_at": "2026-11-18T09:00:00Z"
 }
 ```
@@ -604,6 +620,7 @@ Response **200**: The SACCO, now active.
   "name": "name",
   "currency": "currency",
   "status": "active",
+  "member_count": 1,
   "created_at": "2026-11-18T09:00:00Z"
 }
 ```
@@ -630,6 +647,7 @@ Response **200**: The SACCO, now suspended.
   "name": "name",
   "currency": "currency",
   "status": "active",
+  "member_count": 1,
   "created_at": "2026-11-18T09:00:00Z"
 }
 ```
