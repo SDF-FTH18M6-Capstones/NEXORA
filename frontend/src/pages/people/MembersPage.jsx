@@ -64,7 +64,11 @@ export default function MembersPage() {
                 <span className="icon" aria-hidden="true">{initials(m.email || m.phone)}</span>
                 <span className="grow text-left">
                   <span className="title">{m.email || m.phone}</span>
-                  <span className="sub">{roleChips(m.roles).join(' · ') || 'Member'}</span>
+                  <span className="neo-roles">
+                    {roleChips(m.roles).length === 0
+                      ? <span className="chip lock">Member</span>
+                      : roleChips(m.roles).map(label => <span className="chip" key={label}>{label}</span>)}
+                  </span>
                 </span>
                 <StatusChip status={chipFor(m.status)} />
               </button>

@@ -49,3 +49,6 @@
 .neo-search > .grow { flex: 1 1 12rem; min-width: 0; }
 .neo-item { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: .75rem; width: 100%; text-align: left; }
 .row .title, .row .sub { display: block; }
+/* One chip per role: a member can hold more than one role in the same SACCO. */
+.neo-roles { display: flex; flex-wrap: wrap; gap: .3rem; margin-top: .3rem; }
+.neo-roles .chip { font-size: .7rem; color: var(--ink); }

@@ -62,7 +62,8 @@ export default function PfOverview() {
               key={entry.id}
               onClick={() => {
                 const match = /sacco:(\d+)/.exec(entry.target || '');
-                if (match) navigate('/pf-saccos', { open: match[1] });
+                // PfSaccos reads this with takeOpen('sacco'), which expects the "sacco:" prefix.
+                if (match) navigate('/pf-saccos', { open: `sacco:${match[1]}` });
               }}
             >
               <span className="icon" aria-hidden="true">·</span>
