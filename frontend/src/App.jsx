@@ -10,6 +10,7 @@ import {
 import ErrorPage from './components/ErrorPage.jsx';
 import { LogoDefs } from './components/Logo.jsx';
 import { describe } from './lib/errors.js';
+import { syncAppearance, watchAppearance } from './lib/appearance.js';
 import { can as canPermission, homeFor, ROUTES } from './lib/perms.js';
 import { useAsync } from './lib/useAsync.js';
 import { clearTokens, onSessionEnded } from './lib/http.js';
@@ -86,14 +87,6 @@ function makeLazyPage(path, title) {
   });
 }
 
-function PublicPlaceholder({ title, path }) {
-  return (
-    <main className="mx-auto max-w-2xl p-6">
-      <Placeholder title={title} path={path} />
-    </main>
-  );
-}
-
 function StartRoute() {
   const { user, perms } = useSession();
   return <Navigate to={user ? '/' + homeFor(perms) : '/login'} replace />;
@@ -147,6 +140,20 @@ function SessionProvider({ children }) {
     }
   }, [location.pathname, location.search, session]);
 
+  const userId = session && session.user ? session.user.id : null;
+
+  useEffect(() => {
+    if (!ready) return;
+    syncAppearance(userId);
+    try {
+      if (userId == null) localStorage.removeItem('nexora.lastUser');
+      else localStorage.setItem('nexora.lastUser', String(userId));
+    } catch {
+      /* private mode: the look just lasts until reload */
+    }
+  }, [ready, userId]);
+
+  useEffect(() => watchAppearance(() => userId), [userId]);
   const navigate = useCallback((to, options = {}) => {
     if (typeof to === 'number') {
       routerNavigate(to);
@@ -394,15 +401,10 @@ function AppRouter() {
           <Route path="/" element={<StartRoute />} />
           <Route path="/logout" element={<LogoutRoute />} />
 
-          {publicRoutes.map(([path, title]) => (
-            <Route
-              key={path}
-              path={'/' + path}
-              element={path === 'login'
-                ? <LoginPage />
-                : <PublicPlaceholder title={title} path={path} />}
-            />
-          ))}
+          {publicRoutes.map(([path, title]) => {
+            const Page = path === 'login' ? LoginPage : makeLazyPage(path, title);
+            return <Route key={path} path={'/' + path} element={<Page />} />;
+          })}
 
           {ROUTES.map(route => {
             const Page = makeLazyPage(route.path, route.title);
