@@ -7,6 +7,20 @@
     <title>Nexora</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,700&family=Inter:wght@400;500;600;700&family=Sora:wght@600;700&family=DM+Sans:wght@400;500;600;700&family=Lora:wght@500;600&family=Atkinson+Hyperlegible:wght@400;700&family=Nunito:wght@400;600;700&family=Merriweather:wght@400;700&display=swap" />
+    <script>
+      (function () {
+        try {
+          var id = localStorage.getItem('nexora.lastUser');
+          var v = id ? JSON.parse(localStorage.getItem('nexora.appearance:' + id) || '{}') : {};
+          var t = v.theme || 'cream';
+          var de = document.documentElement;
+          de.dataset.theme = t;
+          de.dataset.font = v.font || 'default';
+          de.dataset.size = v.size || 'normal';
+          de.dataset.mode = (t === 'ink' || t === 'midnight') ? 'dark' : 'light';
+        } catch (e) { /* default look */ }
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>
