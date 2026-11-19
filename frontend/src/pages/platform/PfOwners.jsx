@@ -45,7 +45,8 @@ export default function PfOwners() {
       owners.reload();
       toast('Platform owner removed');
     } catch (e) {
-      setNotice(describe(e, { context: 'member' }).text);
+      // Removing yourself is refused by the server; show its own sentence rather than a generic 403.
+      setNotice(e.status === 403 && e.message ? e.message : describe(e, { context: 'member' }).text);
     }
   }
 
@@ -73,7 +74,6 @@ export default function PfOwners() {
               <button
                 type="button"
                 className="btn small ghost"
-                disabled={user && row.email === user.email}
                 onClick={() => remove(row)}
               >
                 Remove

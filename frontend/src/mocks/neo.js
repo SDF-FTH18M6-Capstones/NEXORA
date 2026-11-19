@@ -56,6 +56,7 @@ export const platformSaccos = [
 export const platformOwners = [
   { user_id: 91, email: 'owner@example.com' },
   { user_id: 92, email: 'owner2@example.com' },
+  { user_id: 93, email: 'jordan@example.com' },   // the signed-in owner, so "you cannot remove yourself" is reachable in the harness
 ];
 
 export const platformAudit = [

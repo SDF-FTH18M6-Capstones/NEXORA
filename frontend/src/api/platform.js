@@ -1,6 +1,7 @@
 /* platform.js: the platform owner's calls. Counts and statuses only, never money. */
 import { http, MOCK, mockDelay, ApiError } from '../lib/http.js';
 import { platformSaccos as seedSaccos, platformOwners as seedOwners, platformAudit as seedAudit, supportRequests as seedSupport } from '../mocks/neo.js';
+import { me } from '../mocks/data.js';
 
 let saccos = seedSaccos.map(s => ({ ...s }));
 let owners = seedOwners.map(o => ({ ...o }));
@@ -72,6 +73,9 @@ export async function addOwner(email) {
 export async function removeOwner(userId) {
   if (MOCK) {
     await mockDelay();
+    // Same refusal, same sentence as DELETE /admin/owners/<id>.
+    const row = owners.find(o => o.user_id === Number(userId));
+    if (row && row.email === me.email) throw new ApiError(403, 'forbidden', 'You cannot revoke your own platform ownership.');
     owners = owners.filter(o => o.user_id !== Number(userId));
     return owners;
   }
