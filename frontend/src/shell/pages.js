@@ -1,6 +1,7 @@
 const modules = import.meta.glob('../pages/**/*.jsx');
 
 export const PAGE_IMPORTS = {
+  landing: modules['../pages/public/Landing.jsx'],
   login: modules['../pages/public/Login.jsx'],
   register: modules['../pages/public/Register.jsx'],
   verify: modules['../pages/public/Verify.jsx'],
