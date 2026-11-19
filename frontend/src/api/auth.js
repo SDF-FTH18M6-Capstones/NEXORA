@@ -234,3 +234,70 @@ export async function logoutRequest() {
     // Logout must clear local tokens even when the API cannot be reached.
   }
 }
+
+
+export async function changePasswordRequest(currentPassword, newPassword) {
+  if (!MOCK) {
+    return http.post('/auth/change-password', {
+      body: { current_password: currentPassword, new_password: newPassword },
+    });
+  }
+  await mockDelay(250);
+  if (currentPassword !== 'demo') {
+    throw new ApiError(400, 'PASSWORD_WRONG', 'Your current password is not right.');
+  }
+  return { ok: true };
+}
+
+export async function logoutAllRequest() {
+  if (!MOCK) return http.post('/auth/logout-all', { body: {} });
+  await mockDelay(200);
+  return { ok: true };
+}
+
+export async function registerRequest(name, email, password) {
+  if (!MOCK) {
+    return http.post('/auth/register', { body: { name, email, password }, auth: false });
+  }
+  await mockDelay(250);
+  if (normalizedEmail(email) === 'taken@example.com') {
+    throw new ApiError(409, 'EMAIL_TAKEN', 'That email already has an account. Sign in instead.');
+  }
+  return { ok: true };
+}
+
+export async function verifyEmailRequest(token) {
+  if (!MOCK) {
+    return http.post('/auth/verify-email', { body: { token }, auth: false });
+  }
+  await mockDelay(250);
+  if (token === 'expired') {
+    throw new ApiError(410, 'LINK_EXPIRED', 'This link has expired. Ask for a new one.');
+  }
+  if (token === 'used') {
+    throw new ApiError(409, 'LINK_USED', 'This link was already used. Sign in instead.');
+  }
+  return { ok: true };
+}
+
+export async function forgotPasswordRequest(email) {
+  if (!MOCK) {
+    return http.post('/auth/forgot-password', { body: { email }, auth: false });
+  }
+  await mockDelay(250);
+  return { ok: true };
+}
+
+export async function resetPasswordRequest(token, password) {
+  if (!MOCK) {
+    return http.post('/auth/reset-password', { body: { token, password }, auth: false });
+  }
+  await mockDelay(250);
+  if (token === 'expired') {
+    throw new ApiError(410, 'LINK_EXPIRED', 'This link has expired.');
+  }
+  if (token === 'used') {
+    throw new ApiError(409, 'LINK_USED', 'This link was already used.');
+  }
+  return { ok: true };
+}
