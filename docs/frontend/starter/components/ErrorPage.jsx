@@ -44,9 +44,9 @@ export default function ErrorPage({ code, wait = 30, onAction }) {
   }, [left]);
   const copy = () => navigator.clipboard && navigator.clipboard.writeText(ref);
   return (
-    <div className="mx-auto grid min-h-[60vh] max-w-xl content-center justify-items-center gap-3 py-[clamp(1.5rem,6vw,4rem)] text-center">
+    <div className="mx-auto grid grid-cols-1! min-h-[60vh] max-w-xl content-center justify-items-center gap-3 py-[clamp(1.5rem,6vw,4rem)] text-center">
       <div aria-hidden="true" className={`font-serif font-medium leading-[0.95] tracking-tight text-err ${e.n ? 'text-[clamp(5rem,18vw,10rem)]' : 'text-[clamp(3.4rem,12vw,6.5rem)]'}`}>{e.n || 'Offline'}</div>
-      <div role="alert" aria-live="assertive" className="grid justify-items-center gap-3">
+      <div role="alert" aria-live="assertive" className="grid grid-cols-1! justify-items-center gap-3">
         <h2 className="font-serif text-[clamp(1.5rem,3.4vw,2.2rem)] leading-tight">{e.t}</h2>
         <p className="max-w-[30rem] text-muted">{e.s}</p>
         <div className="mt-2 flex flex-wrap justify-center gap-3">
