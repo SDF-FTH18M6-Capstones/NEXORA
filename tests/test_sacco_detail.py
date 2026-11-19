@@ -136,6 +136,17 @@ def test_admin_reads_their_own_sacco(client):
     assert resp.headers["Cache-Control"] == "no-store"
 
 
+def test_member_count_ignores_a_deactivated_member(client):
+    sacco_id = make_sacco("Umoja")
+    admin_id = make_user()
+    join(admin_id, sacco_id, ADMIN)
+    gone_id = make_user()
+    join(gone_id, sacco_id, MembershipRole.MEMBER, status=MembershipStatus.INACTIVE)
+
+    body = client.get(f"{BASE}/{sacco_id}", headers=auth(admin_id)).get_json()
+    assert body["member_count"] == 1
+
+
 def test_platform_owner_reads_any_sacco(client):
     sacco_id = make_sacco("Umoja")
     owner = auth(make_user(owner=True))

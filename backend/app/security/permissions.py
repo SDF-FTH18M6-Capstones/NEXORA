@@ -44,6 +44,7 @@ PERMISSIONS: dict[str, str] = {
     "savings.view": "Read savings accounts and their history",
     "savings.post": "Post deposits, withdrawals, interest and fees",
     "savings.reverse": "Reverse a posted ledger entry",
+    "savings.request": "Send a deposit or withdrawal request for my own account",
     "loan.view": "Read loan requests and their decisions",
     "loan.request": "Request a loan",
     "loan.approve": "Approve or reject one step of a loan",
@@ -123,6 +124,7 @@ ROLE_PERMISSIONS: dict[str, frozenset[str]] = {
         {
             "sacco.view",
             "savings.view",
+            "savings.request",
             "loan.request",
             "loan.repay",
             "dashboard.view",

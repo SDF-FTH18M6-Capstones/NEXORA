@@ -26,11 +26,13 @@ from app.models.sacco import Sacco
 from app.models.user import User
 from app.security.permissions import (
     LEGACY_ROLE_CODES,
+    OWNER_PLATFORM,
     _role_codes,
     can,
     is_admin_membership,
     is_admin_role,
     is_platform_owner,
+    permissions_for,
 )
 from app.security.tenant import (
     AccessDenied,
@@ -124,6 +126,44 @@ def patch_me():
         return error_response(exc.status, exc.message)
 
 
+@members_bp.get("/me/permissions")
+@read_limit
+def my_permissions():
+    """The caller's job titles and permissions in one SACCO.
+
+    The screens decide by permission name, never by role name, so this is where
+    the names come from. With no `sacco_id`, a platform owner gets the platform
+    permissions; everyone else must name a SACCO (400). Not being in the SACCO
+    is 404, like every other tenant check.
+    """
+    user, error = _me_user()
+    if error:
+        return error
+    raw = request.args.get("sacco_id")
+    if raw is None:
+        if not is_platform_owner(user):
+            return error_response(400, "sacco_id is required.")
+        return jsonify(roles=[], permissions=sorted(OWNER_PLATFORM))
+    try:
+        sacco_id = int(raw)
+    except (TypeError, ValueError):
+        return error_response(400, "sacco_id must be a whole number.")
+    sacco = db.session.get(Sacco, sacco_id)
+    if sacco is None:
+        return error_response(404, "Not found.")
+    membership = db.session.execute(
+        select(SaccoMembership).where(
+            SaccoMembership.user_id == user.id, SaccoMembership.sacco_id == sacco_id
+        )
+    ).scalar_one_or_none()
+    if membership is None and not is_platform_owner(user):
+        return error_response(404, "Not found.")
+    return jsonify(
+        roles=sorted(_role_codes(membership)) if membership is not None else [],
+        permissions=sorted(permissions_for(user, sacco)),
+    )
+
+
 # ---------------------------------------------------------------------------
 # One SACCO's members (Move 2, Neo). Platform owner or that SACCO's admin only.
 # The tenant guard answers 401/404/403/423, so another SACCO is never revealed.
@@ -139,6 +179,7 @@ def _member_json(membership: SaccoMembership, email: str | None) -> dict:
         "email": email,
         "phone": membership.phone,
         "role": membership.role.value,
+        "roles": sorted(_role_codes(membership)),
         "status": membership.status.value,
         "created_at": membership.created_at.isoformat(),
     }

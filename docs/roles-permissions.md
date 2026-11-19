@@ -90,6 +90,7 @@ staff: secretary, member: member).
 | member.manage (add, invite, set titles) | yes | | | | |
 | savings.view_all (every account) | yes | yes | yes | | own only |
 | savings.post (deposit, withdraw, interest, fee, open account) | yes | | yes | | |
+| savings.request (send a deposit or withdrawal request for my own account) | | | | | yes |
 | savings.reverse | yes | | yes | | |
 | report.view | yes | yes | yes | yes | |
 | sacco.view (SACCO name, status, settings) | yes | yes | yes | yes | yes |
