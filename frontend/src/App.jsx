@@ -127,7 +127,6 @@ function SessionProvider({ children }) {
   const [panelRequest, setPanelRequest] = useState('');
   const [pageKey, setPageKey] = useState(0);
   const [enteredSaccoId, setEnteredSaccoId] = useState(null);
-  const [enteredSaccoIds, setEnteredSaccoIds] = useState(() => new Set());
   const openRef = useRef('');
   const toastTimer = useRef(null);
   const routerNavigateRef = useRef(routerNavigate);
@@ -163,7 +162,6 @@ function SessionProvider({ children }) {
     const nextSession = await signIn(email, password, selectedRole);
     setSession(nextSession);
     setEnteredSaccoId(null);
-    setEnteredSaccoIds(new Set());
     setSessionEnded(false);
     setRestoreError(null);
     const stateTarget = location.state && location.state.from;
@@ -203,23 +201,21 @@ function SessionProvider({ children }) {
     await signOut();
     setSession(null);
     setEnteredSaccoId(null);
-    setEnteredSaccoIds(new Set());
     setSessionEnded(false);
     pendingReturnToRef.current = '';
     navigate('/login', { replace: true });
   }, [navigate]);
 
   const switchSacco = useCallback(async saccoId => {
-    const nextId = String(saccoId);
-    const wasEntered = enteredSaccoIds.has(nextId);
+    if (session && String(session.saccoId) === String(saccoId)) return;
     const returnTo = location.state && typeof location.state.from === 'string'
       ? location.state.from
       : null;
     const nextSession = await selectSacco(session, saccoId);
-    if (wasEntered) {
-      setEnteredSaccoId(nextSession.saccoId);
-      setSession(nextSession);
-      navigate(returnTo || '/overview');
+    setEnteredSaccoId(null);
+    setSession(nextSession);
+    if (String(nextSession.sacco && nextSession.sacco.status || '').toLowerCase() === 'suspended') {
+      navigate('/overview', { replace: true });
       return;
     }
     navigate('/enter', {
@@ -227,18 +223,15 @@ function SessionProvider({ children }) {
       state: {
         chooseCircle: false,
         enterSelected: true,
-        ...(returnTo ? { from: returnTo } : {}),
+        from: returnTo || '/overview',
       },
     });
-    setEnteredSaccoId(null);
-    setSession(nextSession);
-  }, [session, enteredSaccoIds, location.state, navigate]);
+  }, [session, location.state, navigate]);
 
   const enterCircle = useCallback(async (saccoId, pin) => {
     const nextSession = await enterSaccoSession(session, saccoId, pin);
     setSession(nextSession);
     setEnteredSaccoId(nextSession.saccoId);
-    setEnteredSaccoIds(previous => new Set(previous).add(String(nextSession.saccoId)));
     return nextSession;
   }, [session]);
 
@@ -297,7 +290,6 @@ function SessionProvider({ children }) {
       if (!active) return;
       setSession(null);
       setEnteredSaccoId(null);
-      setEnteredSaccoIds(new Set());
       setSessionEnded(true);
       setReady(true);
       routerNavigateRef.current('/login', { replace: true });

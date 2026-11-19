@@ -11,9 +11,23 @@ function statusStyle(status) {
   return 'warn';
 }
 
+function statusLabel(item) {
+  return String(item.status || '').toLowerCase() === 'suspended'
+    || String(item.membershipStatus || '').toLowerCase() === 'suspended'
+    ? 'Suspended'
+    : 'Active';
+}
+
 export default function SaccoSwitcher({ open, onToggle, onClose, onSelect }) {
   const { sacco, saccoId, saccos, toast } = useSession();
-  const enterableSaccos = saccos.filter(item => item.membershipStatus === 'active');
+  const enterableSaccos = saccos.filter(item => {
+    const membershipStatus = String(item.membershipStatus || '').toLowerCase();
+    const saccoStatus = String(item.status || '').toLowerCase();
+    return membershipStatus === 'active'
+      || (membershipStatus !== 'invited' && (
+        membershipStatus === 'suspended' || saccoStatus === 'suspended'
+      ));
+  });
   const [switching, setSwitching] = useState(false);
   const triggerRef = useRef(null);
   const wrapRef = useRef(null);
@@ -80,7 +94,9 @@ export default function SaccoSwitcher({ open, onToggle, onClose, onSelect }) {
               onClick={() => choose(item)}
             >
               <span>{item.name}</span>
-              <span className={`chip ${statusStyle(item.status)}`}>{item.status || 'Active'}</span>
+              <span className={`chip ${statusStyle(statusLabel(item))}`}>
+                {statusLabel(item)}
+              </span>
             </button>
           ))}
         </div>
