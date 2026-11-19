@@ -1,122 +1,476 @@
-import { useState } from 'react'
-import heroImg from './assets/hero.png'
-import reactLogo from './assets/react.svg'
-import viteLogo from './assets/vite.svg'
-import './App.css'
+import { lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  BrowserRouter,
+  Navigate,
+  Route,
+  Routes,
+  useLocation,
+  useNavigate,
+} from 'react-router-dom';
+import ErrorPage from './components/ErrorPage.jsx';
+import { LogoDefs } from './components/Logo.jsx';
+import { describe } from './lib/errors.js';
+import { can as canPermission, homeFor, ROUTES } from './lib/perms.js';
+import { useAsync } from './lib/useAsync.js';
+import { clearTokens, onSessionEnded } from './lib/http.js';
+import { SessionContext, useSession } from './lib/session.jsx';
+import {
+  afterSignIn,
+  completeJoin as completeJoinSession,
+  enterSacco as enterSaccoSession,
+  restoreSession,
+  selectSacco,
+  signIn,
+  signOut,
+  loadMockPlaceholderFailure,
+} from './api/session.js';
+import NetBanner from './shell/NetBanner.jsx';
+import PageState from './shell/PageState.jsx';
+import RequireAuth from './shell/RequireAuth.jsx';
+import RouteTransition from './shell/RouteTransition.jsx';
+import { PAGE_IMPORTS } from './shell/pages.js';
 
-function App() {
-  const [count, setCount] = useState(0)
+const NETWORK_STATUS_EVENT = 'nexora:network-status';
+
+function Placeholder({ title, path }) {
+  const location = useLocation();
+  const { pageKey, onErrorAction } = useSession();
+  const result = useAsync(
+    () => loadMockPlaceholderFailure(path, location.search),
+    [path, location.search, pageKey],
+  );
+
+  useEffect(() => {
+    if (
+      (result.status === 'ready' || result.status === 'empty')
+      && navigator.onLine
+    ) {
+      window.dispatchEvent(new CustomEvent(NETWORK_STATUS_EVENT, {
+        detail: { status: 200 },
+      }));
+    }
+  }, [result.status]);
+
+  if (result.status === 'ready' && result.data && result.data.renderError) {
+    throw new Error('Mock page render failure.');
+  }
+
+  if (result.status === 'error') {
+    return (
+      <PageState
+        status={result.status}
+        error={result.error}
+        reload={result.reload}
+        onAction={onErrorAction}
+      />
+    );
+  }
 
   return (
-    <>
-      <section id="center">
-        <div className="hero">
-          <img src={heroImg} className="base" width="170" height="179" alt="" />
-          <img src={reactLogo} className="framework" alt="React logo" />
-          <img src={viteLogo} className="vite" alt="Vite logo" />
-        </div>
-        <div>
-          <h1>Get started</h1>
-          <p>
-            Edit <code>src/App.jsx</code> and save to test <code>HMR</code>
-          </p>
-        </div>
-        <button
-          type="button"
-          className="counter"
-          onClick={() => setCount((count) => count + 1)}
-        >
-          Count is {count}
-        </button>
-      </section>
-
-      <div className="ticks"></div>
-
-      <section id="next-steps">
-        <div id="docs">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#documentation-icon"></use>
-          </svg>
-          <h2>Documentation</h2>
-          <p>Your questions, answered</p>
-          <ul>
-            <li>
-              <a href="https://vite.dev/" target="_blank">
-                <img className="logo" src={viteLogo} alt="" />
-                Explore Vite
-              </a>
-            </li>
-            <li>
-              <a href="https://react.dev/" target="_blank">
-                <img className="button-icon" src={reactLogo} alt="" />
-                Learn more
-              </a>
-            </li>
-          </ul>
-        </div>
-        <div id="social">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#social-icon"></use>
-          </svg>
-          <h2>Connect with us</h2>
-          <p>Join the Vite community</p>
-          <ul>
-            <li>
-              <a href="https://github.com/vitejs/vite" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#github-icon"></use>
-                </svg>
-                GitHub
-              </a>
-            </li>
-            <li>
-              <a href="https://chat.vite.dev/" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#discord-icon"></use>
-                </svg>
-                Discord
-              </a>
-            </li>
-            <li>
-              <a href="https://x.com/vite_js" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#x-icon"></use>
-                </svg>
-                X.com
-              </a>
-            </li>
-            <li>
-              <a href="https://bsky.app/profile/vite.dev" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#bluesky-icon"></use>
-                </svg>
-                Bluesky
-              </a>
-            </li>
-          </ul>
-        </div>
-      </section>
-
-      <div className="ticks"></div>
-      <section id="spacer"></section>
-    </>
-  )
+    <div className="glass grid min-h-[30vh] content-center gap-2 p-6 text-center">
+      <h1 className="font-serif">{title}</h1>
+      <p className="text-muted">This page is being built.</p>
+    </div>
+  );
 }
 
-export default App
+function makeLazyPage(path, title) {
+  return lazy(async () => {
+    const loader = PAGE_IMPORTS[path];
+    if (!loader) return { default: () => <Placeholder title={title} path={path} /> };
+    try {
+      return await loader();
+    } catch {
+      return { default: () => <Placeholder title={title} path={path} /> };
+    }
+  });
+}
+
+function PublicPlaceholder({ title, path }) {
+  return (
+    <main className="mx-auto max-w-2xl p-6">
+      <Placeholder title={title} path={path} />
+    </main>
+  );
+}
+
+function StartRoute() {
+  const { user, perms } = useSession();
+  return <Navigate to={user ? '/' + homeFor(perms) : '/login'} replace />;
+}
+
+function LogoutRoute() {
+  const { logout } = useSession();
+  const started = useRef(false);
+
+  useEffect(() => {
+    if (started.current) return;
+    started.current = true;
+    void logout();
+  }, [logout]);
+
+  return <main className="p-6 text-muted">Signing out...</main>;
+}
+
+function NotFoundRoute() {
+  return <RequireAuth path={null} title="" />;
+}
+
+function SessionProvider({ children }) {
+  const routerNavigate = useNavigate();
+  const location = useLocation();
+  const [session, setSession] = useState(null);
+  const [ready, setReady] = useState(false);
+  const [restoreError, setRestoreError] = useState(null);
+  const [sessionEnded, setSessionEnded] = useState(false);
+  const [toastMessage, setToastMessage] = useState(null);
+  const [panelRequest, setPanelRequest] = useState('');
+  const [pageKey, setPageKey] = useState(0);
+  const [enteredSaccoId, setEnteredSaccoId] = useState(null);
+  const [enteredSaccoIds, setEnteredSaccoIds] = useState(() => new Set());
+  const openRef = useRef('');
+  const toastTimer = useRef(null);
+  const routerNavigateRef = useRef(routerNavigate);
+  const pendingReturnToRef = useRef('');
+
+  useEffect(() => {
+    routerNavigateRef.current = routerNavigate;
+  }, [routerNavigate]);
+
+  useEffect(() => {
+    if (session) {
+      pendingReturnToRef.current = '';
+      return;
+    }
+
+    if (!['/', '/login', '/register', '/verify', '/forgot', '/reset', '/logout'].includes(location.pathname)) {
+      pendingReturnToRef.current = location.pathname + location.search;
+    }
+  }, [location.pathname, location.search, session]);
+
+  const navigate = useCallback((to, options = {}) => {
+    if (typeof to === 'number') {
+      routerNavigate(to);
+      return;
+    }
+    const { open, ...navigationOptions } = options;
+    openRef.current = open || '';
+    setPanelRequest(open || '');
+    routerNavigate(to, navigationOptions);
+  }, [routerNavigate]);
+
+  const login = useCallback(async (email, password, selectedRole) => {
+    const nextSession = await signIn(email, password, selectedRole);
+    setSession(nextSession);
+    setEnteredSaccoId(null);
+    setEnteredSaccoIds(new Set());
+    setSessionEnded(false);
+    setRestoreError(null);
+    const stateTarget = location.state && location.state.from;
+    const target = typeof stateTarget === 'string' && stateTarget !== '/login'
+      ? stateTarget
+      : pendingReturnToRef.current;
+    pendingReturnToRef.current = '';
+    if (target === '/join') {
+      navigate('/join', { replace: true });
+      return;
+    }
+
+    const destination = afterSignIn(
+      nextSession.saccos,
+      nextSession.sourceUser,
+      nextSession.perms,
+    );
+    if (destination.view === 'platform') {
+      navigate(destination.path, { replace: true });
+      return;
+    }
+
+    const returnTo = target && target !== '/enter'
+      ? target
+      : '/' + homeFor(nextSession.perms);
+    navigate(destination.path, {
+      replace: true,
+      state: {
+        from: returnTo,
+        chooseCircle: destination.view === 'chooser',
+        enterSelected: destination.view === 'enter',
+      },
+    });
+  }, [location.state, navigate]);
+
+  const logout = useCallback(async () => {
+    await signOut();
+    setSession(null);
+    setEnteredSaccoId(null);
+    setEnteredSaccoIds(new Set());
+    setSessionEnded(false);
+    pendingReturnToRef.current = '';
+    navigate('/login', { replace: true });
+  }, [navigate]);
+
+  const switchSacco = useCallback(async saccoId => {
+    const nextId = String(saccoId);
+    const wasEntered = enteredSaccoIds.has(nextId);
+    const returnTo = location.state && typeof location.state.from === 'string'
+      ? location.state.from
+      : null;
+    const nextSession = await selectSacco(session, saccoId);
+    if (wasEntered) {
+      setEnteredSaccoId(nextSession.saccoId);
+      setSession(nextSession);
+      navigate(returnTo || '/overview');
+      return;
+    }
+    navigate('/enter', {
+      replace: true,
+      state: {
+        chooseCircle: false,
+        enterSelected: true,
+        ...(returnTo ? { from: returnTo } : {}),
+      },
+    });
+    setEnteredSaccoId(null);
+    setSession(nextSession);
+  }, [session, enteredSaccoIds, location.state, navigate]);
+
+  const enterCircle = useCallback(async (saccoId, pin) => {
+    const nextSession = await enterSaccoSession(session, saccoId, pin);
+    setSession(nextSession);
+    setEnteredSaccoId(nextSession.saccoId);
+    setEnteredSaccoIds(previous => new Set(previous).add(String(nextSession.saccoId)));
+    return nextSession;
+  }, [session]);
+
+  const completeJoin = useCallback(async joinResult => {
+    const nextSession = await completeJoinSession(session, joinResult);
+    setSession(nextSession);
+    setEnteredSaccoId(null);
+    return nextSession;
+  }, [session]);
+
+  const clearSessionEnded = useCallback(() => setSessionEnded(false), []);
+  const clearPanelRequest = useCallback(() => {
+    openRef.current = '';
+    setPanelRequest('');
+  }, []);
+  const takeOpen = useCallback(kind => {
+    const value = openRef.current;
+    if (value.startsWith(kind + ':')) {
+      openRef.current = '';
+      return value.slice(kind.length + 1);
+    }
+    return null;
+  }, []);
+  const toast = useCallback((text, kind) => {
+    setToastMessage({ text, kind });
+    window.clearTimeout(toastTimer.current);
+    toastTimer.current = window.setTimeout(() => setToastMessage(null), 2800);
+  }, []);
+  const retryPage = useCallback(() => {
+    setPageKey(key => key + 1);
+  }, []);
+  const onErrorAction = useCallback(action => {
+    const startPage = '/' + homeFor(session ? session.perms : []);
+    if (action === 'home') {
+      navigate(startPage);
+    } else if (action === 'back') {
+      const historyIndex = window.history.state && window.history.state.idx;
+      navigate(Number.isInteger(historyIndex) && historyIndex > 0 ? -1 : startPage);
+    } else if (action === 'login') {
+      navigate('/login');
+    } else if (action === 'landing') {
+      navigate('/');
+    } else if (action === 'switcher') {
+      navigate('/overview', { open: 'sacco:switcher' });
+    } else if (action === 'account') {
+      navigate('/account');
+    } else if (action === 'retry') {
+      retryPage();
+    }
+  }, [navigate, retryPage, session]);
+
+  useEffect(() => {
+    let active = true;
+    onSessionEnded(() => {
+      clearTokens();
+      if (!active) return;
+      setSession(null);
+      setEnteredSaccoId(null);
+      setEnteredSaccoIds(new Set());
+      setSessionEnded(true);
+      setReady(true);
+      routerNavigateRef.current('/login', { replace: true });
+    });
+
+    restoreSession()
+      .then(restored => {
+        if (!active) return;
+        setSession(restored);
+        setReady(true);
+      })
+      .catch(error => {
+        if (!active) return;
+        if (error && error.status === 401) {
+          clearTokens();
+          setSessionEnded(true);
+          routerNavigateRef.current('/login', { replace: true });
+        } else {
+          setRestoreError(error);
+        }
+        setReady(true);
+      });
+
+    return () => {
+      active = false;
+      onSessionEnded(() => {});
+      window.clearTimeout(toastTimer.current);
+    };
+  }, []);
+
+  const can = useCallback(permission => (
+    session ? canPermission(session.perms, permission) : false
+  ), [session]);
+  const value = useMemo(() => ({
+    user: session ? session.user : null,
+    role: session ? session.role : null,
+    perms: session ? session.perms : [],
+    can,
+    saccoId: session ? session.saccoId : null,
+    sacco: session ? session.sacco : null,
+    saccos: session ? session.saccos : [],
+    enteredSaccoId,
+    enterCircle,
+    completeJoin,
+    panelRequest,
+    clearPanelRequest,
+    pageKey,
+    retryPage,
+    onErrorAction,
+    navigate,
+    switchSacco,
+    takeOpen,
+    toast,
+    login,
+    logout,
+    sessionEnded,
+    clearSessionEnded,
+  }), [session, can, navigate, switchSacco, enterCircle, completeJoin, takeOpen, toast, login, logout, sessionEnded, clearSessionEnded, panelRequest, clearPanelRequest, pageKey, retryPage, onErrorAction, enteredSaccoId]);
+
+  return (
+    <SessionContext.Provider value={value}>
+      <LogoDefs />
+      <NetBanner />
+      {ready
+        ? restoreError
+          ? <ErrorPage
+            code={describe(restoreError, { mode: 'page' }).page || '500'}
+            onAction={onErrorAction}
+          />
+          : children
+        : <main className="p-6 text-muted">Restoring your session...</main>}
+      <div
+        className={`toast${toastMessage ? ' show' : ''}${toastMessage && toastMessage.kind === 'err' ? ' err' : ''}`}
+        role="status"
+      >
+        {toastMessage ? toastMessage.text : ''}
+      </div>
+    </SessionContext.Provider>
+  );
+}
+
+function AppRouter() {
+  const publicRoutes = [
+    ['login', 'Sign in'],
+    ['register', 'Create an account'],
+    ['verify', 'Verify your email'],
+    ['forgot', 'Forgot password'],
+    ['reset', 'Reset password'],
+  ];
+  const protectedExtras = [
+    { path: 'join', title: 'Join a SACCO', checkPermission: false },
+    { path: 'enter', title: 'Enter your circle', checkPermission: false },
+    { path: 'account', title: 'Account settings', checkPermission: true },
+    'styleguide',
+  ];
+  const LoginPage = makeLazyPage('login', 'Sign in');
+
+  return (
+    <SessionProvider>
+      <Routes>
+        <Route element={<RouteTransition />}>
+          <Route path="/" element={<StartRoute />} />
+          <Route path="/logout" element={<LogoutRoute />} />
+
+          {publicRoutes.map(([path, title]) => (
+            <Route
+              key={path}
+              path={'/' + path}
+              element={path === 'login'
+                ? <LoginPage />
+                : <PublicPlaceholder title={title} path={path} />}
+            />
+          ))}
+
+          {ROUTES.map(route => {
+            const Page = makeLazyPage(route.path, route.title);
+            return (
+              <Route
+                key={route.path}
+                path={'/' + route.path}
+                element={
+                  <RequireAuth path={route.path} title={route.title}>
+                    <Page />
+                  </RequireAuth>
+                }
+              />
+            );
+          })}
+
+          {protectedExtras.map(extra => {
+            if (typeof extra === 'string') {
+              const Page = makeLazyPage(extra, 'Style guide');
+              return (
+                <Route
+                  key={extra}
+                  path={'/' + extra}
+                  element={
+                    <RequireAuth path={extra} title="Style guide">
+                      <Page />
+                    </RequireAuth>
+                  }
+                />
+              );
+            }
+            const Page = makeLazyPage(extra.path, extra.title);
+            return (
+              <Route
+                key={extra.path}
+                path={'/' + extra.path}
+                element={
+                  <RequireAuth
+                    path={extra.path}
+                    title={extra.title}
+                    checkPermission={extra.checkPermission}
+                  >
+                    <Page />
+                  </RequireAuth>
+                }
+              />
+            );
+          })}
+
+          <Route path="*" element={<NotFoundRoute />} />
+        </Route>
+      </Routes>
+    </SessionProvider>
+  );
+}
+
+export default function App() {
+  return (
+    <BrowserRouter>
+      <AppRouter />
+    </BrowserRouter>
+  );
+}
