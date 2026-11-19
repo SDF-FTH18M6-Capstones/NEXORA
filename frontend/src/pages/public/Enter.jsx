@@ -14,6 +14,14 @@ function statusClass(sacco) {
   return isSuspended(sacco) ? 'bad' : 'up';
 }
 
+function WideErrorPage(props) {
+  return (
+    <div className="w-full">
+      <ErrorPage {...props} />
+    </div>
+  );
+}
+
 export default function Enter() {
   const location = useLocation();
   const {
@@ -217,7 +225,7 @@ export default function Enter() {
 
   if (pageError) {
     return (
-      <ErrorPage
+      <WideErrorPage
         code={pageError}
         onAction={action => {
           if (action === 'switcher') {
@@ -238,7 +246,7 @@ export default function Enter() {
 
   if (sacco && isSuspended(sacco)) {
     return (
-      <ErrorPage
+      <WideErrorPage
         code="423"
         onAction={action => {
           if (action === 'switcher') setForceChooser(true);
