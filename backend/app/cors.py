@@ -7,7 +7,7 @@ because tokens travel in the Authorization header, not cookies.
 
 from flask import request
 
-ALLOWED_METHODS = ("GET", "POST", "PATCH", "OPTIONS")
+ALLOWED_METHODS = ("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS")
 ALLOWED_HEADERS = ("Authorization", "Content-Type")
 PREFLIGHT_MAX_AGE = "600"
 

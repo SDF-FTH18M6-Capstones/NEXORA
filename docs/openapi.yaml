@@ -727,7 +727,7 @@ paths:
         the user sees it in GET /members/me/saccos, and the SACCO''s own endpoints answer 423.'
       responses:
         '200':
-          description: Token pair. Access token lasts 15 minutes, refresh token 7 days.
+          description: Token pair plus who signed in. Access token lasts 15 minutes, refresh token 7 days.
           content:
             application/json:
               schema:
@@ -741,10 +741,18 @@ paths:
                     type: string
                     enum:
                     - Bearer
+                  user:
+                    allOf:
+                    - $ref: '#/components/schemas/Profile'
+                    - type: object
+                      properties:
+                        is_platform_owner:
+                          type: boolean
                 required:
                 - access_token
                 - refresh_token
                 - token_type
+                - user
         '401':
           description: Missing, invalid or expired access token, or wrong credentials (`unauthorized`).
           content:

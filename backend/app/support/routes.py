@@ -196,7 +196,7 @@ def _decide(request_id: int, action: str):
             409, f"Only an approved grant can be revoked (it is {row.status.value})."
         )
     if action == "approve":
-        hours = (request.get_json(silent=True) or {}).get("hours", DEFAULT_HOURS)
+        hours = _body().get("hours", DEFAULT_HOURS)
         if (
             isinstance(hours, bool)
             or not isinstance(hours, int)

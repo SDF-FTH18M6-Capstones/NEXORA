@@ -1,0 +1,1880 @@
+# NEXORA API reference
+
+Generated from [`openapi.yaml`](openapi.yaml) by `python backend/scripts/gen_api_docs.py`. Do not edit by hand: change the spec and regenerate. A test fails when this file is out of date.
+
+Examples show field names and types built from the schemas, not real data.
+
+Backend API for multi-tenant SACCO management. Every resource route is served under /api/v1; the health check is unversioned.
+
+**Errors** on every route: `{"error": {"code": "not_found", "message": "Not found."}}`. Codes: 400 validation_error, 401 unauthorized, 403 forbidden, 404 not_found, 405 method_not_allowed, 409 conflict, 413 payload_too_large, 423 locked, 429 rate_limited, 500 internal_error.
+
+**Tenancy:** another SACCO's records answer 404, never 403. A suspended SACCO answers 423.
+
+**Money** is an integer in minor units (KES: 100 = 1.00). Money routes need a `reference` (idempotency key).
+
+**Pagination:** `page` from 1 and `per_page` (default 20, capped at 100); a bad value is 400.
+
+**Auth:** `Authorization: Bearer <access_token>`. Access tokens last 15 minutes and stop working at once after change-password, reset-password, logout-all or an email change.
+
+## GET /api/health
+
+**Health check (unversioned)**
+
+**Who:** anyone.
+
+**Rate limit:** 120 per minute. Each call opens a database connection.
+
+Response **200**: Database reachable.
+
+```json
+{
+  "status": "healthy",
+  "database": "connected"
+}
+```
+
+Error statuses: 503, 429
+
+## POST /api/v1/auth/register
+
+**Register an account**
+
+**Who:** anyone
+
+**Rate limit:** 5 per minute (per IP).
+
+The password must be 8 to 128 characters and must not contain the email. The address starts unverified; login does not need it, but a SACCO admin can only add a verified user.
+
+Request body:
+
+```json
+{
+  "email": "member@example.com",
+  "password": "a-long-passphrase-1"
+}
+```
+
+Response **201**: Created. A verification link is emailed.
+
+```json
+{
+  "id": 1,
+  "email": "member@example.com"
+}
+```
+
+Error statuses: 400, 409, 429
+
+## POST /api/v1/auth/join
+
+**Join a SACCO with a code**
+
+**Who:** a signed-in user holding a join code.
+
+The code is six digits, valid for the SACCO's `join_code_ttl_minutes` (15 by default) and usable once. Five wrong entries burn it. Only a membership that is currently `invited` can be joined; a cancelled invite answers like a wrong code. A phone may be invited to several SACCOs: the code decides which one is joined, and a wrong code counts against every live code for that phone. On success the phone is linked to the user and a setup token (valid 10 minutes, tied to this code) is returned for setting the circle PIN; a re-invite makes older setup tokens invalid.
+
+Request body:
+
+```json
+{
+  "phone": "+254700000000",
+  "code": "code"
+}
+```
+
+Response **200**: Phone linked. Send the setup token to the PIN route.
+
+```json
+{
+  "setup_token": "setup_token",
+  "membership_id": 1
+}
+```
+
+Error statuses: 400, 401, 409, 410, 429
+
+## POST /api/v1/auth/join/pin
+
+**Set the circle PIN and activate the membership**
+
+**Who:** the signed-in user who just joined.
+
+Sets a four-digit PIN (stored hashed). The membership changes from invited to active.
+
+Request body:
+
+```json
+{
+  "setup_token": "setup_token",
+  "pin": "pin"
+}
+```
+
+Response **200**: PIN set, membership active.
+
+```json
+{
+  "membership_id": 1,
+  "status": "active"
+}
+```
+
+Error statuses: 400, 401, 403, 409, 429
+
+## POST /api/v1/auth/circle-login
+
+**Check the circle PIN**
+
+**Who:** a signed-in user with an active membership in the SACCO.
+
+Five wrong PINs lock the PIN for 15 minutes (PIN_LOCKED).
+
+Request body:
+
+```json
+{
+  "sacco_id": 1,
+  "pin": "pin"
+}
+```
+
+Response **200**: PIN correct.
+
+```json
+{
+  "ok": true,
+  "membership_id": 1,
+  "role": "role"
+}
+```
+
+Error statuses: 401, 403, 423, 429
+
+## POST /api/v1/auth/login
+
+**Sign in**
+
+**Who:** anyone
+
+**Rate limit:** 5 per minute (per IP).
+
+Five failed logins lock the account for 15 minutes (423). A suspended SACCO does not block login: the user sees it in GET /members/me/saccos, and the SACCO's own endpoints answer 423.
+
+Request body:
+
+```json
+{
+  "email": "member@example.com",
+  "password": "a-long-passphrase-1"
+}
+```
+
+Response **200**: Token pair plus who signed in. Access token lasts 15 minutes, refresh token 7 days.
+
+```json
+{
+  "access_token": "access_token",
+  "refresh_token": "refresh_token",
+  "token_type": "Bearer",
+  "user": "user"
+}
+```
+
+Error statuses: 401, 423, 429
+
+## POST /api/v1/auth/refresh
+
+**Rotate a refresh token**
+
+**Who:** anyone holding a refresh token
+
+**Rate limit:** 30 per minute.
+
+Each refresh token works once. Replaying a spent token more than 10 seconds later revokes all of the user's refresh tokens.
+
+Request body:
+
+```json
+{
+  "refresh_token": "refresh_token"
+}
+```
+
+Response **200**: A new token pair. Always store the newest refresh token.
+
+```json
+{
+  "access_token": "access_token",
+  "refresh_token": "refresh_token",
+  "token_type": "Bearer"
+}
+```
+
+Error statuses: 400, 401, 423, 429
+
+## POST /api/v1/auth/logout
+
+**Revoke one refresh token**
+
+**Who:** anyone holding a refresh token
+
+**Rate limit:** 30 per minute.
+
+Request body:
+
+```json
+{
+  "refresh_token": "refresh_token"
+}
+```
+
+Response **200**: Logged out.
+
+```json
+{
+  "message": "message"
+}
+```
+
+Error statuses: 400, 401, 429
+
+## POST /api/v1/auth/logout-all
+
+**End every session of the signed-in user**
+
+**Who:** any signed-in user, even if their SACCO is suspended
+
+**Rate limit:** 30 per minute.
+
+Writes the audit row `auth.logout_all`.
+
+Response **200**: Every refresh token is revoked and every access token issued so far stops working, including this one.
+
+```json
+{
+  "message": "message"
+}
+```
+
+Error statuses: 401, 429
+
+## POST /api/v1/auth/change-password
+
+**Change the signed-in user's password**
+
+**Who:** any signed-in user, even if their SACCO is suspended
+
+**Rate limit:** 5 per minute (per IP).
+
+A wrong `current_password` is 401 and counts as a failed login (same lockout). The new password follows the register rules and must differ from the current one. Writes the audit row `auth.password_change`.
+
+Request body:
+
+```json
+{
+  "current_password": "current_password",
+  "new_password": "new_password"
+}
+```
+
+Response **200**: Password changed. All sessions end; sign in again.
+
+```json
+{
+  "message": "message"
+}
+```
+
+Error statuses: 400, 401, 423, 429
+
+## POST /api/v1/auth/verify-email
+
+**Confirm an email address**
+
+**Who:** anyone holding the emailed token
+
+**Rate limit:** 5 per minute (per IP).
+
+The link is single-use and valid for 24 hours. 400 for a wrong, used or expired token.
+
+Request body:
+
+```json
+{
+  "token": "token"
+}
+```
+
+Response **200**: Verified.
+
+```json
+{
+  "message": "message"
+}
+```
+
+Error statuses: 400, 429
+
+## POST /api/v1/auth/resend-verification
+
+**Send a new verification link**
+
+**Who:** anyone
+
+**Rate limit:** 5 per minute (per IP).
+
+Replaces any earlier link for the user.
+
+Request body:
+
+```json
+{
+  "email": "member@example.com"
+}
+```
+
+Response **200**: Always the same answer, whether or not the address exists or needs verifying.
+
+```json
+{
+  "message": "message"
+}
+```
+
+Error statuses: 429
+
+## POST /api/v1/auth/forgot-password
+
+**Email a password-reset link**
+
+**Who:** anyone
+
+**Rate limit:** 5 per minute (per IP).
+
+The link lasts 1 hour and replaces any earlier reset link. This is also how an account locked by repeated wrong guesses is recovered.
+
+Request body:
+
+```json
+{
+  "email": "member@example.com"
+}
+```
+
+Response **200**: Always the same answer, whether or not the address has an account.
+
+```json
+{
+  "message": "message"
+}
+```
+
+Error statuses: 429
+
+## POST /api/v1/auth/reset-password
+
+**Set a new password from an emailed link**
+
+**Who:** anyone holding the emailed token
+
+**Rate limit:** 5 per minute (per IP).
+
+The link works once. The new password follows the register rules. A successful reset also marks the email verified, clears the lockout and revokes every session. A weak password is 400 and does not spend the link. Writes the audit row `auth.password_reset`.
+
+Request body:
+
+```json
+{
+  "token": "token",
+  "new_password": "new_password"
+}
+```
+
+Response **200**: Password reset. Every session ends; sign in with the new password.
+
+```json
+{
+  "message": "message"
+}
+```
+
+Error statuses: 400, 429
+
+## GET /api/v1/members/me
+
+**The caller's own profile**
+
+**Who:** any signed-in user
+
+**Rate limit:** 120 per minute.
+
+Response **200**: Profile with memberships.
+
+```json
+{
+  "id": 1,
+  "email": "member@example.com",
+  "created_at": "2026-11-18T09:00:00Z",
+  "memberships": [
+    {
+      "membership_id": 1,
+      "sacco_id": 1,
+      "role": "role",
+      "status": "status"
+    }
+  ]
+}
+```
+
+Error statuses: 401, 423, 429
+
+## PATCH /api/v1/members/me
+
+**Change the caller's own email**
+
+**Who:** any signed-in user
+
+**Rate limit:** 30 per minute.
+
+Needs `current_password`. A wrong one is 403 and counts toward the lockout. Only `email` can change.
+
+Request body:
+
+```json
+{
+  "email": "member@example.com",
+  "current_password": "current_password"
+}
+```
+
+Response **200**: Updated profile. The new address is unverified, a link is emailed, and every session ends (sign in again).
+
+```json
+{
+  "id": 1,
+  "email": "member@example.com",
+  "created_at": "2026-11-18T09:00:00Z",
+  "memberships": [
+    {
+      "membership_id": 1,
+      "sacco_id": 1,
+      "role": "role",
+      "status": "status"
+    }
+  ]
+}
+```
+
+Error statuses: 400, 401, 403, 409, 423, 429
+
+## GET /api/v1/saccos
+
+**List SACCOs**
+
+**Who:** platform owner
+
+**Rate limit:** 120 per minute.
+
+Response **200**: All SACCOs.
+
+```json
+{
+  "saccos": [
+    {
+      "id": 1,
+      "name": "name",
+      "currency": "currency",
+      "status": "active",
+      "created_at": "2026-11-18T09:00:00Z"
+    }
+  ]
+}
+```
+
+Error statuses: 401, 403, 429
+
+## POST /api/v1/saccos
+
+**Create a SACCO**
+
+**Who:** platform owner
+
+**Rate limit:** 30 per minute.
+
+`currency` defaults to KES. The name is unique, up to 255 characters, with no control or zero-width characters.
+
+Request body:
+
+```json
+{
+  "name": "name",
+  "currency": "currency"
+}
+```
+
+Response **201**: Created.
+
+```json
+{
+  "id": 1,
+  "name": "name",
+  "currency": "currency",
+  "status": "active",
+  "created_at": "2026-11-18T09:00:00Z"
+}
+```
+
+Error statuses: 400, 401, 403, 409, 429
+
+## GET /api/v1/saccos/{sacco_id}
+
+**Get a SACCO**
+
+**Who:** any active member of the SACCO (`sacco.view`), or the platform owner
+
+**Rate limit:** 120 per minute.
+
+Parameters: `sacco_id` (path, integer)
+
+Response **200**: The SACCO.
+
+```json
+{
+  "id": 1,
+  "name": "name",
+  "currency": "currency",
+  "status": "active",
+  "created_at": "2026-11-18T09:00:00Z"
+}
+```
+
+Error statuses: 401, 403, 404, 423, 429
+
+## PATCH /api/v1/saccos/{sacco_id}
+
+**Rename a SACCO**
+
+**Who:** holders of `sacco.update` (the SACCO admin), or the platform owner
+
+**Rate limit:** 30 per minute.
+
+Only `name` can be sent.
+
+Parameters: `sacco_id` (path, integer)
+
+Request body:
+
+```json
+{
+  "name": "name"
+}
+```
+
+Response **200**: Updated.
+
+```json
+{
+  "id": 1,
+  "name": "name",
+  "currency": "currency",
+  "status": "active",
+  "created_at": "2026-11-18T09:00:00Z"
+}
+```
+
+Error statuses: 400, 401, 403, 404, 409, 423, 429
+
+## POST /api/v1/saccos/{sacco_id}/activate
+
+**Set a SACCO active**
+
+**Who:** platform owner
+
+**Rate limit:** 30 per minute.
+
+Suspending makes every endpoint of that SACCO answer 423 (reads and writes, joining and PIN login); login, refresh, /members/me and /members/me/saccos keep working and show the status.
+
+Parameters: `sacco_id` (path, integer)
+
+Response **200**: The SACCO, now active.
+
+```json
+{
+  "id": 1,
+  "name": "name",
+  "currency": "currency",
+  "status": "active",
+  "created_at": "2026-11-18T09:00:00Z"
+}
+```
+
+Error statuses: 401, 403, 404, 429
+
+## POST /api/v1/saccos/{sacco_id}/deactivate
+
+**Set a SACCO suspended**
+
+**Who:** platform owner
+
+**Rate limit:** 30 per minute.
+
+Suspending makes every endpoint of that SACCO answer 423 (reads and writes, joining and PIN login); login, refresh, /members/me and /members/me/saccos keep working and show the status.
+
+Parameters: `sacco_id` (path, integer)
+
+Response **200**: The SACCO, now suspended.
+
+```json
+{
+  "id": 1,
+  "name": "name",
+  "currency": "currency",
+  "status": "active",
+  "created_at": "2026-11-18T09:00:00Z"
+}
+```
+
+Error statuses: 401, 403, 404, 429
+
+## GET /api/v1/saccos/{sacco_id}/members
+
+**List a SACCO's members**
+
+**Who:** platform owner, or an officer holding `member.view` (admin, secretary, loans officer); members get 403
+
+**Rate limit:** 120 per minute.
+
+Parameters: `sacco_id` (path, integer)
+
+Response **200**: Members.
+
+```json
+{
+  "members": [
+    {
+      "id": 1,
+      "user_id": 1,
+      "email": "member@example.com",
+      "role": "member",
+      "status": "active",
+      "created_at": "2026-11-18T09:00:00Z"
+    }
+  ]
+}
+```
+
+Error statuses: 401, 403, 404, 423, 429
+
+## POST /api/v1/saccos/{sacco_id}/members
+
+**Add a registered user, or invite a phone, to a SACCO**
+
+**Who:** holders of `member.manage` (the SACCO admin) or the platform owner; adding an admin needs `admin.manage` (platform owner only)
+
+**Rate limit:** 30 per minute.
+
+Two forms. **Email:** adds a registered user (status `active` or `inactive`; `invited` is 400). 404 if no user has that email; 409 if the user is already a member, or has not verified their email yet. **Phone** (send `phone` and no `email`): creates an `invited` membership and answers 201 with a one-time `join_code` and `expires_at`, shown once; the person joins with POST /auth/join. 409 if the phone was already invited to this SACCO. Every new membership gets the job title its role implies (staff: secretary).
+
+Parameters: `sacco_id` (path, integer)
+
+Request body:
+
+```json
+{
+  "email": "member@example.com",
+  "phone": "+254700000000",
+  "role": "member",
+  "status": "active"
+}
+```
+
+Response **201**: Added.
+
+```json
+{
+  "id": 1,
+  "user_id": 1,
+  "email": "member@example.com",
+  "role": "member",
+  "status": "active",
+  "created_at": "2026-11-18T09:00:00Z"
+}
+```
+
+Error statuses: 400, 401, 403, 404, 409, 423, 429
+
+## GET /api/v1/saccos/{sacco_id}/members/{membership_id}
+
+**Get one member**
+
+**Who:** platform owner, or an officer holding `member.view` (admin, secretary, loans officer); members get 403
+
+**Rate limit:** 120 per minute.
+
+Parameters: `sacco_id` (path, integer), `membership_id` (path, integer)
+
+Response **200**: The member.
+
+```json
+{
+  "id": 1,
+  "user_id": 1,
+  "email": "member@example.com",
+  "role": "member",
+  "status": "active",
+  "created_at": "2026-11-18T09:00:00Z"
+}
+```
+
+Error statuses: 401, 403, 404, 423, 429
+
+## PATCH /api/v1/saccos/{sacco_id}/members/{membership_id}
+
+**Change a member's role or status**
+
+**Who:** holders of `member.manage` (the SACCO admin) or the platform owner; touching an admin needs `admin.manage` (platform owner only)
+
+**Rate limit:** 30 per minute.
+
+Send `role` and/or `status`. Writes an audit row. An active member never goes back to `invited`; an inactive phone member can be invited again (`status: invited`), which answers with a fresh `join_code` and kills the old ones. An invited or PIN-less phone member becomes active only by joining with their code (409). Setting `inactive` kills unused join codes. Making or removing an admin moves the `circle_admin` title with the role.
+
+Parameters: `sacco_id` (path, integer), `membership_id` (path, integer)
+
+Request body:
+
+```json
+{
+  "role": "member",
+  "status": "active"
+}
+```
+
+Response **200**: Updated member. A re-invite (`status` inactive -> invited) also returns `join_code` and `expires_at`, shown once.
+
+```json
+{
+  "id": 1,
+  "user_id": 1,
+  "email": "member@example.com",
+  "role": "member",
+  "status": "active",
+  "created_at": "2026-11-18T09:00:00Z"
+}
+```
+
+Error statuses: 400, 401, 403, 404, 409, 423, 429
+
+## POST /api/v1/savings/accounts
+
+**Open a savings account for a member**
+
+**Who:** a member of this SACCO holding `savings.post` (SACCO admin or finance officer)
+
+**Rate limit:** 30 per minute.
+
+404 for a membership in another SACCO or one that does not exist (same body).
+
+Request body:
+
+```json
+{
+  "membership_id": 1
+}
+```
+
+Response **201**: Opened.
+
+```json
+{
+  "id": 1,
+  "membership_id": 1,
+  "sacco_id": 1,
+  "balance": 1,
+  "created_at": "2026-11-18T09:00:00Z"
+}
+```
+
+Error statuses: 400, 401, 403, 404, 409, 423, 429
+
+## GET /api/v1/savings/accounts/me
+
+**The caller's own accounts**
+
+**Who:** any signed-in user
+
+**Rate limit:** 120 per minute.
+
+Response **200**: Accounts across the caller's active memberships in active SACCOs (a list: a user may belong to several SACCOs).
+
+```json
+{
+  "accounts": [
+    {
+      "id": 1,
+      "membership_id": 1,
+      "sacco_id": 1,
+      "balance": 1,
+      "created_at": "2026-11-18T09:00:00Z"
+    }
+  ]
+}
+```
+
+Error statuses: 401, 429
+
+## GET /api/v1/savings/accounts/{account_id}
+
+**Get one account and its balance**
+
+**Who:** the account's owner, `savings.view_all` (SACCO admin, secretary, finance officer), platform owner
+
+**Rate limit:** 120 per minute.
+
+A member can read only their own account; another member's account is 404.
+
+Parameters: `account_id` (path, integer)
+
+Response **200**: The account. `balance` is derived from the ledger.
+
+```json
+{
+  "id": 1,
+  "membership_id": 1,
+  "sacco_id": 1,
+  "balance": 1,
+  "created_at": "2026-11-18T09:00:00Z"
+}
+```
+
+Error statuses: 401, 403, 404, 423, 429
+
+## POST /api/v1/savings/accounts/{account_id}/deposits
+
+**Post a deposit**
+
+**Who:** a member of this SACCO holding `savings.post` (SACCO admin or finance officer)
+
+**Rate limit:** 20 per minute.
+
+`reference` is required. A new entry answers **201**; repeating the same reference with the same request answers **200** with `replayed: true`; the same reference with a different request is 409. Holders of `savings.post` (admin, finance officer) post money, others cannot (403), and nobody may post on their own account (403). Amounts are integers in minor units.
+
+Parameters: `account_id` (path, integer)
+
+Request body:
+
+```json
+{
+  "amount": 1,
+  "reference": "dep-2026-11-18-001"
+}
+```
+
+Response **201**: New entry.
+
+```json
+{
+  "id": 1,
+  "account_id": 1,
+  "type": "deposit",
+  "amount": 1,
+  "reference": "dep-2026-11-18-001",
+  "balance": 1,
+  "created_at": "2026-11-18T09:00:00Z",
+  "replayed": true
+}
+```
+
+Response **200**: Replay of an earlier request with the same reference.
+
+```json
+{
+  "id": 1,
+  "account_id": 1,
+  "type": "deposit",
+  "amount": 1,
+  "reference": "dep-2026-11-18-001",
+  "balance": 1,
+  "created_at": "2026-11-18T09:00:00Z",
+  "replayed": true
+}
+```
+
+Error statuses: 400, 401, 403, 404, 409, 423, 429
+
+## POST /api/v1/savings/accounts/{account_id}/withdrawals
+
+**Post a withdrawal**
+
+**Who:** a member of this SACCO holding `savings.post` (SACCO admin or finance officer)
+
+**Rate limit:** 20 per minute.
+
+Insufficient funds is 409 `Insufficient funds.`. `reference` is required. A new entry answers **201**; repeating the same reference with the same request answers **200** with `replayed: true`; the same reference with a different request is 409. Holders of `savings.post` (admin, finance officer) post money, others cannot (403), and nobody may post on their own account (403). Amounts are integers in minor units.
+
+Parameters: `account_id` (path, integer)
+
+Request body:
+
+```json
+{
+  "amount": 1,
+  "reference": "dep-2026-11-18-001"
+}
+```
+
+Response **201**: New entry.
+
+```json
+{
+  "id": 1,
+  "account_id": 1,
+  "type": "deposit",
+  "amount": 1,
+  "reference": "dep-2026-11-18-001",
+  "balance": 1,
+  "created_at": "2026-11-18T09:00:00Z",
+  "replayed": true
+}
+```
+
+Response **200**: Replay of an earlier request with the same reference.
+
+```json
+{
+  "id": 1,
+  "account_id": 1,
+  "type": "deposit",
+  "amount": 1,
+  "reference": "dep-2026-11-18-001",
+  "balance": 1,
+  "created_at": "2026-11-18T09:00:00Z",
+  "replayed": true
+}
+```
+
+Error statuses: 400, 401, 403, 404, 409, 423, 429
+
+## GET /api/v1/savings/accounts/{account_id}/transactions
+
+**An account's ledger history, newest first**
+
+**Who:** the account's owner, `savings.view_all` (SACCO admin, secretary, finance officer), platform owner
+
+**Rate limit:** 120 per minute.
+
+Parameters: `account_id` (path, integer), `page` (query, integer), `per_page` (query, integer)
+
+Response **200**: A page of entries.
+
+```json
+{
+  "transactions": [
+    {
+      "id": 1,
+      "type": "deposit",
+      "amount": 1,
+      "reference": "dep-2026-11-18-001",
+      "created_at": "2026-11-18T09:00:00Z",
+      "reverses_id": 1
+    }
+  ],
+  "page": 1,
+  "per_page": 1,
+  "total": 1
+}
+```
+
+Error statuses: 400, 401, 403, 404, 423, 429
+
+## POST /api/v1/savings/transactions/{transaction_id}/reversals
+
+**Reverse a ledger entry**
+
+**Who:** a member of this SACCO holding `savings.reverse` (SACCO admin or finance officer)
+
+**Rate limit:** 20 per minute.
+
+A reversal is a new opposite entry; nobody may reverse an entry on their own account (403). An entry can be reversed once, and a reversal cannot be reversed (409). `reference` is required. A new entry answers **201**; repeating the same reference with the same request answers **200** with `replayed: true`; the same reference with a different request is 409. Holders of `savings.reverse` (admin, finance officer) reverse entries, others cannot (403). Amounts are integers in minor units.
+
+Parameters: `transaction_id` (path, integer)
+
+Request body:
+
+```json
+{
+  "reference": "dep-2026-11-18-001"
+}
+```
+
+Response **201**: The new opposite entry.
+
+```json
+{
+  "id": 1,
+  "reverses_id": 1,
+  "account_id": 1,
+  "type": "deposit",
+  "amount": 1,
+  "reference": "dep-2026-11-18-001",
+  "balance": 1,
+  "created_at": "2026-11-18T09:00:00Z",
+  "replayed": true
+}
+```
+
+Response **200**: Replay of an earlier request with the same reference.
+
+```json
+{
+  "id": 1,
+  "reverses_id": 1,
+  "account_id": 1,
+  "type": "deposit",
+  "amount": 1,
+  "reference": "dep-2026-11-18-001",
+  "balance": 1,
+  "created_at": "2026-11-18T09:00:00Z",
+  "replayed": true
+}
+```
+
+Error statuses: 400, 401, 403, 404, 409, 423, 429
+
+## GET /api/v1/admin/saccos/{sacco_id}/reports/summary
+
+**SACCO totals**
+
+**Who:** `report.view` (SACCO admin, secretary, finance or loans officer), platform owner
+
+**Rate limit:** 120 per minute.
+
+Parameters: `sacco_id` (path, integer), `from` (query, string), `to` (query, string)
+
+Response **200**: Totals. `deposit_total` and `withdrawal_total` leave out reversed entries and reversals; `from`/`to` filter the totals, not the balance.
+
+```json
+{
+  "sacco_id": 1,
+  "from": "2026-11-18",
+  "to": "2026-11-18",
+  "account_count": 1,
+  "total_balance": 1,
+  "deposit_total": 1,
+  "withdrawal_total": 1,
+  "reversal_count": 1
+}
+```
+
+Error statuses: 400, 401, 403, 404, 423, 429
+
+## GET /api/v1/admin/saccos/{sacco_id}/reports/member-activity
+
+**Per-member activity**
+
+**Who:** `report.view` (SACCO admin, secretary, finance or loans officer), platform owner
+
+**Rate limit:** 120 per minute.
+
+Parameters: `sacco_id` (path, integer), `page` (query, integer), `per_page` (query, integer)
+
+Response **200**: A page of members. No `total`: keep paging until a page is shorter than `per_page`.
+
+```json
+{
+  "members": [
+    {
+      "membership_id": 1,
+      "email": "member@example.com",
+      "account_id": 1,
+      "transaction_count": 1,
+      "last_transaction_at": "2026-11-18T09:00:00Z"
+    }
+  ],
+  "page": 1,
+  "per_page": 1
+}
+```
+
+Error statuses: 400, 401, 403, 404, 423, 429
+
+## GET /api/v1/admin/saccos/{sacco_id}/accounts
+
+**List a SACCO's accounts with balances**
+
+**Who:** `savings.view_all` (SACCO admin, secretary, finance officer), platform owner
+
+**Rate limit:** 120 per minute.
+
+Parameters: `sacco_id` (path, integer), `page` (query, integer), `per_page` (query, integer)
+
+Response **200**: A page of accounts.
+
+```json
+{
+  "accounts": [
+    {
+      "account_id": 1,
+      "membership_id": 1,
+      "email": "member@example.com",
+      "balance": 1
+    }
+  ],
+  "page": 1,
+  "per_page": 1,
+  "total": 1
+}
+```
+
+Error statuses: 400, 401, 403, 404, 423, 429
+
+## GET /api/v1/admin/saccos/{sacco_id}/audit
+
+**A SACCO's audit log, newest first**
+
+**Who:** the secretary (`audit.view`) or the platform owner. The SACCO admin gets 403.
+
+**Rate limit:** 120 per minute.
+
+Read-only. Every query is filtered by SACCO.
+
+Parameters: `sacco_id` (path, integer), `page` (query, integer), `per_page` (query, integer), `action` (query, string), `from` (query, string), `to` (query, string)
+
+Response **200**: A page of audit rows.
+
+```json
+{
+  "entries": [
+    {
+      "id": 1,
+      "actor_id": 1,
+      "action": "action",
+      "target": "target",
+      "created_at": "2026-11-18T09:00:00Z"
+    }
+  ],
+  "total": 1,
+  "page": 1,
+  "per_page": 1
+}
+```
+
+Error statuses: 400, 401, 403, 404, 423, 429
+
+## GET /api/v1/admin/audit
+
+**The platform audit log, newest first**
+
+**Who:** platform owner only
+
+**Rate limit:** 120 per minute.
+
+Optional `sacco_id` filter. Rows with no SACCO (such as `auth.password_change`) appear only here.
+
+Parameters: `page` (query, integer), `per_page` (query, integer), `action` (query, string), `from` (query, string), `to` (query, string), `sacco_id` (query, integer)
+
+Response **200**: A page of audit rows.
+
+```json
+{
+  "entries": [
+    {
+      "id": 1,
+      "actor_id": 1,
+      "action": "action",
+      "target": "target",
+      "created_at": "2026-11-18T09:00:00Z"
+    }
+  ],
+  "total": 1,
+  "page": 1,
+  "per_page": 1
+}
+```
+
+Error statuses: 400, 401, 403, 429
+
+## POST /api/v1/savings/accounts/{account_id}/interest
+
+**Credit interest**
+
+**Who:** admin or finance officer (`savings.post`). Same reference rules as deposits.
+
+Parameters: `account_id` (path, integer)
+
+Request body:
+
+```json
+{
+  "amount": 1,
+  "reference": "dep-2026-11-18-001"
+}
+```
+
+Response **201**: New entry.
+
+```json
+{
+  "id": 1,
+  "account_id": 1,
+  "type": "deposit",
+  "amount": 1,
+  "reference": "dep-2026-11-18-001",
+  "balance": 1,
+  "created_at": "2026-11-18T09:00:00Z",
+  "replayed": true
+}
+```
+
+Response **200**: Replay of the same request.
+
+```json
+{
+  "id": 1,
+  "account_id": 1,
+  "type": "deposit",
+  "amount": 1,
+  "reference": "dep-2026-11-18-001",
+  "balance": 1,
+  "created_at": "2026-11-18T09:00:00Z",
+  "replayed": true
+}
+```
+
+Error statuses: 400, 401, 403, 404, 409, 423
+
+## POST /api/v1/savings/accounts/{account_id}/fees
+
+**Charge a fee**
+
+**Who:** admin or finance officer (`savings.post`). Same reference rules as deposits.
+
+Parameters: `account_id` (path, integer)
+
+Request body:
+
+```json
+{
+  "amount": 1,
+  "reference": "dep-2026-11-18-001"
+}
+```
+
+Response **201**: New entry.
+
+```json
+{
+  "id": 1,
+  "account_id": 1,
+  "type": "deposit",
+  "amount": 1,
+  "reference": "dep-2026-11-18-001",
+  "balance": 1,
+  "created_at": "2026-11-18T09:00:00Z",
+  "replayed": true
+}
+```
+
+Response **200**: Replay of the same request.
+
+```json
+{
+  "id": 1,
+  "account_id": 1,
+  "type": "deposit",
+  "amount": 1,
+  "reference": "dep-2026-11-18-001",
+  "balance": 1,
+  "created_at": "2026-11-18T09:00:00Z",
+  "replayed": true
+}
+```
+
+Error statuses: 400, 401, 403, 404, 409, 423
+
+## GET /api/v1/saccos/{sacco_id}/members/{membership_id}/roles
+
+**A member's job titles**
+
+**Who:** holders of `member.manage` (the SACCO admin), or the platform owner.
+
+Parameters: `sacco_id` (path, integer), `membership_id` (path, integer)
+
+Response **200**: The titles held.
+
+```json
+{
+  "membership_id": 1,
+  "roles": [
+    "circle_admin"
+  ]
+}
+```
+
+Error statuses: 401, 403, 404, 423
+
+## PUT /api/v1/saccos/{sacco_id}/members/{membership_id}/roles
+
+**Set a member's job titles**
+
+**Who:** holders of `member.manage` (the SACCO admin), or the platform owner. Replaces the whole list. Only the platform owner edits an admin's titles; nobody changes their own titles; the membership must be active (409). `circle_admin` follows the SACCO admin role: keep it on an admin and leave it off everyone else (409), and make or remove admins with PATCH /saccos/{sacco_id}/members/{membership_id}, which moves the title with the role.
+
+Parameters: `sacco_id` (path, integer), `membership_id` (path, integer)
+
+Request body:
+
+```json
+{
+  "roles": [
+    "roles"
+  ]
+}
+```
+
+Response **200**: The titles now held.
+
+```json
+{
+  "membership_id": 1,
+  "roles": [
+    "circle_admin"
+  ]
+}
+```
+
+Error statuses: 400, 401, 403, 404, 409, 423
+
+## GET /api/v1/saccos/{sacco_id}/settings
+
+**The SACCO's loan rules**
+
+**Who:** any active member of the SACCO (`sacco.view`), or the platform owner. Defaults are returned until the owner changes them.
+
+Parameters: `sacco_id` (path, integer)
+
+Response **200**: Current settings.
+
+```json
+{
+  "sacco_id": 1,
+  "loan_cap": 1,
+  "savings_multiple": 1,
+  "join_code_ttl_minutes": 1,
+  "required_approvals": 1
+}
+```
+
+Error statuses: 401, 403, 404, 423
+
+## PATCH /api/v1/saccos/{sacco_id}/settings
+
+**Change the SACCO's loan rules**
+
+**Who:** platform owner only. Send any of the fields; whole numbers only.
+
+Parameters: `sacco_id` (path, integer)
+
+Request body:
+
+```json
+{
+  "loan_cap": 1,
+  "savings_multiple": 1,
+  "join_code_ttl_minutes": 1,
+  "required_approvals": 1
+}
+```
+
+Response **200**: Updated settings.
+
+```json
+{
+  "sacco_id": 1,
+  "loan_cap": 1,
+  "savings_multiple": 1,
+  "join_code_ttl_minutes": 1,
+  "required_approvals": 1
+}
+```
+
+Error statuses: 400, 401, 403, 404
+
+## GET /api/v1/loans/saccos/{sacco_id}
+
+**Loans in a SACCO, newest first**
+
+**Who:** any active member. Officers (`loan.view`) see every loan; a member sees only their own.
+
+Parameters: `sacco_id` (path, integer), `page` (query, integer), `per_page` (query, integer)
+
+Response **200**: A page of loans.
+
+```json
+{
+  "loans": [
+    {
+      "id": 1,
+      "sacco_id": 1,
+      "membership_id": 1,
+      "principal": 1,
+      "term_months": 1,
+      "required_approvals": 1,
+      "approvals_count": 1,
+      "repaid_total": 1,
+      "status": "requested",
+      "disbursed_by_membership_id": 1,
+      "disbursed_at": "2026-11-18T09:00:00Z",
+      "disbursement_transaction_id": 1,
+      "created_at": "2026-11-18T09:00:00Z"
+    }
+  ],
+  "page": 1,
+  "per_page": 1
+}
+```
+
+Error statuses: 400, 401, 403, 404, 423
+
+## POST /api/v1/loans/saccos/{sacco_id}
+
+**Request a loan**
+
+**Who:** an active member with a savings account (`loan.request`). One open loan per member (409). Within both the SACCO cap and the savings multiple the loan needs 1 approval; above either it needs the SACCO's `required_approvals` (a cap of 0 sends every loan there). The count is frozen on the loan.
+
+Parameters: `sacco_id` (path, integer)
+
+Request body:
+
+```json
+{
+  "principal": 1,
+  "term_months": 1
+}
+```
+
+Response **201**: The new loan, status `requested`.
+
+```json
+{
+  "id": 1,
+  "sacco_id": 1,
+  "membership_id": 1,
+  "principal": 1,
+  "term_months": 1,
+  "required_approvals": 1,
+  "approvals_count": 1,
+  "repaid_total": 1,
+  "status": "requested",
+  "disbursed_by_membership_id": 1,
+  "disbursed_at": "2026-11-18T09:00:00Z",
+  "disbursement_transaction_id": 1,
+  "created_at": "2026-11-18T09:00:00Z"
+}
+```
+
+Error statuses: 400, 401, 403, 404, 409, 423
+
+## GET /api/v1/loans/{loan_id}
+
+**One loan with its decisions**
+
+**Who:** the borrower, or an officer of the SACCO (`loan.view`). Anyone else gets 404.
+
+Parameters: `loan_id` (path, integer)
+
+Response **200**: The loan, plus a `decisions` list.
+
+```json
+{
+  "id": 1,
+  "sacco_id": 1,
+  "membership_id": 1,
+  "principal": 1,
+  "term_months": 1,
+  "required_approvals": 1,
+  "approvals_count": 1,
+  "repaid_total": 1,
+  "status": "requested",
+  "disbursed_by_membership_id": 1,
+  "disbursed_at": "2026-11-18T09:00:00Z",
+  "disbursement_transaction_id": 1,
+  "created_at": "2026-11-18T09:00:00Z"
+}
+```
+
+Error statuses: 401, 403, 404, 423
+
+## POST /api/v1/loans/{loan_id}/decisions
+
+**Approve or reject one step**
+
+**Who:** loans officer (`loan.approve`; a SACCO admin never approves), never the borrower, and a different officer for each step. Steps go in order; the last required approval sets `approved`, a rejection ends the loan.
+
+Parameters: `loan_id` (path, integer)
+
+Request body:
+
+```json
+{
+  "step": 1,
+  "decision": "approve",
+  "reason": "reason"
+}
+```
+
+Response **201**: The loan after the decision.
+
+```json
+{
+  "id": 1,
+  "sacco_id": 1,
+  "membership_id": 1,
+  "principal": 1,
+  "term_months": 1,
+  "required_approvals": 1,
+  "approvals_count": 1,
+  "repaid_total": 1,
+  "status": "requested",
+  "disbursed_by_membership_id": 1,
+  "disbursed_at": "2026-11-18T09:00:00Z",
+  "disbursement_transaction_id": 1,
+  "created_at": "2026-11-18T09:00:00Z"
+}
+```
+
+Error statuses: 400, 401, 403, 404, 409, 423
+
+## POST /api/v1/loans/{loan_id}/disbursements
+
+**Pay out an approved loan**
+
+**Who:** finance officer (`loan.disburse`) who approved no step (`LOAN_SAME_OFFICER`). Credits the principal to the borrower's savings account. The ledger row cannot be reversed.
+
+Parameters: `loan_id` (path, integer)
+
+Request body:
+
+```json
+{
+  "reference": "dep-2026-11-18-001"
+}
+```
+
+Response **201**: The loan, status `disbursed`.
+
+```json
+{
+  "id": 1,
+  "sacco_id": 1,
+  "membership_id": 1,
+  "principal": 1,
+  "term_months": 1,
+  "required_approvals": 1,
+  "approvals_count": 1,
+  "repaid_total": 1,
+  "status": "requested",
+  "disbursed_by_membership_id": 1,
+  "disbursed_at": "2026-11-18T09:00:00Z",
+  "disbursement_transaction_id": 1,
+  "created_at": "2026-11-18T09:00:00Z"
+}
+```
+
+Error statuses: 400, 401, 403, 404, 409, 423
+
+## POST /api/v1/loans/{loan_id}/repayments
+
+**Repay a disbursed loan from savings**
+
+**Who:** the borrower, or a finance officer. Debits the borrower's savings account; the loan becomes `repaid` when the principal is covered. The ledger row cannot be reversed.
+
+Parameters: `loan_id` (path, integer)
+
+Request body:
+
+```json
+{
+  "amount": 1,
+  "reference": "dep-2026-11-18-001"
+}
+```
+
+Response **201**: The repayment.
+
+```json
+{
+  "repayment_id": 1,
+  "loan_id": 1,
+  "transaction_id": 1,
+  "amount": 1,
+  "repaid_total": 1,
+  "loan_status": "loan_status",
+  "account_balance": 1,
+  "reference": "dep-2026-11-18-001",
+  "created_at": "2026-11-18T09:00:00Z"
+}
+```
+
+Error statuses: 400, 401, 403, 404, 409, 423
+
+## GET /api/v1/admin/owners
+
+**List the platform owners**
+
+**Who:** platform owner only.
+
+Response **200**: Every active platform owner.
+
+```json
+{
+  "owners": [
+    {
+      "user_id": 1,
+      "email": "member@example.com"
+    }
+  ]
+}
+```
+
+Error statuses: 401, 403
+
+## POST /api/v1/admin/owners
+
+**Make a registered user a platform owner**
+
+**Who:** platform owner only. The user must have verified their email (409) and not be an owner already (409).
+
+Request body:
+
+```json
+{
+  "email": "member@example.com"
+}
+```
+
+Response **201**: The new owner.
+
+```json
+{
+  "user_id": 1,
+  "email": "member@example.com"
+}
+```
+
+Error statuses: 400, 401, 403, 404, 409
+
+## DELETE /api/v1/admin/owners/{user_id}
+
+**Revoke a platform owner**
+
+**Who:** platform owner only. Nobody revokes themselves (403); at least two owners always remain (409). The revoked owner loses platform access on their next request.
+
+Parameters: `user_id` (path, integer)
+
+Response **200**: The owners that remain.
+
+```json
+{
+  "owners": [
+    {
+      "user_id": 1,
+      "email": "member@example.com"
+    }
+  ]
+}
+```
+
+Error statuses: 401, 403, 404, 409
+
+## GET /api/v1/members/me/saccos
+
+**Every SACCO I belong to**
+
+**Who:** any signed-in user. One login covers every SACCO: a SACCO-scoped request names its SACCO, and the membership is checked again on every request (no re-login to switch). A suspended SACCO is listed with `status: suspended`.
+
+Response **200**: My SACCOs, by name.
+
+```json
+{
+  "saccos": [
+    {
+      "id": 1,
+      "name": "name",
+      "status": "active",
+      "currency": "currency",
+      "membership_id": 1,
+      "membership_status": "invited",
+      "roles": [
+        "roles"
+      ]
+    }
+  ]
+}
+```
+
+Error statuses: 401
+
+## GET /api/v1/saccos/{sacco_id}/support-access
+
+**Support-access requests for a SACCO, newest first**
+
+**Who:** the SACCO's admin, or a platform owner. Approvals whose time is up are shown as expired.
+
+Parameters: `sacco_id` (path, integer)
+
+Response **200**: The requests.
+
+```json
+{
+  "requests": [
+    {
+      "id": 1,
+      "sacco_id": 1,
+      "requested_by_user_id": 1,
+      "reason": "reason",
+      "scope": "audit",
+      "status": "requested",
+      "decided_by_membership_id": 1,
+      "decided_at": "2026-11-18T09:00:00Z",
+      "expires_at": "2026-11-18T09:00:00Z",
+      "revoked_by_membership_id": 1,
+      "revoked_at": "2026-11-18T09:00:00Z",
+      "created_at": "2026-11-18T09:00:00Z"
+    }
+  ]
+}
+```
+
+Error statuses: 401, 403, 404
+
+## POST /api/v1/saccos/{sacco_id}/support-access
+
+**Ask to read one scope of a SACCO's data**
+
+**Who:** a platform owner. A platform owner reads SACCO data (audit, members, savings, loans) only through an approved grant for that scope, read-only, while it lasts (at most 24 hours). Every read under a grant writes an audit row with the grant id. There is no bypass.
+
+Parameters: `sacco_id` (path, integer)
+
+Request body:
+
+```json
+{
+  "reason": "reason",
+  "scope": "audit"
+}
+```
+
+Response **201**: The request, status `requested`.
+
+```json
+{
+  "id": 1,
+  "sacco_id": 1,
+  "requested_by_user_id": 1,
+  "reason": "reason",
+  "scope": "audit",
+  "status": "requested",
+  "decided_by_membership_id": 1,
+  "decided_at": "2026-11-18T09:00:00Z",
+  "expires_at": "2026-11-18T09:00:00Z",
+  "revoked_by_membership_id": 1,
+  "revoked_at": "2026-11-18T09:00:00Z",
+  "created_at": "2026-11-18T09:00:00Z"
+}
+```
+
+Error statuses: 400, 401, 403, 404
+
+## POST /api/v1/support-access/{request_id}/approve
+
+**Approve a support-access request**
+
+**Who:** an active admin of the request's SACCO, never the requester. Sets the expiry 1 to 24 hours ahead.
+
+Parameters: `request_id` (path, integer)
+
+Request body:
+
+```json
+{
+  "hours": 1
+}
+```
+
+Response **200**: The request after the change.
+
+```json
+{
+  "id": 1,
+  "sacco_id": 1,
+  "requested_by_user_id": 1,
+  "reason": "reason",
+  "scope": "audit",
+  "status": "requested",
+  "decided_by_membership_id": 1,
+  "decided_at": "2026-11-18T09:00:00Z",
+  "expires_at": "2026-11-18T09:00:00Z",
+  "revoked_by_membership_id": 1,
+  "revoked_at": "2026-11-18T09:00:00Z",
+  "created_at": "2026-11-18T09:00:00Z"
+}
+```
+
+Error statuses: 400, 401, 403, 404, 409
+
+## POST /api/v1/support-access/{request_id}/deny
+
+**Deny a support-access request**
+
+**Who:** an active admin of the request's SACCO, never the requester.
+
+Parameters: `request_id` (path, integer)
+
+Response **200**: The request after the change.
+
+```json
+{
+  "id": 1,
+  "sacco_id": 1,
+  "requested_by_user_id": 1,
+  "reason": "reason",
+  "scope": "audit",
+  "status": "requested",
+  "decided_by_membership_id": 1,
+  "decided_at": "2026-11-18T09:00:00Z",
+  "expires_at": "2026-11-18T09:00:00Z",
+  "revoked_by_membership_id": 1,
+  "revoked_at": "2026-11-18T09:00:00Z",
+  "created_at": "2026-11-18T09:00:00Z"
+}
+```
+
+Error statuses: 400, 401, 403, 404, 409
+
+## POST /api/v1/support-access/{request_id}/revoke
+
+**Revoke an approved grant at any time**
+
+**Who:** an active admin of the request's SACCO, never the requester.
+
+Parameters: `request_id` (path, integer)
+
+Response **200**: The request after the change.
+
+```json
+{
+  "id": 1,
+  "sacco_id": 1,
+  "requested_by_user_id": 1,
+  "reason": "reason",
+  "scope": "audit",
+  "status": "requested",
+  "decided_by_membership_id": 1,
+  "decided_at": "2026-11-18T09:00:00Z",
+  "expires_at": "2026-11-18T09:00:00Z",
+  "revoked_by_membership_id": 1,
+  "revoked_at": "2026-11-18T09:00:00Z",
+  "created_at": "2026-11-18T09:00:00Z"
+}
+```
+
+Error statuses: 400, 401, 403, 404, 409

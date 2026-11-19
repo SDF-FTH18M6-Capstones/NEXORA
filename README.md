@@ -38,6 +38,8 @@ Project documentation lives in [`docs/`](docs/):
 
 ## Local setup
 
+Clean-clone check, 2026-11-18, WSL2 Ubuntu, Python 3.14: a fresh `git clone`, `python3 -m venv venv`, `pip install -r requirements.txt` and `.env` from `.env.example`, then `pytest -m "schema or not schema"` gave 778 passed, 1 skipped, and `ruff check backend/app tests` passed. The `CREATE DATABASE` steps were not re-run (the databases already existed and need a superuser).
+
 ### 1. Clone and create your branch
 
 ```bash
@@ -62,7 +64,7 @@ psql -U postgres -c "CREATE DATABASE nexora_test;"
 psql -U postgres -c "CREATE DATABASE nexora_schema_test;"
 ```
 
-If your app uses a non-superuser role, add `OWNER <that_role>` to each statement.
+If your app uses a non-superuser role, add `OWNER <that_role>` to each statement. On Linux or WSL, `psql -U postgres` can fail with a peer-authentication error: use `psql -h 127.0.0.1 -U postgres` to log in with the password instead.
 
 ### 3. Backend
 
@@ -100,6 +102,8 @@ cd backend
 python app.py
 ```
 
+Daily check of one SACCO's books (balances against the ledger), emailed to the members who can read its reports: `flask --app app eod-status --sacco-id 1` from `backend/`. It exits 1 if any balance disagrees with its ledger.
+
 The API runs on <http://localhost:5000>. Frontend developers: see [`docs/frontend-handoff.md`](docs/frontend-handoff.md).
 
 ### Running the tests
@@ -110,6 +114,8 @@ From the repo root, with the virtualenv active:
 pytest -m "schema or not schema"   # everything: what CI runs
 ruff check backend/app tests       # lint
 ```
+
+A few tests in `tests/test_app_role_privileges.py` skip (and say why) unless the `nexora_app` database role was provisioned once by an administrator; see `docs/parked.md`.
 
 Plain `pytest` skips the schema tests (ledger, balances, reversals); `pytest -m schema` runs only those. The backend needs a database on `localhost`, so run the tests with `backend/.env` filled in.
 
@@ -186,7 +192,8 @@ If your database password contains special characters (`@`, `#`, `/`, `:`), URL-
 - [x] Move 3: savings accounts, deposits, withdrawals, reversals, ledger, audit log, admin reports
 - [x] Move 4: security headers, CORS and rate limits, production checks, seed script, savings and audit read endpoints, change-password and logout-all
 - [x] Move 4 hardening: one error format, access-token revocation, email verification, forgot-password, required `reference`, separation of duties
-- [x] OpenAPI spec for every route (`docs/openapi.yaml`)
+- [x] OpenAPI spec for every route (`docs/openapi.yaml`), readable reference (`docs/api.md`), route-to-test matrix (`docs/test-matrix.md`), security checklist (`docs/security-checklist.md`)
+- [x] Coverage floor in CI (`fail_under` in `pyproject.toml`)
 - [ ] Move 4 remainder: final sign-off
 - [x] Loans: request, one or two approvals, disbursement, repayment
 

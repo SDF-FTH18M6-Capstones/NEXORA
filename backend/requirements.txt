@@ -15,3 +15,4 @@ Flask-Limiter==4.1.1
 limits==5.8.0
 redis==8.1.0
 fakeredis[lua]==2.40.0
+PyYAML==6.0.3

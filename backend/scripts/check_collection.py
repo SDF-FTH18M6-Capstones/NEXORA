@@ -1,6 +1,10 @@
 """Run the Thunder Client collection against a live API and check every request.
 
-    python backend/scripts/check_collection.py [base_url] [run]
+    python backend/scripts/check_collection.py [base_url] [run] [--split]
+
+`--split` runs the two free-plan files (thunder-collection_NEXORA-1of2.json, then
+-2of2.json) one after the other, sharing the saved variables, the way you import
+them into Thunder Client.
 
 Reads docs/thunder/thunder-collection_NEXORA.json and the environment file next
 to it, sends every request in order, applies the same checks Thunder Client
@@ -51,14 +55,24 @@ def lookup(data, path: str):
 
 
 def main() -> int:
-    collection = json.loads((THUNDER / "thunder-collection_NEXORA.json").read_text())
+    args = [a for a in sys.argv[1:] if a != "--split"]
+    files = (
+        ["thunder-collection_NEXORA-1of2.json", "thunder-collection_NEXORA-2of2.json"]
+        if "--split" in sys.argv
+        else ["thunder-collection_NEXORA.json"]
+    )
+    collections = [json.loads((THUNDER / f).read_text()) for f in files]
+    collection = {
+        "folders": [f for c in collections for f in c["folders"]],
+        "requests": [r for c in collections for r in c["requests"]],
+    }
     env_path = THUNDER / "thunder-environment_NEXORA-local.json"
     env_file = json.loads(env_path.read_text())
     env = {v["name"]: v["value"] for v in env_file["variables"]}
-    if len(sys.argv) > 1:
-        env["baseUrl"] = sys.argv[1].rstrip("/")
-    if len(sys.argv) > 2:
-        env["run"] = sys.argv[2]
+    if len(args) > 0:
+        env["baseUrl"] = args[0].rstrip("/")
+    if len(args) > 1:
+        env["run"] = args[1]
 
     def fill(text: str) -> str:
         return VAR.sub(lambda m: str(env.get(m.group(1), m.group(0))), text)
