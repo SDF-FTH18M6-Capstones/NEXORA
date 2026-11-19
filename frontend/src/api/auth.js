@@ -1,6 +1,12 @@
 import { ApiError, MOCK, getTokens, http, mockDelay } from '../lib/http.js';
 import { ROLES } from '../lib/perms.js';
-import { me, mySaccos } from '../mocks/data.js';
+import {
+  RYAN_CIRCLE_PIN,
+  RYAN_JOIN_CODES,
+  RYAN_JOIN_PHONES,
+  RYAN_JOIN_SACCO_ID,
+  RYAN_MOCK_ACCOUNTS,
+} from '../mocks/ryan.js';
 
 const mockRoleNames = {
   admin: 'sacco_admin',
@@ -11,52 +17,206 @@ const mockRoleNames = {
   platform: 'platform_owner',
 };
 
-function makeMockAccount(role, email) {
-  const permissions = ROLES[role].perms;
-  const platformOwner = permissions.includes('platform');
-  const memberships = platformOwner
-    ? []
-    : mySaccos.map((sacco, index) => ({
-      membership_id: index + 1,
-      sacco_id: sacco.id,
-      role: mockRoleNames[role],
-      status: 'active',
-    }));
+const loginFailures = new Map();
+const loginLocks = new Map();
+const pinFailures = new Map();
+const pinLocks = new Map();
+
+function normalizedEmail(email) {
+  return String(email || '').trim().toLowerCase();
+}
+
+function mockAccountFor(email, selectedRole = 'member') {
+  const address = normalizedEmail(email) || 'jordan@example.com';
+  const fixture = RYAN_MOCK_ACCOUNTS[address] || RYAN_MOCK_ACCOUNTS['jordan@example.com'];
+  const role = fixture.is_platform_owner
+    ? 'platform'
+    : Object.hasOwn(ROLES, selectedRole) ? selectedRole : 'member';
+  const roleName = mockRoleNames[role];
+  const memberships = fixture.memberships.map(item => ({
+    ...item,
+    role: roleName,
+  }));
+  const user = {
+    ...fixture,
+    email: address,
+    memberships,
+  };
+  const accessToken = `mock:${role}:${encodeURIComponent(address)}`;
   return {
-    user: {
-      id: `mock-${role}`,
-      email: email || me.email,
-      name: me.name,
-      initials: me.initials,
-      is_platform_owner: platformOwner,
-      memberships,
-    },
-    saccos: platformOwner ? [] : mySaccos,
-    access_token: `mock:${role}`,
-    refresh_token: `mock:${role}`,
+    user,
+    saccos: fixture.saccos.map(sacco => ({ ...sacco })),
+    access_token: accessToken,
+    refresh_token: accessToken,
   };
 }
 
+function lockError(code, message) {
+  return new ApiError(423, code, message, 900);
+}
+
 export async function loginRequest(email, password, selectedRole = 'member') {
-  if (MOCK) {
-    await mockDelay(250);
-    if (password !== 'demo') {
-      throw new ApiError(401, 'unauthorized', 'Your email or password is not right.');
-    }
-    const role = Object.hasOwn(ROLES, selectedRole) ? selectedRole : 'member';
-    return makeMockAccount(role, email);
+  if (!MOCK) {
+    return http.post('/auth/login', {
+      body: { email, password },
+      auth: false,
+    });
   }
 
-  return http.post('/auth/login', {
-    body: { email, password },
-    auth: false,
-  });
+  await mockDelay(250);
+  const address = normalizedEmail(email) || 'jordan@example.com';
+  const lockedUntil = loginLocks.get(address) || 0;
+  if (lockedUntil > Date.now()) {
+    throw lockError('LOGIN_LOCKED', 'This account is locked.');
+  }
+  if (password !== 'demo') {
+    const failures = (loginFailures.get(address) || 0) + 1;
+    loginFailures.set(address, failures);
+    if (failures >= 5) {
+      loginLocks.set(address, Date.now() + 15 * 60 * 1000);
+      throw lockError('LOGIN_LOCKED', 'This account is locked.');
+    }
+    throw new ApiError(401, 'unauthorized', 'Your email or password is not right.');
+  }
+
+  loginFailures.delete(address);
+  loginLocks.delete(address);
+  const fixture = RYAN_MOCK_ACCOUNTS[address];
+  if (fixture && !fixture.verified) {
+    throw new ApiError(403, 'EMAIL_NOT_VERIFIED', 'Open the link we sent to verify your email.');
+  }
+  return mockAccountFor(address, selectedRole);
 }
 
 export function mockAccountFromTokens(tokens = getTokens()) {
   if (!MOCK || !tokens || !tokens.access || !tokens.access.startsWith('mock:')) return null;
-  const role = tokens.access.slice('mock:'.length);
-  return Object.hasOwn(ROLES, role) ? makeMockAccount(role) : null;
+  const [, tokenRole, encodedEmail = ''] = tokens.access.split(':');
+  let email = 'jordan@example.com';
+  try {
+    email = encodedEmail ? decodeURIComponent(encodedEmail) : email;
+  } catch {
+    return null;
+  }
+  const role = Object.hasOwn(ROLES, tokenRole) ? tokenRole : 'member';
+  return mockAccountFor(email, role);
+}
+
+export async function resendVerificationRequest(email) {
+  if (MOCK) {
+    await mockDelay(200);
+    return { ok: true };
+  }
+  return http.post('/auth/resend-verification', {
+    body: { email },
+    auth: false,
+  });
+}
+
+export async function joinRequest(phone, code) {
+  if (!MOCK) {
+    return http.post('/auth/join', { body: { phone, code } });
+  }
+
+  await mockDelay(300);
+  if (code === RYAN_JOIN_CODES.expired) {
+    throw new ApiError(410, 'CODE_EXPIRED', 'This code has expired.');
+  }
+  if (code === RYAN_JOIN_CODES.used) {
+    throw new ApiError(409, 'CODE_USED', 'This code was already used.');
+  }
+  if (code === RYAN_JOIN_CODES.burned) {
+    throw new ApiError(400, 'CODE_BURNED', 'This code was locked after too many wrong tries.');
+  }
+  if (code !== RYAN_JOIN_CODES.success) {
+    throw new ApiError(400, 'CODE_WRONG', 'That code is not correct.');
+  }
+
+  const normalizedPhone = String(phone || '').replace(/\D/g, '');
+  if (normalizedPhone === RYAN_JOIN_PHONES.otherAccount) {
+    throw new ApiError(409, 'PHONE_ACCOUNT_MISMATCH', 'That phone belongs to another account.');
+  }
+  if (normalizedPhone === RYAN_JOIN_PHONES.alreadyMember) {
+    throw new ApiError(409, 'ALREADY_MEMBER', 'You are already a member of this circle.');
+  }
+  if (normalizedPhone === RYAN_JOIN_PHONES.suspended) {
+    throw new ApiError(423, 'SACCO_SUSPENDED', 'This SACCO is suspended.');
+  }
+
+  const createdAt = normalizedPhone === RYAN_JOIN_PHONES.expiredSetup
+    ? Date.now() - 11 * 60 * 1000
+    : Date.now();
+  return {
+    setup_token: `mock-setup:${createdAt}:${RYAN_JOIN_SACCO_ID}`,
+    membership_id: 0,
+    sacco_id: RYAN_JOIN_SACCO_ID,
+  };
+}
+
+export async function joinPinRequest(setupToken, pin) {
+  if (!MOCK) {
+    return http.post('/auth/join/pin', {
+      body: { setup_token: setupToken, pin },
+    });
+  }
+
+  await mockDelay(300);
+  const match = /^mock-setup:(\d+):(\d+)$/.exec(setupToken);
+  if (!match || Date.now() - Number(match[1]) > 10 * 60 * 1000) {
+    throw new ApiError(401, 'SETUP_EXPIRED', 'The setup took too long.');
+  }
+  if (!/^\d{4}$/.test(pin)) {
+    throw new ApiError(400, 'PIN_INVALID', 'Enter a four-digit PIN.');
+  }
+  return {
+    membership_id: 0,
+    sacco_id: Number(match[2]),
+    role: 'member',
+    status: 'active',
+  };
+}
+
+export async function circleLoginRequest(session, saccoId, pin) {
+  if (!MOCK) {
+    return http.post('/auth/circle-login', {
+      body: { sacco_id: saccoId, pin },
+    });
+  }
+
+  await mockDelay(300);
+  const sacco = session.saccos.find(item => String(item.id) === String(saccoId));
+  if (!sacco || sacco.membershipStatus !== 'active') {
+    throw new ApiError(403, 'NOT_ALLOWED', 'You do not have access to this page.');
+  }
+  if (String(sacco.status).toLowerCase() === 'suspended') {
+    throw new ApiError(423, 'SACCO_SUSPENDED', 'This SACCO is suspended.');
+  }
+  if (session.sourceUser.circleLogin === 'deactivated') {
+    throw new ApiError(403, 'NOT_ALLOWED', 'You do not have access to this page.');
+  }
+
+  const attemptKey = `${session.user.email}:${saccoId}`;
+  const lockedUntil = pinLocks.get(attemptKey) || 0;
+  if (lockedUntil > Date.now()) {
+    throw lockError('PIN_LOCKED', 'Too many wrong PINs.',);
+  }
+  if (pin !== RYAN_CIRCLE_PIN) {
+    const failures = (pinFailures.get(attemptKey) || 0) + 1;
+    pinFailures.set(attemptKey, failures);
+    if (failures >= 5) {
+      pinLocks.set(attemptKey, Date.now() + 15 * 60 * 1000);
+      throw lockError('PIN_LOCKED', 'Too many wrong PINs.');
+    }
+    throw new ApiError(401, 'PIN_WRONG', 'That PIN is not right.');
+  }
+
+  pinFailures.delete(attemptKey);
+  pinLocks.delete(attemptKey);
+  const membership = session.memberships.find(item => String(item.sacco_id) === String(saccoId));
+  return {
+    ok: true,
+    membership_id: membership.membership_id,
+    role: membership.role,
+  };
 }
 
 export async function logoutRequest() {

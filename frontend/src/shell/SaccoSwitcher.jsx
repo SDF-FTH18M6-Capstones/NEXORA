@@ -13,6 +13,7 @@ function statusStyle(status) {
 
 export default function SaccoSwitcher({ open, onToggle, onClose, onSelect }) {
   const { sacco, saccoId, saccos, toast } = useSession();
+  const enterableSaccos = saccos.filter(item => item.membershipStatus === 'active');
   const [switching, setSwitching] = useState(false);
   const triggerRef = useRef(null);
   const wrapRef = useRef(null);
@@ -45,7 +46,7 @@ export default function SaccoSwitcher({ open, onToggle, onClose, onSelect }) {
     }
   }
 
-  if (!sacco || !saccos.length) return null;
+  if (!sacco || !enterableSaccos.length) return null;
 
   return (
     <div className="switcher-wrap" ref={wrapRef}>
@@ -69,7 +70,7 @@ export default function SaccoSwitcher({ open, onToggle, onClose, onSelect }) {
           aria-label="Choose a SACCO"
           tabIndex="-1"
         >
-          {saccos.map(item => (
+          {enterableSaccos.map(item => (
             <button
               key={item.id}
               type="button"

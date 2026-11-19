@@ -1,7 +1,13 @@
 import { ApiError, MOCK, clearTokens, getTokens, http, mockDelay, setTokens } from '../lib/http.js';
 import { ROLES } from '../lib/perms.js';
-import { loginRequest, logoutRequest, mockAccountFromTokens } from './auth.js';
+import { RYAN_SACCOS } from '../mocks/ryan.js';
 import { audit } from '../mocks/data.js';
+import {
+  circleLoginRequest,
+  loginRequest,
+  logoutRequest,
+  mockAccountFromTokens,
+} from './auth.js';
 
 const roleAliases = {
   admin: 'admin',
@@ -50,6 +56,16 @@ function isSuspended(sacco) {
   return Boolean(sacco && String(sacco.status).toLowerCase() === 'suspended');
 }
 
+function attachMembershipStatus(saccos, memberships) {
+  return saccos.map(sacco => {
+    const membership = memberships.find(item => String(item.sacco_id) === String(sacco.id));
+    return {
+      ...sacco,
+      membershipStatus: membership ? membership.status : sacco.membershipStatus || null,
+    };
+  });
+}
+
 async function loadPermissions(saccoId, roleKeys) {
   try {
     const response = await http.get('/members/me/permissions', {
@@ -69,7 +85,7 @@ async function loadPermissions(saccoId, roleKeys) {
 
 async function buildSession(user, saccos, selectedSaccoId = null) {
   const memberships = Array.isArray(user.memberships) ? user.memberships : [];
-  const accountSaccos = Array.isArray(saccos) ? saccos : [];
+  const accountSaccos = attachMembershipStatus(Array.isArray(saccos) ? saccos : [], memberships);
   const selectedSacco = selectedSaccoId == null
     ? null
     : accountSaccos.find(item => String(item.id) === String(selectedSaccoId)) || null;
@@ -78,16 +94,18 @@ async function buildSession(user, saccos, selectedSaccoId = null) {
     throw new Error('The selected SACCO is not available to this account.');
   }
 
+  const activeMemberships = memberships.filter(item => item.status === 'active');
   const membership = selectedSacco
-    ? memberships.find(item => String(item.sacco_id) === String(selectedSacco.id)) || null
-    : memberships.find(item => item.status === 'active') || memberships[0] || null;
-  const roleKeys = membership ? roleKeysForMembership(membership) : [];
-  const isPlatform = Boolean(user.is_platform_owner) || roleKeys.includes('platform');
+    ? activeMemberships.find(item => String(item.sacco_id) === String(selectedSacco.id)) || null
+    : activeMemberships[0] || null;
 
   if (selectedSacco && !membership) {
     throw new Error('The selected SACCO does not have an active membership.');
   }
 
+  const roleKeys = membership ? roleKeysForMembership(membership) : [];
+  const membershipPerms = permissionsForRoles(roleKeys);
+  const isPlatform = Boolean(user.is_platform_owner) || membershipPerms.includes('platform');
   if (membership && roleKeys.length === 0 && !isPlatform) {
     throw new Error('The signed-in membership has an unsupported role.');
   }
@@ -101,10 +119,12 @@ async function buildSession(user, saccos, selectedSaccoId = null) {
   const sacco = saccoId == null
     ? null
     : accountSaccos.find(item => String(item.id) === String(saccoId)) || null;
-  const fallbackRoles = isPlatform ? ['platform'] : roleKeys;
+  const fallbackRoles = isPlatform ? ['platform'] : membership ? roleKeys : [];
   const perms = MOCK || isSuspended(sacco)
     ? permissionsForRoles(fallbackRoles)
-    : await loadPermissions(saccoId, fallbackRoles);
+    : fallbackRoles.length
+      ? await loadPermissions(saccoId, fallbackRoles)
+      : [];
 
   return {
     user: toSessionUser(user),
@@ -123,6 +143,22 @@ async function loadCurrentSession(user = null) {
   const currentUser = user || await http.get('/members/me');
   const saccosResponse = await http.get('/members/me/saccos');
   return buildSession(currentUser, listFromResponse(saccosResponse, 'saccos'));
+}
+
+export function afterSignIn(saccos, user = null, perms = []) {
+  if ((user && user.is_platform_owner) || perms.includes('platform')) {
+    return { path: '/pf-overview', view: 'platform' };
+  }
+
+  const active = saccos.filter(item => item.membershipStatus === 'active');
+  const invited = saccos.filter(item => item.membershipStatus === 'invited');
+  if (active.length === 0) {
+    return { path: '/enter', view: 'no-circle', invited };
+  }
+  if (active.length === 1) {
+    return { path: '/enter', view: 'enter', saccoId: active[0].id };
+  }
+  return { path: '/enter', view: 'chooser' };
 }
 
 export async function restoreSession() {
@@ -159,6 +195,55 @@ export async function selectSacco(session, saccoId) {
     throw new Error('A signed-in session is required to switch SACCOs.');
   }
   return buildSession(session.sourceUser, session.saccos, saccoId);
+}
+
+export async function enterSacco(session, saccoId, pin) {
+  if (!session || !session.sourceUser) {
+    throw new Error('A signed-in session is required to enter a SACCO.');
+  }
+  const result = await circleLoginRequest(session, saccoId, pin);
+  if (!result || result.ok !== true) {
+    throw new Error('The circle sign-in did not complete.');
+  }
+  const memberships = session.sourceUser.memberships.map(item => (
+    String(item.sacco_id) === String(saccoId)
+      ? { ...item, role: result.role }
+      : item
+  ));
+  const sourceUser = { ...session.sourceUser, memberships };
+  return buildSession(sourceUser, session.saccos, saccoId);
+}
+
+export async function completeJoin(session, joinResult) {
+  if (!session || !session.sourceUser) {
+    throw new Error('A signed-in session is required to complete a join.');
+  }
+
+  if (!MOCK) {
+    const refreshed = await loadCurrentSession();
+    const joined = refreshed.memberships.find(item => (
+      String(item.membership_id) === String(joinResult.membership_id)
+      || String(item.sacco_id) === String(joinResult.sacco_id)
+    ));
+    return joined ? buildSession(refreshed.sourceUser, refreshed.saccos, joined.sacco_id) : refreshed;
+  }
+
+  const saccoId = Number(joinResult.sacco_id);
+  const joinedSacco = RYAN_SACCOS.find(item => String(item.id) === String(saccoId));
+  if (!joinedSacco) throw new Error('The joined SACCO was not found in the mock fixtures.');
+  const memberships = session.sourceUser.memberships
+    .filter(item => String(item.sacco_id) !== String(saccoId))
+    .concat({
+      membership_id: joinResult.membership_id || Date.now(),
+      sacco_id: saccoId,
+      role: joinResult.role || 'member',
+      status: 'active',
+    });
+  const sourceUser = { ...session.sourceUser, memberships };
+  const saccos = session.saccos.some(item => String(item.id) === String(saccoId))
+    ? session.saccos
+    : [...session.saccos, joinedSacco];
+  return buildSession(sourceUser, saccos, saccoId);
 }
 
 export async function listRecentAudit(saccoId) {

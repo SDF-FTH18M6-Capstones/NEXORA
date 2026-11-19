@@ -13,7 +13,15 @@ import { describe } from './lib/errors.js';
 import { can as canPermission, homeFor, ROUTES } from './lib/perms.js';
 import { clearTokens, onSessionEnded } from './lib/http.js';
 import { SessionContext, useSession } from './lib/session.jsx';
-import { restoreSession, selectSacco, signIn, signOut } from './api/session.js';
+import {
+  afterSignIn,
+  completeJoin as completeJoinSession,
+  enterSacco as enterSaccoSession,
+  restoreSession,
+  selectSacco,
+  signIn,
+  signOut,
+} from './api/session.js';
 import RequireAuth from './shell/RequireAuth.jsx';
 import RouteTransition from './shell/RouteTransition.jsx';
 import { PAGE_IMPORTS } from './shell/pages.js';
@@ -89,6 +97,8 @@ function SessionProvider({ children }) {
   const [sessionEnded, setSessionEnded] = useState(false);
   const [toastMessage, setToastMessage] = useState(null);
   const [panelRequest, setPanelRequest] = useState('');
+  const [enteredSaccoId, setEnteredSaccoId] = useState(null);
+  const [enteredSaccoIds, setEnteredSaccoIds] = useState(() => new Set());
   const openRef = useRef('');
   const toastTimer = useRef(null);
   const routerNavigateRef = useRef(routerNavigate);
@@ -123,6 +133,8 @@ function SessionProvider({ children }) {
   const login = useCallback(async (email, password, selectedRole) => {
     const nextSession = await signIn(email, password, selectedRole);
     setSession(nextSession);
+    setEnteredSaccoId(null);
+    setEnteredSaccoIds(new Set());
     setSessionEnded(false);
     setRestoreError(null);
     const stateTarget = location.state && location.state.from;
@@ -130,25 +142,80 @@ function SessionProvider({ children }) {
       ? stateTarget
       : pendingReturnToRef.current;
     pendingReturnToRef.current = '';
-    navigate(
-      typeof target === 'string' ? target : '/' + homeFor(nextSession.perms),
-      { replace: true },
+    if (target === '/join') {
+      navigate('/join', { replace: true });
+      return;
+    }
+
+    const destination = afterSignIn(
+      nextSession.saccos,
+      nextSession.sourceUser,
+      nextSession.perms,
     );
+    if (destination.view === 'platform') {
+      navigate(destination.path, { replace: true });
+      return;
+    }
+
+    const returnTo = target && target !== '/enter'
+      ? target
+      : '/' + homeFor(nextSession.perms);
+    navigate(destination.path, {
+      replace: true,
+      state: {
+        from: returnTo,
+        chooseCircle: destination.view === 'chooser',
+        enterSelected: destination.view === 'enter',
+      },
+    });
   }, [location.state, navigate]);
 
   const logout = useCallback(async () => {
     await signOut();
     setSession(null);
+    setEnteredSaccoId(null);
+    setEnteredSaccoIds(new Set());
     setSessionEnded(false);
     pendingReturnToRef.current = '';
     navigate('/login', { replace: true });
   }, [navigate]);
 
   const switchSacco = useCallback(async saccoId => {
+    const nextId = String(saccoId);
+    const wasEntered = enteredSaccoIds.has(nextId);
+    const returnTo = location.state && typeof location.state.from === 'string'
+      ? location.state.from
+      : null;
+    setEnteredSaccoId(null);
     const nextSession = await selectSacco(session, saccoId);
     setSession(nextSession);
-    navigate('/overview');
-  }, [session, navigate]);
+    if (wasEntered) {
+      setEnteredSaccoId(nextSession.saccoId);
+      navigate(returnTo || '/overview');
+      return;
+    }
+    navigate('/enter', {
+      state: {
+        enterSelected: true,
+        ...(returnTo ? { from: returnTo } : {}),
+      },
+    });
+  }, [session, enteredSaccoIds, location.state, navigate]);
+
+  const enterCircle = useCallback(async (saccoId, pin) => {
+    const nextSession = await enterSaccoSession(session, saccoId, pin);
+    setSession(nextSession);
+    setEnteredSaccoId(nextSession.saccoId);
+    setEnteredSaccoIds(previous => new Set(previous).add(String(nextSession.saccoId)));
+    return nextSession;
+  }, [session]);
+
+  const completeJoin = useCallback(async joinResult => {
+    const nextSession = await completeJoinSession(session, joinResult);
+    setSession(nextSession);
+    setEnteredSaccoId(null);
+    return nextSession;
+  }, [session]);
 
   const clearSessionEnded = useCallback(() => setSessionEnded(false), []);
   const clearPanelRequest = useCallback(() => {
@@ -175,6 +242,8 @@ function SessionProvider({ children }) {
       clearTokens();
       if (!active) return;
       setSession(null);
+      setEnteredSaccoId(null);
+      setEnteredSaccoIds(new Set());
       setSessionEnded(true);
       setReady(true);
       routerNavigateRef.current('/login', { replace: true });
@@ -216,6 +285,9 @@ function SessionProvider({ children }) {
     saccoId: session ? session.saccoId : null,
     sacco: session ? session.sacco : null,
     saccos: session ? session.saccos : [],
+    enteredSaccoId,
+    enterCircle,
+    completeJoin,
     panelRequest,
     clearPanelRequest,
     navigate,
@@ -226,7 +298,7 @@ function SessionProvider({ children }) {
     logout,
     sessionEnded,
     clearSessionEnded,
-  }), [session, can, navigate, switchSacco, takeOpen, toast, login, logout, sessionEnded, clearSessionEnded, panelRequest, clearPanelRequest]);
+  }), [session, can, navigate, switchSacco, enterCircle, completeJoin, takeOpen, toast, login, logout, sessionEnded, clearSessionEnded, panelRequest, clearPanelRequest, enteredSaccoId]);
 
   return (
     <SessionContext.Provider value={value}>
@@ -259,7 +331,7 @@ function AppRouter() {
   ];
   const protectedExtras = [
     { path: 'join', title: 'Join a SACCO', checkPermission: false },
-    { path: 'enter', title: 'Enter your SACCO', checkPermission: false },
+    { path: 'enter', title: 'Enter your circle', checkPermission: false },
     { path: 'account', title: 'Account settings', checkPermission: true },
     'styleguide',
   ];
