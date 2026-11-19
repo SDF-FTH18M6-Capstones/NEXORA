@@ -267,7 +267,7 @@
   .seg button { border: 0; background: transparent; min-height: 2.1rem; padding: 0 1rem; border-radius: 999px; font-weight: 600; color: var(--muted); transition: all .35s var(--ease); }
   .seg button[aria-selected="true"] { background: #fff; color: var(--teal); box-shadow: 0 .4rem 1rem -.5rem rgba(15, 76, 71, .6); }
   .spacer { flex: 1; }
-  .grid { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: var(--gap); }
+  .grid12 { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: var(--gap); }
   .s12 { grid-column: span 12; } .s8 { grid-column: span 8; } .s7 { grid-column: span 7; } .s6 { grid-column: span 6; }
   .s5 { grid-column: span 5; } .s4 { grid-column: span 4; } .s3 { grid-column: span 3; }
   .card-head { display: flex; justify-content: space-between; align-items: flex-start; gap: .75rem; margin-bottom: .9rem; flex-wrap: wrap; }
