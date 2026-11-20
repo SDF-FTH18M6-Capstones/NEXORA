@@ -17,7 +17,10 @@
  * Each api function does:   if (MOCK) { await mockDelay(); return structuredClone(sample); }
  */
 
-const BASE = (import.meta.env && import.meta.env.VITE_API_URL) || 'http://localhost:5000/api/v1';
+// Relative by default: Vite proxies /api to the API (see vite.config.js), so the
+// browser talks to one origin in development. Set VITE_API_URL for a full URL.
+const BASE = (import.meta.env && import.meta.env.VITE_API_URL) || '/api/v1';
+const ORIGIN = typeof window !== 'undefined' ? window.location.origin : 'http://localhost';
 export const MOCK = !!(import.meta.env && import.meta.env.VITE_MOCK === '1') || (typeof window !== 'undefined' && window.__NEXORA_MOCK__ === true);
 /* a believable wait so the loading state is visible while you build it */
 export const mockDelay = (ms = 450 + Math.random() * 450) => new Promise(r => setTimeout(r, ms));
@@ -52,7 +55,7 @@ function refresh() {
 }
 
 async function send(method, path, { body, params, auth = true, token } = {}) {
-  const url = new URL(BASE + path);
+  const url = new URL(BASE + path, ORIGIN);
   if (params) Object.entries(params).forEach(([k, v]) => { if (v !== undefined && v !== null && v !== '') url.searchParams.set(k, v); });
   const headers = { Accept: 'application/json' };
   if (body !== undefined) headers['Content-Type'] = 'application/json';

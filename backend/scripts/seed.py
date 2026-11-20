@@ -21,6 +21,11 @@ DOMAIN = "example.com"
 OWNER_EMAIL = f"owner@{DOMAIN}"
 # The schema keeps at least two platform owners, so the seed starts with two.
 OWNER2_EMAIL = f"owner2@{DOMAIN}"
+# One member has a circle PIN, so the frontend can pass "Enter your circle"
+# against real data. Development only: the seed refuses a database whose name
+# does not end in "_dev".
+DEV_PIN_EMAIL = f"alpha-m1@{DOMAIN}"
+DEV_PIN = "1234"
 
 SACCOS = (("Alpha SACCO", "alpha"), ("Beta SACCO", "beta"))
 # Officers for the loan flow: two loans officers approve the two steps (a SACCO
@@ -74,6 +79,7 @@ def seed(app, require_dev=True):
     from sqlalchemy import func, select
 
     from app.auth.passwords import hash_password, validate_password
+    from app.auth.pin import set_pin
     from app.extensions import db
     from app.ledger import reversals
     from app.models.ledger import Transaction
@@ -216,6 +222,12 @@ def seed(app, require_dev=True):
                 membership_id = get_membership(user_id, sacco_id, MembershipRole.MEMBER)
                 seeded.append({"email": email, "role": "member", "sacco": name})
 
+                if email == DEV_PIN_EMAIL:
+                    membership = db.session.get(SaccoMembership, membership_id)
+                    if not membership.pin_hash:  # keep a PIN someone already set
+                        set_pin(membership, DEV_PIN)
+                        db.session.commit()
+
                 account_id = get_account(admin_id, membership_id)
                 done = {"deposit": 0, "withdraw": 0}
                 for kind, amount in moves:
@@ -256,6 +268,10 @@ def main():
     for row in seeded:
         where = row["sacco"] or "-"
         print(f"  {row['email']:<28} {row['role']:<15} {where}")
+    print(
+        f"\nCircle PIN for {DEV_PIN_EMAIL}: {DEV_PIN}"
+        " (every other seeded member has no PIN)."
+    )
 
 
 if __name__ == "__main__":

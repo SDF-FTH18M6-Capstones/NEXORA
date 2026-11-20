@@ -49,6 +49,8 @@ The seed prints every seeded email. All of them share the password `Dev-Seed-Pas
 | Alpha members | `alpha-m1@example.com` to `alpha-m3@example.com` | savers |
 | Beta SACCO | `beta-admin@example.com`, `beta-staff@example.com`, `beta-loans@example.com`, `beta-loans2@example.com`, `beta-finance@example.com`, `beta-m1..m3@example.com` | a second SACCO, for the isolation demo |
 
+One member also has a circle PIN, so the browser can pass the "Enter your circle" step: `alpha-m1@example.com` has PIN `1234`. Every other seeded membership has no PIN and stops at that step.
+
 ## 3. Show it (5 minutes)
 
 With the API running, in a second terminal:
