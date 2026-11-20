@@ -60,7 +60,7 @@ export default function MembersPage() {
         ) : (
           <div className="neo-stack tight">
             {rows.map(m => (
-              <button type="button" key={m.id} className="row" onClick={() => setOpenId(m.id)}>
+              <button type="button" key={m.id} className="row neo-member" onClick={() => setOpenId(m.id)}>
                 <span className="icon" aria-hidden="true">{initials(m.email || m.phone)}</span>
                 <span className="grow text-left">
                   <span className="title">{m.email || m.phone}</span>

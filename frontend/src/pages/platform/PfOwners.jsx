@@ -5,7 +5,7 @@ import { useAsync } from '../../lib/useAsync.js';
 import { listOwners, addOwner, removeOwner } from '../../api/platform.js';
 import ErrorBanner from '../../components/ErrorBanner.jsx';
 import Field from '../../components/Field.jsx';
-import { Body } from '../people/shared.jsx';
+import { Body, Confirm } from '../people/shared.jsx';
 import { initials } from '../people/data.js';
 import { describe } from '../../lib/errors.js';
 
@@ -16,6 +16,7 @@ export default function PfOwners() {
   const [errors, setErrors] = useState({});
   const [notice, setNotice] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [asking, setAsking] = useState(null);
 
   async function submit(event) {
     event.preventDefault();
@@ -39,7 +40,6 @@ export default function PfOwners() {
   }
 
   async function remove(row) {
-    if (!confirm(`Remove ${row.email} as a platform owner?`)) return;
     setNotice(null);
     try {
       await removeOwner(row.user_id);
@@ -75,13 +75,29 @@ export default function PfOwners() {
               <button
                 type="button"
                 className="btn small ghost"
-                onClick={() => remove(row)}
+                onClick={() => setAsking(row)}
               >
                 Remove
               </button>
             </div>
           ))}
         </Body>
+      </section>
+
+      <section className="glass neo-span-12 neo-stack tight">
+        {asking && (
+          <Confirm
+            question={`Remove ${asking.email} as a platform owner?`}
+            yes="Remove them"
+            no="Keep them"
+            onNo={() => setAsking(null)}
+            onYes={() => {
+              const row = asking;
+              setAsking(null);
+              remove(row);
+            }}
+          />
+        )}
       </section>
 
       <section className="glass neo-span-5 neo-stack">

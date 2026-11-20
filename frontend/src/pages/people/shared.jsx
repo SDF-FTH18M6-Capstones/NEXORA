@@ -15,3 +15,23 @@ export function Body({ status, error, reload, emptyTitle, emptyHint, children })
   if (status === 'empty') return <Empty title={emptyTitle} hint={emptyHint} />;
   return children;
 }
+
+/* One "are you sure" for every destructive action in Neo's pages, in the page
+ * itself. A native window.confirm cannot be photographed, freezes the whole app
+ * while it is open, and is outside a keyboard pass; this is an ordinary part of
+ * the page, so Tab reaches it and the question is in the screenshot. */
+export function Confirm({ question, yes = 'Yes', no = 'Cancel', onYes, onNo, busy = false }) {
+  return (
+    <div className="neo-confirm" role="alertdialog" aria-label={question}>
+      <p>{question}</p>
+      <div className="flex flex-wrap gap-2">
+        <button type="button" className="btn small" onClick={onYes} disabled={busy} autoFocus>
+          {busy ? 'Working…' : yes}
+        </button>
+        <button type="button" className="btn small ghost" onClick={onNo} disabled={busy}>
+          {no}
+        </button>
+      </div>
+    </div>
+  );
+}
