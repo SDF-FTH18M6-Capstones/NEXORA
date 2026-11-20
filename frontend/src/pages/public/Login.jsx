@@ -154,6 +154,7 @@ export default function Login() {
             {sending ? 'Signing in...' : 'Sign in'}
           </button>
           <nav className="auth-links" aria-label="Account options">
+            <Link to="/register">Create an account</Link>
             <Link to="/join">Join with a code</Link>
             <Link to="/forgot">Forgot password</Link>
           </nav>

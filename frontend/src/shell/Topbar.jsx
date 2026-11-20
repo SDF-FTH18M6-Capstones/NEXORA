@@ -41,7 +41,11 @@ export default function Topbar({ title }) {
 
   return (
     <header className="topbar glass">
-      <h1 className="page-title min-w-0 flex-1 truncate">{title}</h1>
+      {/* On a phone the title has no room beside search, bell and the circle
+        * switcher: it collapsed to a letter-wide column and wrapped word by
+        * word. Every page repeats its heading in the card below, so the bar
+        * drops it under 640px instead of squeezing it. */}
+      <h1 className="page-title hidden min-w-0 flex-1 truncate sm:block">{title}</h1>
 
       <button
         ref={searchRef}
