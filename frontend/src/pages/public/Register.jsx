@@ -4,7 +4,7 @@ import ErrorBanner from '../../components/ErrorBanner.jsx';
 import Field from '../../components/Field.jsx';
 import { describe } from '../../lib/errors.js';
 import { registerRequest, resendVerificationRequest } from '../../api/auth.js';
-import AuthFrame from './AuthFrame.jsx';
+import AuthFrame, { AuthPoints } from './AuthFrame.jsx';
 
 export default function Register() {
   const location = useLocation();
@@ -87,6 +87,7 @@ export default function Register() {
       eyebrow="Create an account"
       heading="Make your account"
       intro="You join a SACCO with a code after this."
+      extra={<AuthPoints />}
       onSubmit={submit}
     >
       {error && <ErrorBanner>{error}</ErrorBanner>}

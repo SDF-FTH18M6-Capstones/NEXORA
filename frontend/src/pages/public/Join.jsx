@@ -175,7 +175,7 @@ export default function Join() {
      * wide desktop. Inside the shell the sidebar eats the width, so the row only
      * starts at 1280 where both columns still have room. */
     <div className="mx-auto flex w-full max-w-[64rem] flex-col gap-8 p-4 md:p-6 xl:min-h-[calc(100vh-13rem)] xl:flex-row xl:items-center xl:justify-between xl:gap-12">
-      <div className="flex max-w-[26rem] flex-col gap-3">
+      <div className="flex w-full max-w-[26rem] shrink-0 flex-col gap-3">
         <div className="eyebrow">Join a circle</div>
         <h1 className="font-serif text-[clamp(2rem,2.4vw,3rem)] leading-[1.05]">
           {step === 1 ? 'Join with a code' : 'Set your PIN'}
@@ -186,7 +186,7 @@ export default function Join() {
             : 'Choose a 4-digit PIN for this circle.'}
         </p>
       </div>
-      <section className="glass flex w-full flex-col gap-3 xl:max-w-[28rem]">
+      <section className="glass flex w-full flex-col gap-3 xl:max-w-[30rem]">
         <div className="eyebrow">Step {step} of 2</div>
         {notice && (
           <ErrorBanner kind="info">
