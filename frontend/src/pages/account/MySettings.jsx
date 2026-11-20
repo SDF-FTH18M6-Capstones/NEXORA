@@ -3,7 +3,22 @@ import AppearanceCard from '../../components/AppearanceCard.jsx';
 
 export default function MySettings() {
   return (
-    <div className="flex flex-col gap-6">
+    <div className="my-settings-page flex flex-col gap-6">
+      <style>{`
+        html[data-mode="dark"] .my-settings-page [role="radio"] {
+          background-color: var(--pop);
+          border-color: var(--edge);
+          color: var(--ink);
+        }
+        html[data-mode="dark"] .my-settings-page [role="radio"] small {
+          color: var(--muted);
+        }
+        html[data-mode="dark"] .my-settings-page [aria-labelledby="ap-h"] > div:last-child {
+          background-color: var(--glass-a);
+          border-color: var(--edge);
+          color: var(--ink);
+        }
+      `}</style>
       <header className="flex flex-col gap-1">
         <p className="text-muted">Choose how Nexora looks for you.</p>
       </header>

@@ -5,13 +5,16 @@
 import { useEffect, useRef, useState } from 'react';
 import { useSession } from '../lib/session.jsx';
 import { menuFor } from '../lib/perms.js';
+import { Logo } from '../components/Logo.jsx';
 import Sidebar from './Sidebar.jsx';
 import Topbar from './Topbar.jsx';
+import Bell from './Bell.jsx';
 
 export default function Shell({ path, title, children, ...topbarActions }) {
-  const { perms, user } = useSession();
+  const { perms } = useSession();
   const current = menuFor(perms).find(r => r.path === path);
   const [open, setOpen] = useState(false);
+  const [mobileBellOpen, setMobileBellOpen] = useState(false);
   const btnRef = useRef(null);
   const wasOpen = useRef(false);
 
@@ -72,8 +75,15 @@ export default function Shell({ path, title, children, ...topbarActions }) {
             <path d="M4 6h16M4 12h16M4 18h16" />
           </svg>
         </button>
-        <span className="min-w-0 truncate font-semibold">{title || (current ? current.title : '')}</span>
-        <span className="avatar" aria-hidden="true">{user.initials}</span>
+        <span className="grid size-9 shrink-0 place-items-center" aria-hidden="true">
+          <Logo className="mark size-8" />
+        </span>
+        <span className="min-w-0 flex-1 truncate font-semibold">{title || (current ? current.title : '')}</span>
+        <Bell
+          open={mobileBellOpen}
+          onToggle={() => setMobileBellOpen(value => !value)}
+          onClose={() => setMobileBellOpen(false)}
+        />
       </div>
       <div className="scrim" onClick={() => setOpen(false)} aria-hidden="true" />
       <Sidebar path={path} />

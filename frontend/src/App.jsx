@@ -68,7 +68,7 @@ function Placeholder({ title, path }) {
   }
 
   return (
-    <div className="glass grid min-h-[30vh] content-center gap-2 p-6 text-center">
+    <div className="glass flex min-h-[30vh] flex-col items-center justify-center gap-2 p-6 text-center">
       <h1 className="font-serif">{title}</h1>
       <p className="text-muted">This page is being built.</p>
     </div>
