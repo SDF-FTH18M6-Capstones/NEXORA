@@ -13,6 +13,7 @@ export default function Login() {
   const { login, sessionEnded, clearSessionEnded } = useSession();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [role, setRole] = useState('member');
   const [error, setError] = useState('');
   const [unverified, setUnverified] = useState(false);
@@ -119,15 +120,27 @@ export default function Login() {
               }}
             />
           </Field>
-          <Field id="login-password" label="Password">
-            <input
-              type="password"
-              autoComplete="current-password"
-              required
-              value={password}
-              onChange={event => setPassword(event.target.value)}
-            />
-          </Field>
+          <div className="relative">
+            <Field id="login-password" label="Password">
+              <input
+                type={showPassword ? 'text' : 'password'}
+                autoComplete="current-password"
+                required
+                value={password}
+                className="pr-20"
+                onChange={event => setPassword(event.target.value)}
+              />
+            </Field>
+            <button
+              className="link-btn absolute right-4 top-8 z-10 rounded px-1 py-1 focus-visible:outline focus-visible:outline-2 focus-visible:outline-teal-2"
+              type="button"
+              aria-label={showPassword ? 'Hide password' : 'Show password'}
+              aria-pressed={showPassword}
+              onClick={() => setShowPassword(value => !value)}
+            >
+              {showPassword ? 'Hide' : 'Show'}
+            </button>
+          </div>
           {MOCK && (
             <Field id="login-role" label="Test role">
               <select value={role} onChange={event => setRole(event.target.value)}>

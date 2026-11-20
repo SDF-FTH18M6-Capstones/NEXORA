@@ -39,6 +39,8 @@ function mockAccountFor(email, selectedRole = 'member') {
   }));
   const user = {
     ...fixture,
+    // The mock role picker represents separate test people; keep their saved appearances isolated.
+    id: `${fixture.id}-${role}-mock`,
     email: address,
     memberships,
   };

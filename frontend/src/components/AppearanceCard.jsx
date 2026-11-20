@@ -42,7 +42,7 @@ export default function AppearanceCard() {
       <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,8.5rem),1fr))] gap-2.5" role="radiogroup" aria-label="Colour theme">
         {THEMES.map(t => (
           <Option key={t.id} checked={v.theme === t.id} onClick={() => pick('theme', t.id)}>
-            <span className="flex h-7 overflow-hidden rounded-lg border border-black/10">{t.sw.map(c => <i key={c} className="flex-1" style={{ background: c }} />)}</span>
+            <span className="flex h-7 overflow-hidden rounded-lg border border-black/10">{t.sw.map((c, index) => <i key={`${t.id}-${index}`} className="flex-1" style={{ background: c }} />)}</span>
             <b className="text-[0.85rem]">{t.name}</b><small className="text-[0.72rem] text-muted">{t.note}</small>
           </Option>
         ))}
