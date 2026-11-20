@@ -170,10 +170,14 @@ export default function Join() {
   }
 
   return (
-    <div className="mx-auto w-full max-w-xl p-4 md:p-6">
-      <section className="glass flex flex-col gap-3">
+    /* Same spread as sign in and create an account: the explanation on the left,
+     * the card on the right, instead of one phone-width column at the top of a
+     * wide desktop. Inside the shell the sidebar eats the width, so the row only
+     * starts at 1280 where both columns still have room. */
+    <div className="mx-auto flex w-full max-w-[64rem] flex-col gap-8 p-4 md:p-6 xl:min-h-[calc(100vh-13rem)] xl:flex-row xl:items-center xl:justify-between xl:gap-12">
+      <div className="flex max-w-[26rem] flex-col gap-3">
         <div className="eyebrow">Join a circle</div>
-        <h1 className="font-serif text-2xl">
+        <h1 className="font-serif text-[clamp(2rem,2.4vw,3rem)] leading-[1.05]">
           {step === 1 ? 'Join with a code' : 'Set your PIN'}
         </h1>
         <p className="text-muted">
@@ -181,6 +185,9 @@ export default function Join() {
             ? 'Use the phone number your SACCO admin added and the 6-digit code they gave you.'
             : 'Choose a 4-digit PIN for this circle.'}
         </p>
+      </div>
+      <section className="glass flex w-full flex-col gap-3 xl:max-w-[28rem]">
+        <div className="eyebrow">Step {step} of 2</div>
         {notice && (
           <ErrorBanner kind="info">
             {notice}
