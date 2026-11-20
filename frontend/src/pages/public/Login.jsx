@@ -8,7 +8,6 @@ import { useSession } from '../../lib/session.jsx';
 import { describe } from '../../lib/errors.js';
 import { MOCK } from '../../lib/http.js';
 import { resendVerificationRequest } from '../../api/auth.js';
-import { AuthPoints } from './AuthFrame.jsx';
 
 export default function Login() {
   const { login, sessionEnded, clearSessionEnded } = useSession();
@@ -83,7 +82,6 @@ export default function Login() {
         <div className="auth-copy">
           <h1 className="serif">Welcome <em>back.</em></h1>
           <p>Sign in to continue to your SACCO.</p>
-          <AuthPoints />
         </div>
         <form className="glass auth-card" onSubmit={submit}>
           <div className="eyebrow">Sign in</div>

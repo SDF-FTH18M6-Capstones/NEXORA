@@ -29,7 +29,7 @@ function Hero3D() {
 
   return (
     <div
-      className="w-full max-w-[36rem] lg:max-w-[28rem]"
+      className="w-full max-w-[36rem] lg:max-w-[28rem] xl:max-w-[36rem]"
       style={{ perspective: '90rem' }}
       onPointerMove={move}
       onPointerLeave={() => setTilt({ x: 0, y: 0 })}
@@ -47,11 +47,11 @@ function Hero3D() {
         {POINTS.map(([label, line], index) => (
           <div
             key={label}
-            className="glass flex flex-col gap-1.5"
+            className="glass flex flex-col gap-2"
             style={{ transform: `translateZ(${index * 1.6}rem)` }}
           >
-            <span className="font-serif text-2xl">{label}</span>
-            <span className="text-muted">{line}</span>
+            <span className="font-serif text-[1.6rem]">{label}</span>
+            <span className="text-[1.05rem] text-muted">{line}</span>
           </div>
         ))}
       </div>
@@ -106,13 +106,15 @@ export default function Landing() {
         )}
       </header>
 
-      <main className="mx-auto flex w-full max-w-[90rem] flex-col px-5 md:px-8">
+      {/* The hero uses the screen a laptop actually has: 100rem at the top, which
+        * leaves a working margin instead of a third of the display in cream. */}
+      <main className="mx-auto flex w-full max-w-[100rem] flex-col px-5 md:px-8">
         {/* Side by side from 1024 up: a 1024 laptop is a desktop, and stacking it
           * there left the hero as a narrow phone column. The copy narrows and
           * the gap tightens below xl so both columns still fit. */}
-        <section className="flex flex-col items-start gap-12 lg:min-h-[calc(100vh-18.5rem)] lg:flex-row lg:items-center lg:justify-between lg:gap-10 xl:gap-16">
-          <div className="flex max-w-[36rem] flex-col gap-5 lg:max-w-[28rem] xl:max-w-[36rem]">
-            <h1 className="font-serif text-[clamp(2.4rem,4vw,4.5rem)] leading-[1.04]">Savings and loans for your circle.</h1>
+        <section className="flex flex-col items-start gap-12 lg:min-h-[calc(100vh-18.5rem)] lg:flex-row lg:items-center lg:justify-between lg:gap-10 xl:gap-20">
+          <div className="flex max-w-[46rem] flex-col gap-6 lg:max-w-[28rem] xl:max-w-[46rem]">
+            <h1 className="font-serif text-[clamp(2.5rem,4.4vw,5rem)] leading-[1.04]">Savings and loans for your circle.</h1>
             <p className="text-muted lg:text-lg xl:text-xl">
               NEXORA keeps your SACCO&rsquo;s money in one clear record. Members see their own
               balance. Staff see what their role needs.
@@ -128,7 +130,7 @@ export default function Landing() {
         </section>
       </main>
 
-      <footer className="lfoot mx-auto w-full max-w-[90rem] px-5 md:px-8">
+      <footer className="lfoot mx-auto w-full max-w-[100rem] px-5 md:px-8">
         NEXORA · Savings and loans for your circle.
       </footer>
     </div>
