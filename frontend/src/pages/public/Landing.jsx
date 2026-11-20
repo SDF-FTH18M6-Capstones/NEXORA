@@ -46,6 +46,40 @@ function Reveal({ children, className = '' }) {
 
 function Hero3D() {
   const [tilt, setTilt] = useState({ x: 0, y: 0 });
+  const stackRef = useRef(null);
+
+  /* The cards are absolutely positioned so they can overlap, which leaves the
+   * box with no height of its own: it has to grow with them. Otherwise the
+   * second and third cards sit on top of the menu and the list below. */
+  useEffect(() => {
+    const stack = stackRef.current;
+    if (!stack) return undefined;
+    const fit = () => {
+      const cards = Array.from(stack.children);
+      const last = cards[cards.length - 1];
+      if (!last) return;
+      let height = last.offsetTop + last.offsetHeight;
+      stack.style.height = `${height}px`;
+      // The cards are pushed toward the viewer, so the last one paints a little
+      // taller than its layout box: grow by whatever still hangs over the edge.
+      for (let pass = 0; pass < 4; pass += 1) {
+        const over = last.getBoundingClientRect().bottom - stack.getBoundingClientRect().bottom;
+        if (over <= 0.5) break;
+        height += Math.ceil(over);
+        stack.style.height = `${height}px`;
+      }
+    };
+    fit();
+    // Offsets are in rem, so a width change moves the cards even when the card
+    // boxes themselves keep their size: watch both the cards and the window.
+    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(fit);
+    if (observer) Array.from(stack.children).forEach(card => observer.observe(card));
+    window.addEventListener('resize', fit);
+    return () => {
+      if (observer) observer.disconnect();
+      window.removeEventListener('resize', fit);
+    };
+  }, []);
 
   function move(event) {
     if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
@@ -63,6 +97,7 @@ function Hero3D() {
       onPointerLeave={() => setTilt({ x: 0, y: 0 })}
     >
       <div
+        ref={stackRef}
         className="relative h-64 transition-transform duration-200 ease-out motion-reduce:transition-none"
         style={{
           transform: `rotateX(${tilt.x}deg) rotateY(${tilt.y}deg)`,
