@@ -167,7 +167,11 @@ export default function Login() {
           </button>
           <nav className="auth-links" aria-label="Account options">
             <Link to="/register">Create an account</Link>
-            <Link to="/join">Join with a code</Link>
+            {/* /join needs a session (the API ties the code to the signed-in
+              * account), so sending a visitor there from here just bounced back
+              * to this page. The only step forward is the account, and it
+              * carries the intent so sign-in finishes the journey at /join. */}
+            <Link to="/register" state={{ from: '/join' }}>Join with a code</Link>
             <Link to="/forgot">Forgot password</Link>
           </nav>
         </form>

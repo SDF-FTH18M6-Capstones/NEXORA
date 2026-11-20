@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import ErrorBanner from '../../components/ErrorBanner.jsx';
 import Field from '../../components/Field.jsx';
 import { describe } from '../../lib/errors.js';
@@ -7,6 +7,10 @@ import { registerRequest, resendVerificationRequest } from '../../api/auth.js';
 import AuthFrame from './AuthFrame.jsx';
 
 export default function Register() {
+  const location = useLocation();
+  /* Arriving from "Join with a code": keep that intent alive through the
+   * account step and the verification link, so signing in lands on /join. */
+  const joinIntent = Boolean(location.state && location.state.from === '/join');
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -61,13 +65,18 @@ export default function Register() {
         heading="Check your email"
         intro="We sent a link to confirm your address."
       >
-        <ErrorBanner kind="info">Open the link in your email, then sign in.</ErrorBanner>
+        <ErrorBanner kind="info">
+          Open the link in your email, then sign in
+          {joinIntent ? ' and we will take you to your join code.' : '.'}
+        </ErrorBanner>
         {note && <ErrorBanner kind="info">{note}</ErrorBanner>}
         <button className="btn ghost" type="button" onClick={resend} disabled={resending}>
           {resending ? 'Sending...' : 'Send the link again'}
         </button>
         <nav className="auth-links" aria-label="Account options">
-          <Link to="/login">Go to sign in</Link>
+          <Link to="/login" state={joinIntent ? { from: '/join' } : undefined}>
+            Go to sign in
+          </Link>
         </nav>
       </AuthFrame>
     );
