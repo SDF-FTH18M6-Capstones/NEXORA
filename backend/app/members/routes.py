@@ -27,6 +27,7 @@ from app.models.user import User
 from app.security.permissions import (
     LEGACY_ROLE_CODES,
     OWNER_PLATFORM,
+    ROLE_NAMES,
     _role_codes,
     can,
     is_admin_membership,
@@ -247,13 +248,39 @@ def _code_ttl(sacco_id: int) -> timedelta:
     return timedelta(minutes=minutes or 15)
 
 
+INVITE_LEGACY_ROLES = {
+    "sacco_admin": MembershipRole.SACCO_ADMIN,
+    "staff": MembershipRole.STAFF,
+    "member": MembershipRole.MEMBER,
+}
+
+
+def _invite_role(raw) -> tuple[MembershipRole, str]:
+    """The (legacy role, job title) an invite asked for.
+
+    The Add a member page offers job titles (secretary, finance_officer,
+    loans_officer, member) and the platform owner offers circle_admin; the older
+    callers send the legacy values. `can()` reads the title, so the title that
+    was asked for is the one that must be granted.
+    """
+    value = str(raw)
+    if value == "circle_admin":
+        return MembershipRole.SACCO_ADMIN, value
+    if value in INVITE_LEGACY_ROLES:
+        role = INVITE_LEGACY_ROLES[value]
+        return role, LEGACY_ROLE_CODES[role]
+    if value in ROLE_NAMES:
+        return MembershipRole.STAFF, value
+    raise ValueError(f"unknown role: {value}")
+
+
 def _invite_member(sacco_id):
     """An officer adds a phone: invited membership plus a one-time join code."""
     body = request.get_json(silent=True) or {}
     try:
         phone = normalize_phone(body.get("phone"))
-        role = MembershipRole(body.get("role", "member"))
-    except ValueError:
+        role, title = _invite_role(body.get("role", "member"))
+    except (TypeError, ValueError):
         return error_response(400, "A valid phone and role are required.")
     if is_admin_role(role) and not can(g.access.user, sacco_id, "admin.manage"):
         return error_response(
@@ -282,7 +309,7 @@ def _invite_member(sacco_id):
         current_app.config["SECRET_KEY"],
         ttl=_code_ttl(sacco_id),
     )
-    _grant_default_title(membership)
+    _grant_default_title(membership, title)
     _audit(membership, "member.invite")
     db.session.commit()
     return (
@@ -290,6 +317,7 @@ def _invite_member(sacco_id):
             id=membership.id,
             phone=phone,
             role=role.value,
+            title=title,
             status="invited",
             join_code=code,
             expires_at=row.expires_at.isoformat(),
@@ -368,11 +396,13 @@ def _reset_titles(membership: SaccoMembership) -> None:
     _grant_default_title(membership)
 
 
-def _grant_default_title(membership: SaccoMembership) -> None:
-    """Store the job title the role implies (admin -> circle_admin, staff ->
-    secretary, member -> member), so `can()` reads a title row for every
-    membership the API creates or changes, never the role column."""
-    code = LEGACY_ROLE_CODES[membership.role]
+def _grant_default_title(membership: SaccoMembership, title: str | None = None) -> None:
+    """Store the job title the invite asked for (or the one the role implies:
+    admin -> circle_admin, staff -> secretary, member -> member), so `can()`
+    reads a title row for every membership the API creates or changes, never the
+    role column.
+    """
+    code = title if title in ROLE_NAMES else LEGACY_ROLE_CODES[membership.role]
     role_id = db.session.execute(
         select(Role.id).where(Role.code == code)
     ).scalar_one_or_none()
