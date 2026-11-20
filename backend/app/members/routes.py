@@ -17,17 +17,21 @@ from app.auth.routes import _body
 from app.errors import error_response
 from app.extensions import db
 from app.members import self_service
-from app.members.schemas import InvalidMember, parse_create_member, parse_update_member
+from app.members.schemas import (
+    InvalidMember,
+    parse_create_member,
+    parse_invite_role,
+    parse_update_member,
+)
 from app.models.access import MembershipRoleLink, Role
 from app.models.audit import AuditLog
 from app.models.loan import SaccoSettings
-from app.models.membership import MembershipRole, MembershipStatus, SaccoMembership
+from app.models.membership import MembershipStatus, SaccoMembership
 from app.models.sacco import Sacco
 from app.models.user import User
 from app.security.permissions import (
     LEGACY_ROLE_CODES,
     OWNER_PLATFORM,
-    ROLE_NAMES,
     _role_codes,
     can,
     is_admin_membership,
@@ -248,39 +252,13 @@ def _code_ttl(sacco_id: int) -> timedelta:
     return timedelta(minutes=minutes or 15)
 
 
-INVITE_LEGACY_ROLES = {
-    "sacco_admin": MembershipRole.SACCO_ADMIN,
-    "staff": MembershipRole.STAFF,
-    "member": MembershipRole.MEMBER,
-}
-
-
-def _invite_role(raw) -> tuple[MembershipRole, str]:
-    """The (legacy role, job title) an invite asked for.
-
-    The Add a member page offers job titles (secretary, finance_officer,
-    loans_officer, member) and the platform owner offers circle_admin; the older
-    callers send the legacy values. `can()` reads the title, so the title that
-    was asked for is the one that must be granted.
-    """
-    value = str(raw)
-    if value == "circle_admin":
-        return MembershipRole.SACCO_ADMIN, value
-    if value in INVITE_LEGACY_ROLES:
-        role = INVITE_LEGACY_ROLES[value]
-        return role, LEGACY_ROLE_CODES[role]
-    if value in ROLE_NAMES:
-        return MembershipRole.STAFF, value
-    raise ValueError(f"unknown role: {value}")
-
-
 def _invite_member(sacco_id):
     """An officer adds a phone: invited membership plus a one-time join code."""
     body = request.get_json(silent=True) or {}
     try:
         phone = normalize_phone(body.get("phone"))
-        role, title = _invite_role(body.get("role", "member"))
-    except (TypeError, ValueError):
+        role, title = parse_invite_role(body.get("role", "member"))
+    except (TypeError, ValueError, InvalidMember):
         return error_response(400, "A valid phone and role are required.")
     if is_admin_role(role) and not can(g.access.user, sacco_id, "admin.manage"):
         return error_response(
@@ -402,7 +380,7 @@ def _grant_default_title(membership: SaccoMembership, title: str | None = None) 
     reads a title row for every membership the API creates or changes, never the
     role column.
     """
-    code = title if title in ROLE_NAMES else LEGACY_ROLE_CODES[membership.role]
+    code = title or LEGACY_ROLE_CODES[membership.role]
     role_id = db.session.execute(
         select(Role.id).where(Role.code == code)
     ).scalar_one_or_none()
