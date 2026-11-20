@@ -155,7 +155,7 @@
 
   /* ---------- landing ---------- */
   #landing.page.on { display: flow-root; padding-top: .75rem; }
-  .lnav { position: sticky; top: max(.75rem, env(safe-area-inset-top, 0px)); z-index: 20; margin: 0 auto; width: min(82rem, calc(100% - 2rem)); display: flex; align-items: center; gap: 1rem; padding: .6rem .8rem .6rem 1.2rem; border-radius: 999px; }
+  .lnav { position: sticky; top: max(.75rem, env(safe-area-inset-top, 0px)); z-index: 20; margin: 0 auto; width: min(90rem, calc(100% - 2rem)); display: flex; align-items: center; gap: 1rem; padding: .6rem .8rem .6rem 1.2rem; border-radius: 999px; }
   .lnav-links { display: flex; gap: .25rem; margin-left: auto; align-items: center; }
   .lnav-links button { background: none; border: 0; padding: .5rem .8rem; border-radius: 999px; font-weight: 500; color: var(--muted); }
   .lnav-links button:hover { color: var(--teal); background: rgba(255, 255, 255, .6); }

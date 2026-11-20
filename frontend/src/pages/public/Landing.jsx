@@ -29,34 +29,28 @@ function Hero3D() {
 
   return (
     <div
-      className="w-full max-w-[27rem]"
+      className="w-full max-w-[36rem] xl:max-w-[28rem]"
       style={{ perspective: '90rem' }}
       onPointerMove={move}
       onPointerLeave={() => setTilt({ x: 0, y: 0 })}
     >
       <div
-        className="flex flex-col transition-transform duration-200 ease-out motion-reduce:transition-none"
+        className="flex flex-col gap-[0.65rem] transition-transform duration-200 ease-out motion-reduce:transition-none"
         style={{
           transform: `rotateX(${tilt.x}deg) rotateY(${tilt.y}deg)`,
           transformStyle: 'preserve-3d',
         }}
       >
-        {/* The cards stay in normal flow: each one after the first is pulled up
-          * by a negative margin smaller than .glass's bottom padding, so it
-          * covers the foot of the card behind without hiding a line of text, and
-          * the stack gets its height from layout. translateZ only adds depth. */}
+        {/* The cards are normal flow items separated by a small gap: the stack
+          * is a group, not three boxes glued together. translateZ gives the
+          * depth and layout gives the height, so nothing has to be measured. */}
         {POINTS.map(([label, line], index) => (
           <div
             key={label}
             className="glass flex flex-col gap-1.5"
-            style={{
-              // A fixed share of the card's own bottom padding, so the overlap
-              // scales with the card and never reaches a line of text.
-              marginTop: index === 0 ? 0 : 'calc(clamp(1rem, 1.8vw, 1.5rem) * -0.7)',
-              transform: `translateZ(${index * 1.6}rem)`,
-            }}
+            style={{ transform: `translateZ(${index * 1.6}rem)` }}
           >
-            <span className="font-serif text-xl">{label}</span>
+            <span className="font-serif text-2xl">{label}</span>
             <span className="text-muted">{line}</span>
           </div>
         ))}
@@ -112,11 +106,11 @@ export default function Landing() {
         )}
       </header>
 
-      <main className="mx-auto flex w-full max-w-[82rem] flex-col px-5 md:px-8">
-        <section className="flex flex-col items-start gap-12 md:min-h-[calc(100vh-18.5rem)] md:flex-row md:items-center md:justify-between md:gap-20">
-          <div className="flex max-w-[34rem] flex-col gap-5">
-            <h1 className="font-serif text-[clamp(2.4rem,4.6vw,4rem)] leading-[1.04]">Savings and loans for your circle.</h1>
-            <p className="text-muted md:text-lg">
+      <main className="mx-auto flex w-full max-w-[90rem] flex-col px-5 md:px-8">
+        <section className="flex flex-col items-start gap-12 xl:min-h-[calc(100vh-18.5rem)] xl:flex-row xl:items-center xl:justify-between xl:gap-16">
+          <div className="flex max-w-[36rem] flex-col gap-5">
+            <h1 className="font-serif text-[clamp(2.4rem,4vw,4.5rem)] leading-[1.04]">Savings and loans for your circle.</h1>
+            <p className="text-muted lg:text-lg xl:text-xl">
               NEXORA keeps your SACCO&rsquo;s money in one clear record. Members see their own
               balance. Staff see what their role needs.
             </p>
@@ -131,7 +125,7 @@ export default function Landing() {
         </section>
       </main>
 
-      <footer className="lfoot mx-auto w-full max-w-[82rem] px-5 md:px-8">
+      <footer className="lfoot mx-auto w-full max-w-[90rem] px-5 md:px-8">
         NEXORA · Savings and loans for your circle.
       </footer>
     </div>
