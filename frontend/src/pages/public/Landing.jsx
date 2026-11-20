@@ -5,7 +5,9 @@ import { Logo } from '../../components/Logo.jsx';
 const LINKS = [
   ['Sign in', '/login'],
   ['Create an account', '/register'],
-  ['Join with a code', '/join'],
+  // Joining needs a signed-in account (the API ties the code to it), so this
+  // goes to sign-in and carries the destination: the login route returns here.
+  ['Join with a code', '/login', { from: '/join' }],
 ];
 
 const POINTS = [
@@ -91,7 +93,7 @@ function Hero3D() {
 
   return (
     <div
-      className="mx-auto w-full max-w-md"
+      className="mx-auto w-full max-w-lg"
       style={{ perspective: '60rem' }}
       onPointerMove={move}
       onPointerLeave={() => setTilt({ x: 0, y: 0 })}
@@ -121,60 +123,71 @@ function Hero3D() {
 
 export default function Landing() {
   const [menuOpen, setMenuOpen] = useState(false);
+  const barRef = useRef(null);
+
+  /* The phone menu covers the headline, so a tap anywhere else has to close it.
+   * Without this the only way back to the page was the Menu button again. */
+  useEffect(() => {
+    if (!menuOpen) return undefined;
+    function onPointerDown(event) {
+      if (barRef.current && !barRef.current.contains(event.target)) setMenuOpen(false);
+    }
+    document.addEventListener('pointerdown', onPointerDown);
+    return () => document.removeEventListener('pointerdown', onPointerDown);
+  }, [menuOpen]);
 
   return (
-    <div className="mx-auto flex w-full max-w-5xl flex-col gap-10 p-4 md:p-6">
-      <header className="flex items-center justify-between gap-3">
+    <div className="flex w-full flex-col gap-8 pb-10">
+      {/* The bar's own classes (.lnav, .lnav-cta, .lnav-burger, .lnav-pop) decide
+        * what a phone shows. Tailwind's md: rules cannot do it here: .btn and
+        * .glass sit outside @layer, so they beat those utilities and the panel
+        * stayed on screen, laid over the hero and swallowing its clicks. */}
+      <header className="lnav glass" ref={barRef}>
         <a className="flex items-center gap-2" href="/" aria-label="NEXORA home">
           <Logo className="mark" />
           <span className="font-serif text-xl">NEXORA</span>
         </a>
-        <button
-          type="button"
-          className="btn ghost small md:hidden"
-          aria-expanded={menuOpen}
-          aria-controls="landing-menu"
-          onClick={() => setMenuOpen(open => !open)}
-        >
-          {menuOpen ? 'Close menu' : 'Menu'}
-        </button>
-        <nav
-          id="landing-menu"
-          aria-label="Account options"
-          className={`${menuOpen ? 'flex' : 'hidden'} absolute inset-x-4 top-16 z-50 flex-col gap-2 glass md:static md:flex md:flex-row md:items-center md:gap-3 md:bg-transparent md:p-0 md:shadow-none`}
-        >
-          {LINKS.map(([label, to], index) => (
-            <Link key={to} className={index === 1 ? 'btn' : 'btn ghost'} to={to}>{label}</Link>
-          ))}
-        </nav>
+        <div className="lnav-cta ml-auto">
+          <Link className="btn ghost small lnav-join" to="/login" state={{ from: '/join' }}>Join with a code</Link>
+          <Link className="btn small" to="/login">Sign in</Link>
+          <button
+            type="button"
+            className="btn ghost small lnav-burger"
+            aria-expanded={menuOpen}
+            aria-controls="lnav-pop"
+            onClick={() => setMenuOpen(open => !open)}
+          >
+            {menuOpen ? 'Close' : 'Menu'}
+          </button>
+        </div>
+        {menuOpen && (
+          <div className="lnav-pop" id="lnav-pop">
+            {LINKS.map(([label, to, state]) => (
+              <Link key={label} to={to} state={state}>{label}</Link>
+            ))}
+          </div>
+        )}
       </header>
 
-      <main className="flex flex-col gap-12">
-        <section className="flex flex-col items-center gap-8 md:flex-row md:justify-between">
+      <main className="mx-auto flex w-full max-w-6xl flex-col gap-12 px-4 md:px-6">
+        <Reveal>
+        <section className="flex flex-col items-center gap-8 md:flex-row md:items-center md:justify-between md:gap-12">
           <div className="flex max-w-xl flex-col gap-4">
-            <h1 className="font-serif text-4xl">Savings and loans for your circle.</h1>
-            <p className="text-muted">
+            <h1 className="font-serif text-[clamp(2.25rem,4.2vw,3.4rem)] leading-[1.05]">Savings and loans for your circle.</h1>
+            <p className="text-muted md:text-lg">
               NEXORA keeps your SACCO&rsquo;s money in one clear record. Members see their own
               balance. Staff see what their role needs.
             </p>
             <div className="flex flex-wrap gap-3">
               <Link className="btn" to="/login">Sign in</Link>
-              <Link className="btn ghost" to="/join">Join with a code</Link>
+              <Link className="btn ghost" to="/login" state={{ from: '/join' }}>
+                Join with a code
+              </Link>
             </div>
           </div>
           <Hero3D />
         </section>
-
-        <section className="flex flex-col gap-4" aria-label="What NEXORA does">
-          {POINTS.map(([label, line]) => (
-            <Reveal key={label}>
-              <div className="glass flex flex-col gap-1">
-                <h2 className="font-serif text-2xl">{label}</h2>
-                <p className="text-muted">{line}</p>
-              </div>
-            </Reveal>
-          ))}
-        </section>
+        </Reveal>
       </main>
     </div>
   );
