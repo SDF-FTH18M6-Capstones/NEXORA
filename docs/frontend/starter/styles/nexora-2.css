@@ -19,6 +19,14 @@
 .back-home { position: absolute; top: max(1rem, env(safe-area-inset-top, 0px)); left: var(--gx-l); z-index: 3; display: flex; align-items: center; gap: .9rem; }
 .page-back { margin-bottom: .2rem; }
 .auth-links { display: flex; flex-wrap: wrap; gap: .4rem 1.1rem; margin-top: 1rem; font-size: .85rem; }
+/* Three ways out of the form sit in one row: a hairline between them says they
+   are three separate exits, not one run of text. Only where the card is wide
+   enough to keep all three on one line, so a wrapped row never starts with a
+   stray tick. */
+@media (min-width: 30rem) {
+  .auth-links { align-items: center; gap: .4rem .7rem; }
+  .auth-links > * + * { padding-left: .7rem; border-left: 1px solid color-mix(in srgb, var(--ink) 22%, transparent); }
+}
 .profile-link { text-decoration: none; color: inherit; min-width: 0; display: block; border-radius: .6rem; }
 .profile-link:hover .profile-name { text-decoration: underline; }
 
