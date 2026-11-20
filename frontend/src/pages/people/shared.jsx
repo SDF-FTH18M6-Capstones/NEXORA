@@ -1,5 +1,6 @@
 import '../../styles/neo.css';
 /* shared.jsx: the four states of a card, in one place for Neo's pages. */
+import { useEffect, useRef } from 'react';
 import { Loading, Empty } from '../../components/States.jsx';
 import ErrorBanner from '../../components/ErrorBanner.jsx';
 import ErrorPage from '../../components/ErrorPage.jsx';
@@ -21,14 +22,28 @@ export function Body({ status, error, reload, emptyTitle, emptyHint, children })
  * while it is open, and is outside a keyboard pass; this is an ordinary part of
  * the page, so Tab reaches it and the question is in the screenshot. */
 export function Confirm({ question, yes = 'Yes', no = 'Cancel', onYes, onNo, busy = false }) {
+  /* The safe answer takes the focus, so Enter on a panel nobody has touched does
+   * nothing destructive, and Escape always backs out. */
+  const safe = useRef(null);
+  useEffect(() => { safe.current?.focus(); }, []);
   return (
-    <div className="neo-confirm" role="alertdialog" aria-label={question}>
+    <div
+      className="neo-confirm"
+      role="alertdialog"
+      aria-label={question}
+      onKeyDown={event => {
+        if (event.key === 'Escape') {
+          event.stopPropagation();
+          onNo();
+        }
+      }}
+    >
       <p>{question}</p>
       <div className="flex flex-wrap gap-2">
-        <button type="button" className="btn small" onClick={onYes} disabled={busy} autoFocus>
+        <button type="button" className="btn small" onClick={onYes} disabled={busy}>
           {busy ? 'Working…' : yes}
         </button>
-        <button type="button" className="btn small ghost" onClick={onNo} disabled={busy}>
+        <button type="button" className="btn small ghost" onClick={onNo} disabled={busy} ref={safe}>
           {no}
         </button>
       </div>

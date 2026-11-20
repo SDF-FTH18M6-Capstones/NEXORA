@@ -82,9 +82,6 @@ export default function PfOwners() {
             </div>
           ))}
         </Body>
-      </section>
-
-      <section className="glass neo-span-12 neo-stack tight">
         {asking && (
           <Confirm
             question={`Remove ${asking.email} as a platform owner?`}
