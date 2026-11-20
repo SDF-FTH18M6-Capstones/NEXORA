@@ -119,7 +119,6 @@
 .lnav-pop button, .lnav-pop a { text-align: left; padding: .7rem .9rem; border-radius: .8rem; border: 0; background: transparent; color: inherit; text-decoration: none; font-weight: 500; }
 .lnav-pop button:hover, .lnav-pop a:hover { background: color-mix(in srgb, var(--ink) 8%, transparent); }
 @media (max-width: 56rem) { .lnav-links { display: none; } .lnav-burger { display: inline-flex; } .lnav-cta { margin-left: auto; } }
-@media (max-width: 34rem) { .lnav-join { display: none; } }
 
 /* hero: three layers at different depths that follow the cursor */
 .scene { position: relative; perspective: 90rem; padding: 2.6rem 0 3.2rem; isolation: isolate; }
