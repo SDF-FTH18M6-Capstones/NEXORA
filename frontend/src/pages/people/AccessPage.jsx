@@ -1,10 +1,11 @@
+import '../../styles/neo.css';
 import { useState } from 'react';
 import { useSession } from '../../lib/session.jsx';
 import { useAsync } from '../../lib/useAsync.js';
 import { listAccess, decideAccess } from '../../api/people.js';
 import ErrorBanner from '../../components/ErrorBanner.jsx';
 import StatusChip from '../../components/StatusChip.jsx';
-import { Body } from './shared.jsx';
+import { Body, Confirm } from './shared.jsx';
 import { STATUS_LABEL, when } from './data.js';
 import { describe } from '../../lib/errors.js';
 
@@ -16,9 +17,9 @@ export default function AccessPage() {
   const [hours, setHours] = useState(4);
   const [notice, setNotice] = useState(null);
   const [busyId, setBusyId] = useState(null);
+  const [asking, setAsking] = useState(null);
 
-  async function decide(row, action) {
-    if (action !== 'approve' && !confirm(action === 'deny' ? 'Deny this request?' : 'Revoke this access now?')) return;
+  async function run(row, action) {
     setBusyId(row.id);
     setNotice(null);
     try {
@@ -52,6 +53,21 @@ export default function AccessPage() {
 
       {notice && <ErrorBanner>{notice}</ErrorBanner>}
 
+      {asking && (
+        <Confirm
+          question={asking.action === 'deny' ? 'Deny this request?' : 'Revoke this access now?'}
+          yes={asking.action === 'deny' ? 'Deny it' : 'Revoke now'}
+          no={asking.action === 'deny' ? 'Keep it' : 'Leave it'}
+          busy={busyId === asking.row.id}
+          onNo={() => setAsking(null)}
+          onYes={() => {
+            const { row, action } = asking;
+            setAsking(null);
+            run(row, action);
+          }}
+        />
+      )}
+
       <Body
         status={status}
         error={error}
@@ -67,17 +83,17 @@ export default function AccessPage() {
               <b>Waiting for you</b>
               {pending.length === 0 && <p className="muted text-sm">Nothing is waiting.</p>}
               {pending.map(row => (
-                <div key={row.id} className="row">
+                <div key={row.id} className="row neo-request">
                   <span className="icon" aria-hidden="true">{row.scope.slice(0, 1).toUpperCase()}</span>
                   <span className="grow text-left">
                     <span className="title">{row.reason}</span>
                     <span className="sub">Scope: {row.scope} · asked {when(row.created_at)}</span>
                   </span>
-                  <span className="flex gap-2">
-                    <button type="button" className="btn small" disabled={busyId === row.id || !can('support.approve')} onClick={() => decide(row, 'approve')}>
+                  <span className="neo-request-actions flex gap-2">
+                    <button type="button" className="btn small" disabled={busyId === row.id || !can('support.approve')} onClick={() => run(row, 'approve')}>
                       Approve
                     </button>
-                    <button type="button" className="btn small warn" disabled={busyId === row.id || !can('support.approve')} onClick={() => decide(row, 'deny')}>
+                    <button type="button" className="btn small warn" disabled={busyId === row.id || !can('support.approve')} onClick={() => setAsking({ row, action: 'deny' })}>
                       Deny
                     </button>
                   </span>
@@ -89,7 +105,7 @@ export default function AccessPage() {
               <b>Decided</b>
               {decided.length === 0 && <p className="muted text-sm">Nothing decided yet.</p>}
               {decided.map(row => (
-                <div key={row.id} className="row">
+                <div key={row.id} className="row neo-request">
                   <span className="icon" aria-hidden="true">{row.scope.slice(0, 1).toUpperCase()}</span>
                   <span className="grow text-left">
                     <span className="title">{row.reason}</span>
@@ -98,12 +114,14 @@ export default function AccessPage() {
                       {row.expires_at && row.status === 'approved' ? ` · ends ${when(row.expires_at)}` : ''}
                     </span>
                   </span>
-                  <StatusChip status={STATUS_LABEL[row.status] || row.status} />
-                  {row.status === 'approved' && (
-                    <button type="button" className="btn small ghost" disabled={busyId === row.id || !can('support.approve')} onClick={() => decide(row, 'revoke')}>
-                      Revoke
-                    </button>
-                  )}
+                  <span className="neo-request-actions flex items-center gap-2">
+                    <StatusChip status={STATUS_LABEL[row.status] || row.status} />
+                    {row.status === 'approved' && (
+                      <button type="button" className="btn small ghost" disabled={busyId === row.id || !can('support.approve')} onClick={() => setAsking({ row, action: 'revoke' })}>
+                        Revoke
+                      </button>
+                    )}
+                  </span>
                 </div>
               ))}
             </div>

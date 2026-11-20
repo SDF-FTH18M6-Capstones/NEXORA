@@ -17,11 +17,16 @@ from app.auth.routes import _body
 from app.errors import error_response
 from app.extensions import db
 from app.members import self_service
-from app.members.schemas import InvalidMember, parse_create_member, parse_update_member
+from app.members.schemas import (
+    InvalidMember,
+    parse_create_member,
+    parse_invite_role,
+    parse_update_member,
+)
 from app.models.access import MembershipRoleLink, Role
 from app.models.audit import AuditLog
 from app.models.loan import SaccoSettings
-from app.models.membership import MembershipRole, MembershipStatus, SaccoMembership
+from app.models.membership import MembershipStatus, SaccoMembership
 from app.models.sacco import Sacco
 from app.models.user import User
 from app.security.permissions import (
@@ -252,8 +257,8 @@ def _invite_member(sacco_id):
     body = request.get_json(silent=True) or {}
     try:
         phone = normalize_phone(body.get("phone"))
-        role = MembershipRole(body.get("role", "member"))
-    except ValueError:
+        role, title = parse_invite_role(body.get("role", "member"))
+    except (TypeError, ValueError, InvalidMember):
         return error_response(400, "A valid phone and role are required.")
     if is_admin_role(role) and not can(g.access.user, sacco_id, "admin.manage"):
         return error_response(
@@ -282,7 +287,7 @@ def _invite_member(sacco_id):
         current_app.config["SECRET_KEY"],
         ttl=_code_ttl(sacco_id),
     )
-    _grant_default_title(membership)
+    _grant_default_title(membership, title)
     _audit(membership, "member.invite")
     db.session.commit()
     return (
@@ -290,6 +295,7 @@ def _invite_member(sacco_id):
             id=membership.id,
             phone=phone,
             role=role.value,
+            title=title,
             status="invited",
             join_code=code,
             expires_at=row.expires_at.isoformat(),
@@ -368,11 +374,13 @@ def _reset_titles(membership: SaccoMembership) -> None:
     _grant_default_title(membership)
 
 
-def _grant_default_title(membership: SaccoMembership) -> None:
-    """Store the job title the role implies (admin -> circle_admin, staff ->
-    secretary, member -> member), so `can()` reads a title row for every
-    membership the API creates or changes, never the role column."""
-    code = LEGACY_ROLE_CODES[membership.role]
+def _grant_default_title(membership: SaccoMembership, title: str | None = None) -> None:
+    """Store the job title the invite asked for (or the one the role implies:
+    admin -> circle_admin, staff -> secretary, member -> member), so `can()`
+    reads a title row for every membership the API creates or changes, never the
+    role column.
+    """
+    code = title or LEGACY_ROLE_CODES[membership.role]
     role_id = db.session.execute(
         select(Role.id).where(Role.code == code)
     ).scalar_one_or_none()

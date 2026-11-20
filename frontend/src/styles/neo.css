@@ -47,6 +47,24 @@
 .neo-3col { display: grid; gap: .9rem; }
 @media (min-width: 40rem) { .neo-3col { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
 .neo-search > .grow { flex: 1 1 12rem; min-width: 0; }
+/* A long email in a card header wraps on a phone instead of running under the status chip. */
+.neo-search h2, .neo-item .title, .row.neo-member .title { overflow-wrap: anywhere; }
+/* The in-page confirm: a quiet panel inside the card, never a browser dialog. */
+.neo-confirm {
+  display: flex;
+  flex-direction: column;
+  gap: .6rem;
+  padding: .8rem .9rem;
+  border-radius: .9rem;
+  border: 1px solid color-mix(in srgb, currentColor 18%, transparent);
+  background: color-mix(in srgb, currentColor 5%, transparent);
+}
+.neo-confirm p { margin: 0; font-weight: 600; }
+/* On a phone a request row puts its buttons under the text, so the text keeps the width. */
+@media (max-width: 30rem) {
+  .row.neo-request { grid-template-columns: auto minmax(0, 1fr); }
+  .row.neo-request .neo-request-actions { grid-column: 1 / -1; }
+}
 .neo-item { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: .75rem; width: 100%; text-align: left; }
 .row .title, .row .sub { display: block; }
 /* One chip per role: a member can hold more than one role in the same SACCO. */
