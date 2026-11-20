@@ -390,6 +390,9 @@ function AppRouter() {
     ['reset', 'Reset password'],
   ];
   const protectedExtras = [
+    // The API links the code to the account making the request (POST /auth/join
+    // reads g.user), so this page needs a session: RequireAuth sends a visitor
+    // to sign in and the login route brings them back here afterwards.
     { path: 'join', title: 'Join a SACCO', checkPermission: false },
     { path: 'enter', title: 'Enter your circle', checkPermission: false },
     { path: 'account', title: 'Account settings', checkPermission: true },
