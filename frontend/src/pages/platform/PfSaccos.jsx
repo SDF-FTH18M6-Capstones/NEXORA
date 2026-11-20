@@ -26,6 +26,10 @@ export default function PfSaccos() {
   const [adminPhone, setAdminPhone] = useState('');
   const [adminCode, setAdminCode] = useState(null);
   const [adminError, setAdminError] = useState(null);
+  /* the circle the owner just made goes to the top of the list, as the scenario table says, whatever order the list came back in */
+  const rows = created
+    ? [created, ...(list.data || []).filter(s => s.id !== created.id)]
+    : (list.data || []);
 
   if (openId) {
     return (
@@ -87,7 +91,7 @@ export default function PfSaccos() {
           emptyTitle="No SACCOs yet."
           emptyHint="Create the first one on the right."
         >
-          {(list.data || []).map(s => (
+          {rows.map(s => (
             <button type="button" key={s.id} className="row" onClick={() => setOpenId(s.id)}>
               <span className="icon" aria-hidden="true">{s.name.slice(0, 1)}</span>
               <span className="grow text-left">

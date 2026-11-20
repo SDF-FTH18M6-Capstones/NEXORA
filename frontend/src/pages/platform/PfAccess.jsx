@@ -1,3 +1,4 @@
+import '../../styles/neo.css';
 import { useState } from 'react';
 import { useAsync } from '../../lib/useAsync.js';
 import { listSaccos, askForAccess, myAccessRequests } from '../../api/platform.js';

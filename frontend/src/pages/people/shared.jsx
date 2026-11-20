@@ -1,3 +1,4 @@
+import '../../styles/neo.css';
 /* shared.jsx: the four states of a card, in one place for Neo's pages. */
 import { Loading, Empty } from '../../components/States.jsx';
 import ErrorBanner from '../../components/ErrorBanner.jsx';
