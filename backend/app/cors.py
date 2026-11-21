@@ -7,8 +7,10 @@ because tokens travel in the Authorization header, not cookies.
 
 from flask import request
 
-ALLOWED_METHODS = ("GET", "POST", "PATCH", "OPTIONS")
+ALLOWED_METHODS = ("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS")
 ALLOWED_HEADERS = ("Authorization", "Content-Type")
+# The browser may read these on every answer: a 429 tells the page to wait.
+EXPOSE_HEADERS = ("Retry-After",)
 PREFLIGHT_MAX_AGE = "600"
 
 
@@ -28,6 +30,7 @@ def allowed_origins(config) -> tuple[str, ...]:
 def _apply_origin(response, origin: str):
     """Name the one caller's origin, and say the answer depends on Origin."""
     response.headers["Access-Control-Allow-Origin"] = origin
+    response.headers["Access-Control-Expose-Headers"] = ", ".join(EXPOSE_HEADERS)
     response.vary.add("Origin")
     return response
 

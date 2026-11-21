@@ -86,6 +86,13 @@ def _membership(user_id: int, sacco_id: int) -> SaccoMembership:
     return m
 
 
+def _require_active_borrower(loan: Loan) -> None:
+    """Money moves on a deactivated member's account only through reversals."""
+    borrower = db.session.get(SaccoMembership, loan.membership_id)
+    if borrower.status is not MembershipStatus.ACTIVE:
+        raise Conflict("The borrower's membership is not active.")
+
+
 def _lock_loan(loan_id: int) -> Loan:
     loan = db.session.execute(
         select(Loan).where(Loan.id == loan_id).with_for_update()
@@ -266,6 +273,7 @@ def disburse_loan(user_id: int, loan_id: int, reference: str) -> LoanView:
     actor = _membership(user_id, loan.sacco_id)
     _require_sacco_active(loan.sacco_id)
 
+    _require_active_borrower(loan)
     if not can(user, loan.sacco_id, "loan.disburse"):
         raise Forbidden("Only a finance officer can disburse loans.")
     if actor.id == loan.membership_id:
@@ -359,6 +367,7 @@ def repay_loan(
     actor = _membership(user_id, loan.sacco_id)
     _require_sacco_active(loan.sacco_id)
 
+    _require_active_borrower(loan)
     if not can(user, loan.sacco_id, "loan.repay"):
         raise Forbidden("You are not allowed to repay loans.")
     if actor.id != loan.membership_id and not can(user, loan.sacco_id, "loan.view"):

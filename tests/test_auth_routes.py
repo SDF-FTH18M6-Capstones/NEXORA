@@ -585,3 +585,18 @@ def test_valid_trusted_proxies_values_start_fine(value):
         TRUSTED_PROXIES = value
 
     assert create_app(Good)
+
+
+def test_login_answers_with_who_signed_in_and_their_memberships(client):
+    register(client)
+    body = login(client).get_json()
+    assert body["token_type"] == "Bearer"
+    assert body["user"]["email"] == EMAIL
+    assert body["user"]["memberships"] == []
+    assert body["user"]["is_platform_owner"] is False
+
+
+def test_login_lists_who_signed_in_first_and_the_tokens_last(client):
+    register(client)
+    keys = list(login(client).get_json())
+    assert keys == ["user", "token_type", "access_token", "refresh_token"]

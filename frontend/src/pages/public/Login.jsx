@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import ErrorBanner from '../../components/ErrorBanner.jsx';
 import ErrorPage from '../../components/ErrorPage.jsx';
 import Field from '../../components/Field.jsx';
@@ -11,8 +11,14 @@ import { resendVerificationRequest } from '../../api/auth.js';
 
 export default function Login() {
   const { login, sessionEnded, clearSessionEnded } = useSession();
+  const location = useLocation();
+  /* Someone who came in through "Join with a code" needs an account first: the
+   * join API ties the code to the signed-in user. Say so, instead of leaving them
+   * on a sign-in page wondering why their code did not work. */
+  const cameToJoin = Boolean(location.state && location.state.from === '/join');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [role, setRole] = useState('member');
   const [error, setError] = useState('');
   const [unverified, setUnverified] = useState(false);
@@ -79,6 +85,13 @@ export default function Login() {
         </div>
         <form className="glass auth-card" onSubmit={submit}>
           <div className="eyebrow">Sign in</div>
+          {cameToJoin && (
+            <ErrorBanner kind="info">
+              Sign in and we will take you straight to your join code. New here?{' '}
+              <Link className="link-btn" to="/register">Create an account</Link>, then use the
+              code your SACCO gave you.
+            </ErrorBanner>
+          )}
           {sessionEnded && (
             <ErrorPage code="401" onAction={action => {
               if (action === 'login') clearSessionEnded();
@@ -119,15 +132,27 @@ export default function Login() {
               }}
             />
           </Field>
-          <Field id="login-password" label="Password">
-            <input
-              type="password"
-              autoComplete="current-password"
-              required
-              value={password}
-              onChange={event => setPassword(event.target.value)}
-            />
-          </Field>
+          <div className="relative">
+            <Field id="login-password" label="Password">
+              <input
+                type={showPassword ? 'text' : 'password'}
+                autoComplete="current-password"
+                required
+                value={password}
+                className="pr-20"
+                onChange={event => setPassword(event.target.value)}
+              />
+            </Field>
+            <button
+              className="link-btn absolute right-4 top-8 z-10 rounded px-1 py-1 focus-visible:outline focus-visible:outline-2 focus-visible:outline-teal-2"
+              type="button"
+              aria-label={showPassword ? 'Hide password' : 'Show password'}
+              aria-pressed={showPassword}
+              onClick={() => setShowPassword(value => !value)}
+            >
+              {showPassword ? 'Hide' : 'Show'}
+            </button>
+          </div>
           {MOCK && (
             <Field id="login-role" label="Test role">
               <select value={role} onChange={event => setRole(event.target.value)}>
@@ -141,7 +166,12 @@ export default function Login() {
             {sending ? 'Signing in...' : 'Sign in'}
           </button>
           <nav className="auth-links" aria-label="Account options">
-            <Link to="/join">Join with a code</Link>
+            <Link to="/register">Create an account</Link>
+            {/* /join needs a session (the API ties the code to the signed-in
+              * account), so sending a visitor there from here just bounced back
+              * to this page. The only step forward is the account, and it
+              * carries the intent so sign-in finishes the journey at /join. */}
+            <Link to="/register" state={{ from: '/join' }}>Join with a code</Link>
             <Link to="/forgot">Forgot password</Link>
           </nav>
         </form>

@@ -25,6 +25,7 @@ from app.models.audit import AuditLog
 from app.models.identity import JoinCode, UserPhone
 from app.models.membership import MembershipStatus, SaccoMembership
 from app.models.sacco import Sacco, SaccoStatus
+from app.savings.validation import MAX_ID
 from app.security.tenant import AccessDenied, current_user
 
 SETUP_TTL = 600  # seconds the setup token stays valid
@@ -61,12 +62,18 @@ def _signed_in():
     return None
 
 
+def _body() -> dict:
+    """The JSON object sent, or {} for anything else (a list, a string, no body)."""
+    body = request.get_json(silent=True)
+    return body if isinstance(body, dict) else {}
+
+
 @auth_bp.post("/join")
 @write_limit
 def join():
     if error := _signed_in():
         return error
-    body = request.get_json(silent=True) or {}
+    body = _body()
     try:
         phone = normalize_phone(body.get("phone"))
     except ValueError:
@@ -156,7 +163,7 @@ def join():
 def join_pin():
     if error := _signed_in():
         return error
-    body = request.get_json(silent=True) or {}
+    body = _body()
     try:
         data = _serializer().loads(str(body.get("setup_token", "")), max_age=SETUP_TTL)
     except BadSignature:
@@ -193,15 +200,18 @@ def join_pin():
     return jsonify(membership_id=membership.id, status="active")
 
 
+@auth_bp.post("/sacco-login")
 @auth_bp.post("/circle-login")
 @write_limit
 def circle_login():
     if error := _signed_in():
         return error
-    body = request.get_json(silent=True) or {}
+    body = _body()
     try:
         sacco_id = int(body.get("sacco_id"))
     except (TypeError, ValueError):
+        return error_response(400, "sacco_id is required.")
+    if not 1 <= sacco_id <= MAX_ID:
         return error_response(400, "sacco_id is required.")
     membership = db.session.execute(
         select(SaccoMembership)

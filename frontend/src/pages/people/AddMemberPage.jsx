@@ -101,7 +101,7 @@ export default function AddMemberPage() {
 
         {made && (
           <div className="neo-stack tight">
-            <ErrorBanner kind="ok">Join code made for {made.phone} as {ROLE_LABEL[made.role] || made.role}.</ErrorBanner>
+            <ErrorBanner kind="ok">Join code made for {made.phone} as {ROLE_LABEL[made.title] || ROLE_LABEL[made.role] || made.role}.</ErrorBanner>
             {wasInvited && (
               <ErrorBanner kind="info">This number was already invited. A new code was made and the old one stopped working.</ErrorBanner>
             )}
@@ -167,7 +167,7 @@ export default function AddMemberPage() {
                   {(invited.data || []).map(row => (
                     <tr key={row.id}>
                       <td>{row.phone}</td>
-                      <td>{ROLE_LABEL[row.role] || row.role}</td>
+                      <td>{ROLE_LABEL[(row.roles && row.roles[0]) || row.role] || row.role}</td>
                       <td><StatusChip status="Invited" /></td>
                       <td>
                         <button

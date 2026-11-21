@@ -7,13 +7,39 @@ field name must not look like a successful update that changed nothing.
 
 from app.auth.routes import EMAIL_RE, MAX_EMAIL_LENGTH
 from app.models.membership import MembershipRole, MembershipStatus
+from app.security.permissions import LEGACY_ROLE_CODES, ROLE_NAMES
 
 CREATE_FIELDS = {"email", "role", "status"}
+# The legacy `role` values an invite may send, and the job titles the Add a
+# member page offers. Parsed here (this module is where the API's role field is
+# read) so that no route or service decides access by a role name.
+INVITE_ROLES = {
+    "sacco_admin": MembershipRole.SACCO_ADMIN,
+    "staff": MembershipRole.STAFF,
+    "member": MembershipRole.MEMBER,
+}
 UPDATE_FIELDS = {"role", "status"}
 
 
 class InvalidMember(Exception):
     """A refused body. The message is safe to show the client."""
+
+
+def parse_invite_role(raw) -> tuple[MembershipRole, str]:
+    """The (legacy role, job title) an invite asked for.
+
+    `can()` reads titles, so the title that was asked for is the one to grant.
+    Raises InvalidMember for anything the catalogue does not name.
+    """
+    value = str(raw)
+    if value == "circle_admin":
+        return MembershipRole.SACCO_ADMIN, value
+    if value in INVITE_ROLES:
+        role = INVITE_ROLES[value]
+        return role, LEGACY_ROLE_CODES[role]
+    if value in ROLE_NAMES:
+        return MembershipRole.STAFF, value
+    raise InvalidMember("A valid phone and role are required.")
 
 
 def _options(enum_class) -> str:

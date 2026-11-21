@@ -23,7 +23,7 @@ from app.models.audit import AuditLog
 from app.models.membership import MembershipStatus, SaccoMembership
 from app.models.sacco import Sacco
 from app.models.support import SupportAccessRequest, SupportScope, SupportStatus
-from app.security.permissions import is_admin_membership, is_platform_owner
+from app.security.permissions import can, is_admin_membership, is_platform_owner
 from app.security.tenant import AccessDenied, current_user
 
 MAX_HOURS = 24
@@ -175,7 +175,21 @@ def _decide(request_id: int, action: str):
     ).scalar_one_or_none()
     if row is None:
         return error_response(404, "Not found.")
-    admin = _admin_membership(user, row.sacco_id)
+    # Decided by the documented permission, so the screens that hide the
+    # buttons and the API that enforces them read the same rule.
+    if not can(user, row.sacco_id, "support.approve"):
+        db.session.rollback()
+        return error_response(
+            403,
+            "Only an active admin of this SACCO can decide or revoke support access.",
+        )
+    # The permission says who may decide; the row says who to name as the decider.
+    admin = db.session.execute(
+        select(SaccoMembership).where(
+            SaccoMembership.user_id == user.id,
+            SaccoMembership.sacco_id == row.sacco_id,
+        )
+    ).scalar_one_or_none()
     if admin is None:
         db.session.rollback()
         return error_response(
@@ -196,7 +210,7 @@ def _decide(request_id: int, action: str):
             409, f"Only an approved grant can be revoked (it is {row.status.value})."
         )
     if action == "approve":
-        hours = (request.get_json(silent=True) or {}).get("hours", DEFAULT_HOURS)
+        hours = _body().get("hours", DEFAULT_HOURS)
         if (
             isinstance(hours, bool)
             or not isinstance(hours, int)

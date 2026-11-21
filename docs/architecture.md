@@ -62,8 +62,10 @@ The application uses React, Flask and PostgreSQL.
 
 ## 6. Current State
 
-- Moves 1 to 4 are done: Flask app factory, schema and migrations (0001 to 0007), auth, SACCOs and members, savings, the ledger and reversals, admin reports, the audit log, the seed script and CI.
-- Loans are not built. They wait for the interest decision (see section 8).
+- Moves 1 to 6 are done: Flask app factory, schema and migrations (0001 to 0021), auth, SACCOs and members, roles and permissions, savings, the ledger and reversals, loans (interest-free), admin reports, the audit log, consent-based support access, the seed script and CI.
+- Loan interest is release 2 and still has open decisions (see `docs/parked.md`).
+- Still open: production deployment, penetration test (GitHub issues #92, #93).
+- `docs/api.md` and `docs/test-matrix.md` are generated; `docs/security-checklist.md` lists every control and its status.
 - The React frontend is still the Vite starter. The API is ready for it; start with [`frontend-handoff.md`](frontend-handoff.md).
 
 ## 7. Decisions

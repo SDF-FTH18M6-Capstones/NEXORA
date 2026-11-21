@@ -50,6 +50,24 @@ def send_link_email(to: str, token: str, purpose: str = "verify") -> None:
         smtp.send_message(message)
 
 
+def send_text_email(to: str, subject: str, body: str) -> None:
+    """Send a plain message: logged on the log backend, delivered on smtp."""
+    config = current_app.config
+    if config["MAIL_BACKEND"] == "log":
+        log.info("email to %s (%s):\n%s", to, subject, body)
+        return
+    message = EmailMessage()
+    message["Subject"] = subject
+    message["From"] = config["MAIL_FROM"]
+    message["To"] = to
+    message.set_content(body)
+    with smtplib.SMTP(config["MAIL_SERVER"], config["MAIL_PORT"], timeout=10) as smtp:
+        smtp.starttls()
+        if config["MAIL_USERNAME"]:
+            smtp.login(config["MAIL_USERNAME"], config["MAIL_PASSWORD"])
+        smtp.send_message(message)
+
+
 def _send_logged(to: str, token: str, purpose: str) -> None:
     try:
         send_link_email(to, token, purpose)

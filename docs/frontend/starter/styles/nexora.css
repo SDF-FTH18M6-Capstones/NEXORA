@@ -155,7 +155,7 @@
 
   /* ---------- landing ---------- */
   #landing.page.on { display: flow-root; padding-top: .75rem; }
-  .lnav { position: sticky; top: max(.75rem, env(safe-area-inset-top, 0px)); z-index: 20; margin: 0 auto; width: min(74rem, calc(100% - 2rem)); display: flex; align-items: center; gap: 1rem; padding: .6rem .8rem .6rem 1.2rem; border-radius: 999px; }
+  .lnav { position: sticky; top: max(.75rem, env(safe-area-inset-top, 0px)); z-index: 20; margin: 0 auto; width: min(100rem, calc(100% - 2rem)); display: flex; align-items: center; gap: 1rem; padding: .6rem .8rem .6rem 1.2rem; border-radius: 999px; }
   .lnav-links { display: flex; gap: .25rem; margin-left: auto; align-items: center; }
   .lnav-links button { background: none; border: 0; padding: .5rem .8rem; border-radius: 999px; font-weight: 500; color: var(--muted); }
   .lnav-links button:hover { color: var(--teal); background: rgba(255, 255, 255, .6); }
@@ -184,19 +184,20 @@
   .step-n { font-family: var(--font-head); font-size: 2.2rem; color: var(--terra); line-height: 1; }
   .role h3 { font-size: 1.15rem; margin-bottom: .4rem; }
   .role p { font-size: .88rem; color: var(--muted); }
-  .cta-band { text-align: center; padding-block: clamp(2rem, 5vw, 3.5rem); }
-  .cta-band h2 { font-size: clamp(1.9rem, 4vw, 2.9rem); margin-bottom: .8rem; }
-  .cta-band .cta { justify-content: center; }
   footer.lfoot { padding-block: 2rem 3rem; text-align: center; color: var(--muted); font-size: .85rem; }
 
   /* ---------- login / join ---------- */
   .auth { min-height: 100vh; display: grid; place-items: center; padding: max(1.25rem, env(safe-area-inset-top, 0px)) var(--gx-r) max(1.25rem, env(safe-area-inset-bottom, 0px)) var(--gx-l); position: relative; overflow: hidden; }
-  .auth-inner { width: min(60rem, 100%); display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, .9fr); gap: clamp(1.5rem, 4vw, 3rem); align-items: center; position: relative; z-index: 2; }
-  .auth-copy h1 { font-size: clamp(2.6rem, 6vw, 4.8rem); line-height: 1; margin: 1rem 0; }
+  /* A laptop screen shows the sign-in pages as a wide spread: the copy gets room
+     to breathe and the card stops looking like a phone card on a desktop. */
+  .auth-inner { width: min(78rem, 100%); display: grid; grid-template-columns: minmax(0, 1fr) minmax(22rem, 30rem); gap: clamp(2rem, 5vw, 5rem); align-items: center; position: relative; z-index: 2; }
+  .auth-copy h1 { font-size: clamp(2.6rem, 5.2vw, 5.6rem); line-height: .98; margin: 1rem 0; }
   .auth-copy h1 em { font-style: italic; color: var(--terra); }
-  .auth-copy p { color: var(--muted); max-width: 28rem; }
-  .auth-card { padding: clamp(1.4rem, 3vw, 2.1rem); }
-  .auth-card h2 { font-size: 1.7rem; margin: .3rem 0 .2rem; }
+  .auth-copy p { color: var(--muted); max-width: 32rem; font-size: clamp(1rem, .9vw + .7rem, 1.2rem); }
+  /* The card keeps a form's width even when the spread stacks under 64rem,
+     where it would otherwise stretch its fields across the whole screen. */
+  .auth-card { padding: clamp(1.5rem, 2.2vw, 2.8rem); width: 100%; max-width: 30rem; margin-inline: auto; }
+  .auth-card h2 { font-size: clamp(1.7rem, 1vw + 1.4rem, 2.1rem); margin: .3rem 0 .2rem; }
   .auth-card .btn { margin-top: 1.4rem; width: 100%; min-height: 3.1rem; }
   .pin-row { display: flex; gap: .6rem; }
   .pin-row input { text-align: center; font-size: 1.3rem; padding: 0; }
@@ -267,7 +268,7 @@
   .seg button { border: 0; background: transparent; min-height: 2.1rem; padding: 0 1rem; border-radius: 999px; font-weight: 600; color: var(--muted); transition: all .35s var(--ease); }
   .seg button[aria-selected="true"] { background: #fff; color: var(--teal); box-shadow: 0 .4rem 1rem -.5rem rgba(15, 76, 71, .6); }
   .spacer { flex: 1; }
-  .grid { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: var(--gap); }
+  .grid12 { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: var(--gap); }
   .s12 { grid-column: span 12; } .s8 { grid-column: span 8; } .s7 { grid-column: span 7; } .s6 { grid-column: span 6; }
   .s5 { grid-column: span 5; } .s4 { grid-column: span 4; } .s3 { grid-column: span 3; }
   .card-head { display: flex; justify-content: space-between; align-items: flex-start; gap: .75rem; margin-bottom: .9rem; flex-wrap: wrap; }

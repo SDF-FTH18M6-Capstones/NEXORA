@@ -2,7 +2,7 @@
 
 from dataclasses import asdict
 
-from flask import jsonify
+from flask import jsonify, request
 from sqlalchemy import select
 
 from app import loans_bp
@@ -10,7 +10,7 @@ from app.auth.limits import money_limit, read_limit, write_limit
 from app.errors import error_response
 from app.extensions import db
 from app.loans import service
-from app.models.loan import Loan, LoanDecision, LoanDecisionKind
+from app.models.loan import Loan, LoanDecision, LoanDecisionKind, LoanStatus
 from app.savings.history import page_params
 from app.savings.routes import _body, signed_in
 from app.savings.validation import (
@@ -48,6 +48,13 @@ def create_loan(user_id: int, sacco_id: int):
 @loans_bp.get("/saccos/<int:sacco_id>")
 @read_limit
 def list_loans(sacco_id: int):
+    raw_status = request.args.get("status")
+    wanted = None
+    if raw_status is not None:
+        try:
+            wanted = LoanStatus(raw_status)
+        except ValueError:
+            return error_response(400, "Unknown status.")
     try:
         user = current_user()
         access = sacco_access(user, sacco_id)
@@ -58,6 +65,8 @@ def list_loans(sacco_id: int):
         return error_response(400, str(exc))
 
     stmt = select(Loan).where(Loan.sacco_id == sacco_id)
+    if wanted is not None:
+        stmt = stmt.where(Loan.status == wanted)
     if not can(user, sacco_id, "loan.view"):
         if access.membership is None:  # a platform owner without a loans grant
             return error_response(403, "You are not allowed to do this.")

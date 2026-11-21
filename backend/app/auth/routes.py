@@ -1,8 +1,9 @@
 """Auth endpoints: register, login, refresh, logout, change-password, logout-all."""
 
+import json
 import re
 
-from flask import g, jsonify, request
+from flask import current_app, g, jsonify, request
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError, OperationalError
 
@@ -217,7 +218,28 @@ def login():
     # SACCO's own endpoints answer 423.
     refresh_token = create_refresh_token(user.id)
     db.session.commit()
-    return _tokens(user.id, refresh_token)
+    # Who just signed in, so a client (or Thunder Client) shows more than tokens.
+    # The same shape as GET /members/me, plus the platform-owner flag.
+    from app.members.self_service import get_profile  # imports this module
+
+    profile = get_profile(user.id)
+    # Who signed in first, the tokens last: this is read by people in a REST client.
+    who = {
+        "id": profile["id"],
+        "email": profile["email"],
+        "is_platform_owner": user.is_platform_owner,
+        "memberships": profile["memberships"],
+        "created_at": profile["created_at"],
+    }
+    tokens = _tokens(user.id, refresh_token).get_json()
+    body = {
+        "user": who,
+        "token_type": tokens["token_type"],
+        "access_token": tokens["access_token"],
+        "refresh_token": tokens["refresh_token"],
+    }
+    # json.dumps keeps this order; jsonify would sort the keys alphabetically.
+    return current_app.response_class(json.dumps(body), mimetype="application/json")
 
 
 def _with_refresh_token(action):

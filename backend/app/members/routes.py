@@ -17,20 +17,27 @@ from app.auth.routes import _body
 from app.errors import error_response
 from app.extensions import db
 from app.members import self_service
-from app.members.schemas import InvalidMember, parse_create_member, parse_update_member
+from app.members.schemas import (
+    InvalidMember,
+    parse_create_member,
+    parse_invite_role,
+    parse_update_member,
+)
 from app.models.access import MembershipRoleLink, Role
 from app.models.audit import AuditLog
 from app.models.loan import SaccoSettings
-from app.models.membership import MembershipRole, MembershipStatus, SaccoMembership
+from app.models.membership import MembershipStatus, SaccoMembership
 from app.models.sacco import Sacco
 from app.models.user import User
 from app.security.permissions import (
     LEGACY_ROLE_CODES,
+    OWNER_PLATFORM,
     _role_codes,
     can,
     is_admin_membership,
     is_admin_role,
     is_platform_owner,
+    permissions_for,
 )
 from app.security.tenant import (
     AccessDenied,
@@ -124,6 +131,44 @@ def patch_me():
         return error_response(exc.status, exc.message)
 
 
+@members_bp.get("/me/permissions")
+@read_limit
+def my_permissions():
+    """The caller's job titles and permissions in one SACCO.
+
+    The screens decide by permission name, never by role name, so this is where
+    the names come from. With no `sacco_id`, a platform owner gets the platform
+    permissions; everyone else must name a SACCO (400). Not being in the SACCO
+    is 404, like every other tenant check.
+    """
+    user, error = _me_user()
+    if error:
+        return error
+    raw = request.args.get("sacco_id")
+    if raw is None:
+        if not is_platform_owner(user):
+            return error_response(400, "sacco_id is required.")
+        return jsonify(roles=[], permissions=sorted(OWNER_PLATFORM))
+    try:
+        sacco_id = int(raw)
+    except (TypeError, ValueError):
+        return error_response(400, "sacco_id must be a whole number.")
+    sacco = db.session.get(Sacco, sacco_id)
+    if sacco is None:
+        return error_response(404, "Not found.")
+    membership = db.session.execute(
+        select(SaccoMembership).where(
+            SaccoMembership.user_id == user.id, SaccoMembership.sacco_id == sacco_id
+        )
+    ).scalar_one_or_none()
+    if membership is None and not is_platform_owner(user):
+        return error_response(404, "Not found.")
+    return jsonify(
+        roles=sorted(_role_codes(membership)) if membership is not None else [],
+        permissions=sorted(permissions_for(user, sacco)),
+    )
+
+
 # ---------------------------------------------------------------------------
 # One SACCO's members (Move 2, Neo). Platform owner or that SACCO's admin only.
 # The tenant guard answers 401/404/403/423, so another SACCO is never revealed.
@@ -139,6 +184,7 @@ def _member_json(membership: SaccoMembership, email: str | None) -> dict:
         "email": email,
         "phone": membership.phone,
         "role": membership.role.value,
+        "roles": sorted(_role_codes(membership)),
         "status": membership.status.value,
         "created_at": membership.created_at.isoformat(),
     }
@@ -211,8 +257,8 @@ def _invite_member(sacco_id):
     body = request.get_json(silent=True) or {}
     try:
         phone = normalize_phone(body.get("phone"))
-        role = MembershipRole(body.get("role", "member"))
-    except ValueError:
+        role, title = parse_invite_role(body.get("role", "member"))
+    except (TypeError, ValueError, InvalidMember):
         return error_response(400, "A valid phone and role are required.")
     if is_admin_role(role) and not can(g.access.user, sacco_id, "admin.manage"):
         return error_response(
@@ -241,7 +287,7 @@ def _invite_member(sacco_id):
         current_app.config["SECRET_KEY"],
         ttl=_code_ttl(sacco_id),
     )
-    _grant_default_title(membership)
+    _grant_default_title(membership, title)
     _audit(membership, "member.invite")
     db.session.commit()
     return (
@@ -249,6 +295,7 @@ def _invite_member(sacco_id):
             id=membership.id,
             phone=phone,
             role=role.value,
+            title=title,
             status="invited",
             join_code=code,
             expires_at=row.expires_at.isoformat(),
@@ -327,11 +374,13 @@ def _reset_titles(membership: SaccoMembership) -> None:
     _grant_default_title(membership)
 
 
-def _grant_default_title(membership: SaccoMembership) -> None:
-    """Store the job title the role implies (admin -> circle_admin, staff ->
-    secretary, member -> member), so `can()` reads a title row for every
-    membership the API creates or changes, never the role column."""
-    code = LEGACY_ROLE_CODES[membership.role]
+def _grant_default_title(membership: SaccoMembership, title: str | None = None) -> None:
+    """Store the job title the invite asked for (or the one the role implies:
+    admin -> circle_admin, staff -> secretary, member -> member), so `can()`
+    reads a title row for every membership the API creates or changes, never the
+    role column.
+    """
+    code = title or LEGACY_ROLE_CODES[membership.role]
     role_id = db.session.execute(
         select(Role.id).where(Role.code == code)
     ).scalar_one_or_none()

@@ -1,10 +1,11 @@
+import '../../styles/neo.css';
 import { useState } from 'react';
 import { useSession } from '../../lib/session.jsx';
 import { useAsync } from '../../lib/useAsync.js';
 import { getMember, setRoles, updateMember, addMember } from '../../api/people.js';
 import ErrorBanner from '../../components/ErrorBanner.jsx';
 import StatusChip from '../../components/StatusChip.jsx';
-import { Body } from './shared.jsx';
+import { Body, Confirm } from './shared.jsx';
 import { ROLE_LABEL, when } from './data.js';
 import { describe } from '../../lib/errors.js';
 
@@ -19,6 +20,7 @@ export default function MemberProfile({ membershipId, onBack }) {
   const [picked, setPicked] = useState(null);
   const [notice, setNotice] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [askingOff, setAskingOff] = useState(false);
 
   const roles = picked ?? (data ? data.roles : []);
   const toggle = code => setPicked(
@@ -105,8 +107,7 @@ export default function MemberProfile({ membershipId, onBack }) {
                       className="btn small warn"
                       disabled={busy}
                       onClick={() => {
-                        if (!confirm('Deactivate this member? They lose access to this SACCO.')) return;
-                        run(() => updateMember(saccoId, data.id, { status: 'inactive' }), 'Member deactivated');
+                        setAskingOff(true);
                       }}
                     >
                       Deactivate
@@ -121,6 +122,19 @@ export default function MemberProfile({ membershipId, onBack }) {
                       Activate
                     </button>
                   ) : null}
+                  {askingOff && (
+                    <Confirm
+                      question="Deactivate this member? They lose access to this SACCO."
+                      yes="Deactivate"
+                      no="Keep them active"
+                      busy={busy}
+                      onNo={() => setAskingOff(false)}
+                      onYes={() => {
+                        setAskingOff(false);
+                        run(() => updateMember(saccoId, data.id, { status: 'inactive' }), 'Member deactivated');
+                      }}
+                    />
+                  )}
                   {data.status === 'invited' && (
                     <button
                       type="button"
