@@ -51,6 +51,18 @@ function listFromResponse(response, key) {
   return list;
 }
 
+/* The login answer lists each membership with the legacy role (sacco_admin | staff | member).
+ * The job titles (circle_admin, finance_officer, loans_officer, secretary, member) come from
+ * GET /members/me/saccos as `roles`. Use them when they are there, so staff are not "unsupported". */
+function withJobTitles(memberships, saccos) {
+  return memberships.map(item => {
+    const sacco = saccos.find(entry => String(entry.id) === String(item.sacco_id));
+    return sacco && Array.isArray(sacco.roles) && sacco.roles.length
+      ? { ...item, roles: sacco.roles }
+      : item;
+  });
+}
+
 function permissionsForRoles(roleKeys) {
   return [...new Set(roleKeys.flatMap(role => ROLES[role].perms))];
 }
@@ -87,8 +99,9 @@ async function loadPermissions(saccoId, roleKeys) {
 }
 
 async function buildSession(user, saccos, selectedSaccoId = null) {
-  const memberships = Array.isArray(user.memberships) ? user.memberships : [];
-  const accountSaccos = attachMembershipStatus(Array.isArray(saccos) ? saccos : [], memberships);
+  const saccoList = Array.isArray(saccos) ? saccos : [];
+  const memberships = withJobTitles(Array.isArray(user.memberships) ? user.memberships : [], saccoList);
+  const accountSaccos = attachMembershipStatus(saccoList, memberships);
   const selectedSacco = selectedSaccoId == null
     ? null
     : accountSaccos.find(item => String(item.id) === String(selectedSaccoId)) || null;
