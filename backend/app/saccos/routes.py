@@ -98,6 +98,15 @@ def create_sacco():
     if not CURRENCY_RE.fullmatch(currency):
         return error_response(400, "Currency must be a 3-letter code such as KES.")
 
+    rule_values = None
+    if "rules" in data:
+        from app.saccos import rules as circle_rules
+        from app.saccos.rules_routes import invalid
+
+        rule_values, rule_errors = circle_rules.validate_rules(data["rules"])
+        if rule_errors:
+            return invalid(rule_errors)
+
     sacco = Sacco(name=name, currency=currency)
     db.session.add(sacco)
     try:
@@ -106,6 +115,9 @@ def create_sacco():
         db.session.rollback()
         return error_response(409, DUPLICATE_NAME)
     _audit(sacco, g.user.id, "sacco.create")
+    if rule_values is not None:
+        row = circle_rules.publish_rules(sacco.id, rule_values, g.user.id)
+        _audit(sacco, g.user.id, "rules.publish", f"rules:{row.id} v{row.version}")
     db.session.commit()
     return jsonify(_sacco_json(sacco)), 201
 

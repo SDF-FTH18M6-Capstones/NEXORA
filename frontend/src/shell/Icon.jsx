@@ -16,6 +16,7 @@ const PATHS = {
   'add-member': 'M10 11a4 4 0 100-8 4 4 0 000 8zM3 21a7 7 0 0114 0M19 8v6M16 11h6',
   reports: 'M5 20V10M12 20V4M19 20v-7',
   access: 'M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z',
+  rules: 'M7 3h8l4 4v14H7zM15 3v4h4M10 12h6M10 16h6',
   settings: 'M4 7h10M18 7h2M4 17h2M10 17h10M14 5v4M8 15v4',
   'my-settings': 'M12 21a9 9 0 100-18 9 9 0 000 18zM12 13a3 3 0 100-6 3 3 0 000 6zM6.5 18.5a6 6 0 0111 0',
   search: 'M11 18a7 7 0 100-14 7 7 0 000 14zM21 21l-5-5',

@@ -23,7 +23,7 @@ export async function getSacco(saccoId) {
   return http.get(`/saccos/${saccoId}`);
 }
 
-export async function createSacco({ name, currency }) {
+export async function createSacco({ name, currency, rules }) {
   if (MOCK) {
     await mockDelay();
     if (!String(name).trim()) throw new ApiError(400, 'validation_error', 'A name is required.');
@@ -41,7 +41,7 @@ export async function createSacco({ name, currency }) {
     saccos = [...saccos, row];
     return row;
   }
-  return http.post('/saccos', { body: { name, currency } });
+  return http.post('/saccos', { body: rules ? { name, currency, rules } : { name, currency } });
 }
 
 export async function setSaccoActive(saccoId, active) {

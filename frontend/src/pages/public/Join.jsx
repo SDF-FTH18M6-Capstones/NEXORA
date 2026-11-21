@@ -3,9 +3,11 @@ import { Link } from 'react-router-dom';
 import ErrorBanner from '../../components/ErrorBanner.jsx';
 import ErrorPage from '../../components/ErrorPage.jsx';
 import Field from '../../components/Field.jsx';
+import RulesView from '../../components/RulesView.jsx';
 import { describe } from '../../lib/errors.js';
 import { useSession } from '../../lib/session.jsx';
 import { joinPinRequest, joinRequest } from '../../api/auth.js';
+import { joinAcceptRules, joinRules } from '../../api/rules.js';
 
 function messageFor(error) {
   const serverMessage = String(error && error.message || '');
@@ -47,6 +49,8 @@ export default function Join() {
   const [phone, setPhone] = useState('');
   const [code, setCode] = useState('');
   const [setup, setSetup] = useState(null);
+  const [rules, setRules] = useState(null);
+  const [accepted, setAccepted] = useState(false);
   const [pin, setPin] = useState('');
   const [repeatPin, setRepeatPin] = useState('');
   const [error, setError] = useState('');
@@ -75,6 +79,8 @@ export default function Join() {
     try {
       const result = await joinRequest(phone.trim(), code);
       setSetup(result);
+      setRules(await joinRules(result.setup_token));
+      setAccepted(false);
       setStep(2);
       setCode('');
     } catch (failure) {
@@ -95,6 +101,19 @@ export default function Join() {
           setNoticeHasEnterLink(true);
         }
       }
+    } finally {
+      setSending(false);
+    }
+  }
+
+  async function acceptRulesStep() {
+    setError('');
+    setSending(true);
+    try {
+      await joinAcceptRules(setup.setup_token, rules.version);
+      setAccepted(true);
+    } catch (failure) {
+      setError(describe(failure).text);
     } finally {
       setSending(false);
     }
@@ -169,6 +188,9 @@ export default function Join() {
     );
   }
 
+  const needsRules = step === 2 && rules && !accepted;
+  const total = rules ? 3 : 2;
+
   return (
     /* Same spread as sign in and create an account: the explanation on the left,
      * the card on the right, instead of one phone-width column at the top of a
@@ -178,16 +200,18 @@ export default function Join() {
       <div className="flex w-full max-w-[26rem] shrink-0 flex-col gap-3">
         <div className="eyebrow">Join a circle</div>
         <h1 className="font-serif text-[clamp(2rem,2.4vw,3rem)] leading-[1.05]">
-          {step === 1 ? 'Join with a code' : 'Set your PIN'}
+          {step === 1 ? 'Join with a code' : needsRules ? 'Read the circle rules' : 'Set your PIN'}
         </h1>
         <p className="text-muted">
           {step === 1
             ? 'Use the phone number your SACCO admin added and the 6-digit code they gave you.'
-            : 'Choose a 4-digit PIN for this circle.'}
+            : needsRules
+              ? 'Every fee, fine and rule is below. You join only after you accept them.'
+              : 'Choose a 4-digit PIN for this circle.'}
         </p>
       </div>
       <section className="glass flex w-full flex-col gap-3 xl:max-w-[30rem]">
-        <div className="eyebrow">Step {step} of 2</div>
+        <div className="eyebrow">Step {step === 1 ? 1 : needsRules ? 2 : total} of {total}</div>
         {notice && (
           <ErrorBanner kind="info">
             {notice}
@@ -236,6 +260,14 @@ export default function Join() {
               {sending ? 'Checking code...' : 'Continue'}
             </button>
           </form>
+        ) : needsRules ? (
+          <div className="flex flex-col gap-4">
+            <RulesView rules={rules} />
+            {error && <ErrorBanner>{error}</ErrorBanner>}
+            <button type="button" className="btn" disabled={sending} onClick={acceptRulesStep}>
+              {sending ? 'Saving...' : 'I have read all the rules and accept them'}
+            </button>
+          </div>
         ) : (
           <form className="flex flex-col gap-1" noValidate onSubmit={submitPin}>
             <Field id="join-pin" label="Choose a 4-digit PIN" error={error}>
