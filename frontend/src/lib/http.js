@@ -10,7 +10,7 @@
  *   - on 401: refreshes the token ONCE (one refresh at a time, shared by every waiting request), then retries; if the refresh fails the
  *     session is over: tokens are cleared and the handler set with onSessionEnded() runs
  *   - turns every failure into an ApiError { status, code, message, retryAfter } (see lib/errors.js for what to show)
- *   - a network failure becomes ApiError { status: 0, code: 'offline' }
+ *   - a failed fetch becomes `offline` only when the browser reports no network; otherwise it reports an unreachable API
  * Rules from docs/frontend-handoff.md that this file already follows: the refresh token rotates (always keep the newest), and a refresh answered 401 or 423 ends the session.
  *
  * MOCK MODE: run with VITE_MOCK=1 (see the Common setup) and every api module returns its own sample data and never calls http.
@@ -60,7 +60,16 @@ async function send(method, path, { body, params, auth = true, token } = {}) {
   if (t) headers.Authorization = `Bearer ${t}`;
   let res;
   try { res = await fetch(url, { method, headers, body: body === undefined ? undefined : JSON.stringify(body) }); }
-  catch { throw new ApiError(0, 'offline', 'You are offline.'); }
+  catch {
+    const offline = typeof navigator !== 'undefined' && navigator.onLine === false;
+    throw new ApiError(
+      0,
+      offline ? 'offline' : 'unavailable',
+      offline
+        ? 'You are offline.'
+        : 'NEXORA could not reach its service. Check that the API is running and try again.',
+    );
+  }
   if (res.status === 204) return null;
   let json = null; try { json = await res.json(); } catch { /* no body */ }
   if (res.ok) return json;
