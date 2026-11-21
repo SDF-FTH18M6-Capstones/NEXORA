@@ -14,6 +14,12 @@
 export function describe(err, { mode = 'action', context = '' } = {}) {
   const s = err && err.status != null ? err.status : -1;
   const asPage = mode === 'page';
+  if (s === 0 && err.code === 'unavailable') {
+    return {
+      page: asPage ? 'unavailable' : null,
+      text: err.message || 'NEXORA could not reach its service. Check that the API is running and try again.',
+    };
+  }
   if (s === 0) return { page: asPage ? 'offline' : null, text: 'You are offline. Check your connection and try again.' };
   if (s === 400) return { page: null, text: err.message };
   if (s === 401) {

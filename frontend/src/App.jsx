@@ -122,6 +122,7 @@ function SessionProvider({ children }) {
   const [toastMessage, setToastMessage] = useState(null);
   const [panelRequest, setPanelRequest] = useState('');
   const [pageKey, setPageKey] = useState(0);
+  const [restoreAttempt, setRestoreAttempt] = useState(0);
   const [enteredSaccoId, setEnteredSaccoId] = useState(null);
   const openRef = useRef('');
   const toastTimer = useRef(null);
@@ -273,7 +274,16 @@ function SessionProvider({ children }) {
   const retryPage = useCallback(() => {
     setPageKey(key => key + 1);
   }, []);
+  const retryRestore = useCallback(() => {
+    setRestoreError(null);
+    setReady(false);
+    setRestoreAttempt(attempt => attempt + 1);
+  }, []);
   const onErrorAction = useCallback(action => {
+    if (restoreError && action !== 'retry') {
+      setRestoreError(null);
+      setReady(true);
+    }
     const startPage = '/' + homeFor(session ? session.perms : []);
     if (action === 'home') {
       navigate(startPage);
@@ -289,9 +299,10 @@ function SessionProvider({ children }) {
     } else if (action === 'account') {
       navigate('/account');
     } else if (action === 'retry') {
-      retryPage();
+      if (restoreError) retryRestore();
+      else retryPage();
     }
-  }, [navigate, retryPage, session]);
+  }, [navigate, retryPage, retryRestore, restoreError, session]);
 
   useEffect(() => {
     let active = true;
@@ -328,7 +339,13 @@ function SessionProvider({ children }) {
       onSessionEnded(() => {});
       window.clearTimeout(toastTimer.current);
     };
-  }, []);
+  }, [restoreAttempt]);
+
+  useEffect(() => {
+    if (!restoreError) return undefined;
+    window.addEventListener('online', retryRestore);
+    return () => window.removeEventListener('online', retryRestore);
+  }, [restoreError, retryRestore]);
 
   const can = useCallback(permission => (
     session ? canPermission(session.perms, permission) : false
