@@ -1,5 +1,8 @@
 import { useEffect, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
+import AuthFx from './AuthFx.jsx';
+import AuthScene from './AuthScene.jsx';
+import EyeIcon from './EyeIcon.jsx';
 import ErrorBanner from '../../components/ErrorBanner.jsx';
 import ErrorPage from '../../components/ErrorPage.jsx';
 import Field from '../../components/Field.jsx';
@@ -78,10 +81,12 @@ export default function Login() {
 
   return (
     <main className="auth">
+      <AuthFx effect="waves" />
       <div className="auth-inner">
         <div className="auth-copy">
           <h1 className="serif">Welcome <em>back.</em></h1>
           <p>Sign in to continue to your SACCO.</p>
+          <AuthScene />
         </div>
         <form className="glass auth-card" onSubmit={submit}>
           <div className="eyebrow">Sign in</div>
@@ -139,18 +144,18 @@ export default function Login() {
                 autoComplete="current-password"
                 required
                 value={password}
-                className="pr-20"
+                className="pr-12"
                 onChange={event => setPassword(event.target.value)}
               />
             </Field>
             <button
-              className="link-btn absolute right-4 top-8 z-10 rounded px-1 py-1 focus-visible:outline focus-visible:outline-2 focus-visible:outline-teal-2"
+              className="pw-eye absolute right-2 top-6 z-10 grid h-12 w-10 place-items-center rounded-full"
               type="button"
               aria-label={showPassword ? 'Hide password' : 'Show password'}
               aria-pressed={showPassword}
               onClick={() => setShowPassword(value => !value)}
             >
-              {showPassword ? 'Hide' : 'Show'}
+              <EyeIcon off={showPassword} />
             </button>
           </div>
           {MOCK && (

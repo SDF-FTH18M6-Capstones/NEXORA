@@ -5,6 +5,7 @@ import Field from '../../components/Field.jsx';
 import { describe } from '../../lib/errors.js';
 import { useSession } from '../../lib/session.jsx';
 import { resetPasswordRequest } from '../../api/auth.js';
+import EyeIcon from './EyeIcon.jsx';
 import AuthFrame from './AuthFrame.jsx';
 
 export default function Reset() {
@@ -50,6 +51,7 @@ export default function Reset() {
   return (
     <AuthFrame
       eyebrow="Reset password"
+      effect="sweep"
       heading="Choose a new password"
       intro="Use at least 8 characters."
       onSubmit={submit}
@@ -65,18 +67,18 @@ export default function Reset() {
             type={showPassword ? 'text' : 'password'}
             autoComplete="new-password"
             value={password}
-            className="pr-20"
+            className="pr-12"
             onChange={event => setPassword(event.target.value)}
           />
         </Field>
         <button
-          className="link-btn absolute right-4 top-8 z-10 rounded px-1 py-1 focus-visible:outline focus-visible:outline-2 focus-visible:outline-teal-2"
+          className="pw-eye absolute right-2 top-6 z-10 grid h-12 w-10 place-items-center rounded-full"
           type="button"
           aria-label={showPassword ? 'Hide password' : 'Show password'}
           aria-pressed={showPassword}
           onClick={() => setShowPassword(value => !value)}
         >
-          {showPassword ? 'Hide' : 'Show'}
+          <EyeIcon off={showPassword} />
         </button>
       </div>
       <div className="relative">
@@ -85,18 +87,18 @@ export default function Reset() {
             type={showAgain ? 'text' : 'password'}
             autoComplete="new-password"
             value={again}
-            className="pr-20"
+            className="pr-12"
             onChange={event => setAgain(event.target.value)}
           />
         </Field>
         <button
-          className="link-btn absolute right-4 top-8 z-10 rounded px-1 py-1 focus-visible:outline focus-visible:outline-2 focus-visible:outline-teal-2"
+          className="pw-eye absolute right-2 top-6 z-10 grid h-12 w-10 place-items-center rounded-full"
           type="button"
           aria-label={showAgain ? 'Hide password' : 'Show password'}
           aria-pressed={showAgain}
           onClick={() => setShowAgain(value => !value)}
         >
-          {showAgain ? 'Hide' : 'Show'}
+          <EyeIcon off={showAgain} />
         </button>
       </div>
       <button className="btn" type="submit" disabled={sending}>

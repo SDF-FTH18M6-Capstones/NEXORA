@@ -136,11 +136,15 @@ async function buildSession(user, saccos, selectedSaccoId = null) {
     ? null
     : accountSaccos.find(item => String(item.id) === String(saccoId)) || null;
   const fallbackRoles = isPlatform ? ['platform'] : membership ? roleKeys : [];
-  const perms = MOCK || isSuspended(sacco)
+  const loadedPerms = MOCK || isSuspended(sacco)
     ? permissionsForRoles(fallbackRoles)
     : fallbackRoles.length
       ? await loadPermissions(saccoId, fallbackRoles)
       : [];
+  // The API names no "platform" permission; the menu and route guards key on it.
+  const perms = isPlatform && !loadedPerms.includes('platform')
+    ? [...loadedPerms, 'platform']
+    : loadedPerms;
 
   return {
     user: toSessionUser(user),
@@ -155,8 +159,28 @@ async function buildSession(user, saccos, selectedSaccoId = null) {
   };
 }
 
+// GET /members/me hides is_platform_owner on purpose. Without sacco_id the
+// permissions endpoint answers 200 only to a platform owner and 400 to everyone else.
+async function probePlatformOwner() {
+  try {
+    await http.get('/members/me/permissions');
+    return true;
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 400) return false;
+    throw error;
+  }
+}
+
 async function loadCurrentSession(user = null) {
-  const currentUser = user || await http.get('/members/me');
+  let currentUser = user;
+  if (!currentUser) {
+    currentUser = await http.get('/members/me');
+    // Only an account with no membership can be a bare platform owner; probing
+    // everyone else would be a failing request on every page load.
+    if (!currentUser.memberships?.length && await probePlatformOwner()) {
+      currentUser = { ...currentUser, is_platform_owner: true };
+    }
+  }
   const saccosResponse = await http.get('/members/me/saccos');
   return buildSession(currentUser, listFromResponse(saccosResponse, 'saccos'));
 }
