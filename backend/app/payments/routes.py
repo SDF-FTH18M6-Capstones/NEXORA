@@ -28,6 +28,7 @@ from app.payments import daraja
 from app.security.permissions import can
 from app.security.tenant import permission_scoped
 
+STALE_MSG = "M-Pesa did not answer in time."
 STALE = timedelta(minutes=15)  # a push with no answer after this has failed
 MAX_PENDING = 3  # prompts a member may have waiting at once
 MAX_MINOR = 15_000_000  # KES 150,000, under M-Pesa's per-transaction limit
@@ -44,6 +45,11 @@ def _feature(view):
         return view(*args, **kwargs)
 
     return wrapper
+
+
+def _text(value, limit: int) -> str:
+    """Safe for the database: no NUL or lone surrogate, cut to `limit`."""
+    return str(value).encode("utf-8", "ignore").decode().replace("\x00", "")[:limit]
 
 
 def _dict(value) -> dict:
@@ -144,7 +150,7 @@ def get_stk_push(sacco_id, push_id):
         db.session.execute(
             update(StkPush)
             .where(StkPush.id == row.id, StkPush.status == "pending")
-            .values(status="failed", result_desc="M-Pesa did not answer in time.")
+            .values(status="failed", result_desc=STALE_MSG)
         )
         db.session.commit()
         db.session.refresh(row)
@@ -165,16 +171,19 @@ def stk_callback(token):
         .where(StkPush.checkout_request_id == str(data.get("CheckoutRequestID")))
         .with_for_update()
     ).scalar_one_or_none()
-    if row is None or row.status != "pending":
+    # A push the 15-minute rule closed may still be answered; any other answered
+    # or unknown push is acknowledged and left alone.
+    if row is None or (row.status != "pending" and row.result_desc != STALE_MSG):
         db.session.rollback()
-        return jsonify(ACK)  # unknown or already answered: nothing to change
+        return jsonify(ACK)
     meta = _dict(data.get("CallbackMetadata")).get("Item")
     items = {
-        i.get("Name"): i.get("Value")
+        i["Name"]: i.get("Value")
         for i in (meta if isinstance(meta, list) else [])
-        if isinstance(i, dict)
+        if isinstance(i, dict) and isinstance(i.get("Name"), str)
     }
-    paid = data.get("ResultCode") == 0
+    code = data.get("ResultCode")
+    paid = type(code) is int and code == 0
     sent = items.get("Amount")
     if paid and (
         isinstance(sent, bool)
@@ -183,9 +192,9 @@ def stk_callback(token):
     ):
         paid, data["ResultDesc"] = False, "Paid amount did not match the request."
     row.status = "succeeded" if paid else "failed"
-    row.result_desc = str(data.get("ResultDesc") or "")[:255]
+    row.result_desc = _text(data.get("ResultDesc") or "", 255)
     receipt = items.get("MpesaReceiptNumber")
-    row.mpesa_receipt = str(receipt)[:20] if paid and receipt else None
+    row.mpesa_receipt = _text(receipt, 20) or None if paid and receipt else None
     row.completed_at = datetime.now(UTC)
     audit_log.record(
         row.sacco_id, None, "payment.stk_result", f"stk:{row.id} {row.status}"
@@ -200,8 +209,6 @@ def stk_callback(token):
             .where(StkPush.id == row_id)
             .values(status="failed", result_desc="Duplicate receipt number.")
         )
-        audit_log.record(
-            sacco_id, None, "payment.stk_result", f"stk:{row_id} failed"
-        )
+        audit_log.record(sacco_id, None, "payment.stk_result", f"stk:{row_id} failed")
         db.session.commit()
     return jsonify(ACK)

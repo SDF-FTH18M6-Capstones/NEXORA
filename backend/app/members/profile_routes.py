@@ -47,6 +47,8 @@ def _locked(sacco_id: int, membership_id: int) -> SaccoMembership | None:
             SaccoMembership.sacco_id == sacco_id,
         )
         .with_for_update()
+        # Refresh a row loaded before the wait: it is stale once the lock is ours.
+        .execution_options(populate_existing=True)
     ).scalar_one_or_none()
 
 

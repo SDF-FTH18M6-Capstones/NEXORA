@@ -380,3 +380,31 @@ def test_the_database_refuses_bad_values_even_if_the_app_does_not(app, world):
                 {"v": value, "i": me.mid},
             )
         db.session.rollback()
+
+
+def test_a_request_that_waited_for_the_row_lock_compares_with_fresh_data(client, world):
+    from app.members import profile_routes
+
+    _, _, me, _ = world
+    consent(client, me)
+    patch(client, me, me, {"full_name": "Aaa Bbb"})
+    real = profile_routes._locked
+
+    def after_another_commit(sacco_id, membership_id):
+        with db.engine.begin() as other:  # another request commits while this waits
+            other.execute(
+                text(
+                    "UPDATE sacco_memberships SET full_name = 'Ccc Ddd' WHERE id = :i"
+                ),
+                {"i": membership_id},
+            )
+        return real(sacco_id, membership_id)
+
+    profile_routes._locked = after_another_commit
+    try:
+        done = patch(client, me, me, {"full_name": "Aaa Bbb"})
+    finally:
+        profile_routes._locked = real
+    assert done.status_code == 200 and done.json["full_name"] == "Aaa Bbb"
+    db.session.expire_all()
+    assert db.session.get(SaccoMembership, me.mid).full_name == "Aaa Bbb"

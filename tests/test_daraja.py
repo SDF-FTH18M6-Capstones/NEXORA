@@ -432,10 +432,6 @@ def test_a_push_with_no_answer_stops_being_pending_after_15_minutes(client, on):
     db.session.commit()
     got = client.get(url, headers=p.headers).json
     assert got["status"] == "failed" and "did not answer" in got["message"]
-    # A late answer for a push already closed changes nothing.
-    answer(client, "ws_CO_1")
-    db.session.expire_all()
-    assert db.session.query(StkPush).one().status == "failed"
 
 
 def test_sacco_login_is_registered_once(app):
@@ -481,3 +477,70 @@ def test_stale_read_must_not_overwrite_a_callback_that_lands_meanwhile(
     client.get(f"/api/v1/saccos/{p.sacco_id}/stk-push/{row_id}", headers=p.headers)
     db.session.remove()
     assert db.session.query(StkPush).one().status == "succeeded"
+
+
+def _cb(**extra):
+    return {"Body": {"stkCallback": {"CheckoutRequestID": "ws_CO_1", **extra}}}
+
+
+def _items(*pairs):
+    return {"Item": [{"Name": n, "Value": v} for n, v in pairs]}
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        _cb(ResultCode=0, CallbackMetadata={"Item": [{"Name": ["x"], "Value": 1}]}),
+        _cb(ResultCode=1, ResultDesc="bad\u0000desc"),
+        _cb(ResultCode=1, ResultDesc=["x"]),
+        _cb(
+            ResultCode=0,
+            CallbackMetadata=_items(("Amount", 1), ("MpesaReceiptNumber", "A\u0000B")),
+        ),
+        _cb(
+            ResultCode=0,
+            CallbackMetadata=_items(("Amount", 1), ("MpesaReceiptNumber", {"a": 1})),
+        ),
+        _cb(ResultCode=0, CallbackMetadata=_items(("Amount", float("nan")))),
+        _cb(ResultCode=10**40),
+        _cb(ResultCode=1, ResultDesc="\ud800"),
+    ],
+)
+def test_a_malformed_callback_never_fails_with_500(client, on, body):
+    push(client, P(make_sacco(), MEMBER), amount=100)
+    assert client.post(CALLBACK, json=body).status_code == 200
+
+
+@pytest.mark.parametrize("code", [False, 0.0, "0", None])
+def test_only_the_integer_zero_means_paid(client, on, code):
+    push(client, P(make_sacco(), MEMBER), amount=100)
+    client.post(
+        CALLBACK,
+        json=_cb(
+            ResultCode=code,
+            CallbackMetadata=_items(
+                ("Amount", 1), ("MpesaReceiptNumber", "ABC1234567")
+            ),
+        ),
+    )
+    db.session.expire_all()
+    assert db.session.query(StkPush).one().status == "failed"
+
+
+def test_a_late_success_upgrades_a_push_the_15_minute_rule_closed(client, on):
+    p = P(make_sacco(), MEMBER)
+    push(client, p, amount=100)
+    db.session.execute(
+        text("UPDATE stk_pushes SET created_at = now() - interval '20 minutes'")
+    )
+    db.session.commit()
+    client.get(f"/api/v1/saccos/{p.sacco_id}/stk-push/1", headers=p.headers)
+    answer(client, "ws_CO_1", amount=1)
+    db.session.expire_all()
+    assert db.session.query(StkPush).one().status == "succeeded"
+    # An answer that failed for any other reason stays final.
+    push(client, p, amount=100)
+    answer(client, "ws_CO_2", code=1032)
+    answer(client, "ws_CO_2", amount=1, receipt="ZZZ9999999")
+    db.session.expire_all()
+    assert db.session.query(StkPush).order_by(StkPush.id).all()[1].status == "failed"
