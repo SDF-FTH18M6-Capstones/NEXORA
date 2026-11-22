@@ -6,14 +6,10 @@ const INTRO_MS = 4800;
 const RISE_MS = 900;
 const LIFT_MS = 1100;
 const REDUCED_FADE_MS = 140;
-/* The curtain is the signature moment of getting INTO the app. Moving between pages inside the app uses the quick fade instead,
- * so a click shows its page at once, not after a one-second wave. */
-const OUTSIDE_APP = ['/', '/login', '/register', '/verify', '/forgot', '/reset', '/logout', '/enter', '/join'];
-const insideApp = path => !OUTSIDE_APP.includes(path);
-const INTRO_SEEN = 'nexora.introSeen';
-function introSeen() {
-  try { return sessionStorage.getItem(INTRO_SEEN) === '1'; } catch { return false; }
-}
+/* The curtain (coin and wave) plays only when the app loads and when a person goes to the Overview.
+ * Every other page change uses the quick fade, so a click shows its page at once. */
+const CURTAIN_PATHS = ['/overview', '/pf-overview'];
+const wantsCurtain = path => CURTAIN_PATHS.includes(path);
 
 export default function RouteTransition() {
   const outlet = useOutlet();
@@ -22,16 +18,13 @@ export default function RouteTransition() {
     typeof window !== 'undefined'
     && window.matchMedia('(prefers-reduced-motion: reduce)').matches
   ));
-  // The long opening plays once per browser tab; a reload goes straight to the page.
-  const [skipIntro] = useState(introSeen);
-  const initialPhase = reducedMotion || skipIntro ? 'idle' : 'intro';
+  const initialPhase = reducedMotion ? 'idle' : 'intro';
   const [phase, setPhaseState] = useState(initialPhase);
   const [visibleOutlet, setVisibleOutlet] = useState(outlet);
   const [sequence, setSequence] = useState(0);
   const outletRef = useRef(outlet);
   const phaseRef = useRef(initialPhase);
   const locationKeyRef = useRef(location.key);
-  const pathRef = useRef(location.pathname);
   const [quickMode, setQuickMode] = useState(false);
   const curtainRef = useRef(null);
 
@@ -46,22 +39,19 @@ export default function RouteTransition() {
   }, [outlet, reducedMotion]);
 
   useEffect(() => {
-    if (reducedMotion || skipIntro) return undefined;
-    try { sessionStorage.setItem(INTRO_SEEN, '1'); } catch { /* private mode: it just plays again */ }
+    if (reducedMotion) return undefined;
     const exitTimer = window.setTimeout(() => setPhase('exit'), INTRO_MS - LIFT_MS);
     const finishTimer = window.setTimeout(() => setPhase('idle'), INTRO_MS);
     return () => {
       window.clearTimeout(exitTimer);
       window.clearTimeout(finishTimer);
     };
-  }, [reducedMotion, skipIntro]);
+  }, [reducedMotion]);
 
   useEffect(() => {
     if (locationKeyRef.current === location.key) return undefined;
     locationKeyRef.current = location.key;
-    const fromPath = pathRef.current;
-    pathRef.current = location.pathname;
-    const quick = !reducedMotion && insideApp(fromPath) && insideApp(location.pathname);
+    const quick = !reducedMotion && !wantsCurtain(location.pathname);
 
     if (phaseRef.current === 'intro') {
       setVisibleOutlet(outlet);
@@ -76,8 +66,10 @@ export default function RouteTransition() {
     };
 
     if (reducedMotion || quick) {
-      if (quick) setQuickMode(true);
-      schedule(() => setPhase('reduced-cover'), 0);
+      schedule(() => {
+        if (quick) setQuickMode(true);
+        setPhase('reduced-cover');
+      }, 0);
       schedule(() => setPhase('reduced-reveal'), REDUCED_FADE_MS);
       schedule(() => {
         setPhase('idle');
