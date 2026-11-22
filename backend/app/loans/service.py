@@ -26,6 +26,7 @@ from app.models.loan import (
 from app.models.membership import MembershipStatus, SaccoMembership
 from app.models.savings import SavingsAccount
 from app.models.user import User
+from app.saccos.rules import check_loan_request
 from app.savings.service import (
     Conflict,
     Forbidden,
@@ -158,6 +159,8 @@ def request_loan(
     ).first()
     if open_loan is not None:
         raise Conflict("You already have an open loan.")
+
+    check_loan_request(actor, account.balance, principal, term_months)
 
     # Read only: a SACCO without a settings row runs on the defaults.
     settings = db.session.get(SaccoSettings, sacco_id)

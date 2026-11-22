@@ -343,6 +343,34 @@ components:
           schema:
             $ref: '#/components/schemas/Error'
   schemas:
+    CircleRulesInput:
+      type: object
+      description: Amounts are whole cents (50000 = KES 500.00).
+      properties:
+        contribution_amount: {type: integer, minimum: 1, example: 50000}
+        contribution_frequency: {type: string, enum: [weekly, twice_monthly, monthly]}
+        loan_cap_multiple: {type: integer, minimum: 1, maximum: 10, default: 3, description: Times a member's savings they may borrow.}
+        interest_percent: {type: number, minimum: 0, maximum: 100, example: 10, description: "Required, no default. Recorded; NEXORA does not collect it yet."}
+        repayment_period_value: {type: integer, minimum: 1, example: 6}
+        repayment_period_unit: {type: string, enum: [days, months]}
+        late_fine_amount: {type: integer, minimum: 0, example: 5000, description: "Flat amount per late payment. Recorded; not charged yet."}
+        cycle_months: {type: integer, minimum: 9, maximum: 12, default: 12}
+        guarantors_required: {type: integer, minimum: 0, maximum: 10, default: 0, description: Recorded only.}
+        min_membership_days: {type: integer, minimum: 0, maximum: 730, default: 0}
+        exit_rules: {type: string, maxLength: 500}
+        loan_purposes: {type: string, maxLength: 200}
+      required: [contribution_amount, contribution_frequency, interest_percent, repayment_period_value, repayment_period_unit, late_fine_amount]
+    CircleRules:
+      allOf:
+      - $ref: '#/components/schemas/CircleRulesInput'
+      - type: object
+        properties:
+          id: {type: integer}
+          version: {type: integer}
+          cycle_starts_on: {type: string, format: date}
+          cycle_ends_on: {type: string, format: date}
+          locked: {type: boolean}
+          accepted: {type: boolean, nullable: true}
     Loan:
       type: object
       properties:
@@ -875,6 +903,67 @@ paths:
         '403': {description: "The setup token belongs to someone else (NOT_ALLOWED).", content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
         '409': {description: "The membership is already set up.", content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
         '429': {description: "Rate limit exceeded (rate_limited).", content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
+  /api/v1/auth/join/rules:
+    post:
+      summary: The circle's rules, before the PIN step
+      description: |-
+        **Who:** the signed-in user who just joined (send the `setup_token` from `/auth/join`).
+
+        Returns every rule of the circle being joined, so the member can read them before accepting.
+      security:
+      - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                setup_token: {type: string}
+              required: [setup_token]
+      responses:
+        '200':
+          description: The current rules and whether this member accepted them (`rules` is null if the circle has none).
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  rules: {allOf: [{$ref: '#/components/schemas/CircleRules'}], nullable: true}
+        '401': {description: "Missing or invalid access token, or the setup token is invalid or expired.", content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
+        '403': {description: "The setup token belongs to someone else (NOT_ALLOWED).", content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
+  /api/v1/auth/join/rules/accept:
+    post:
+      summary: Accept the circle's rules before joining
+      description: |-
+        **Who:** the signed-in user who just joined.
+
+        Records that this member accepted this version. `/auth/join/pin` answers 409 `RULES_NOT_ACCEPTED` until it is done.
+      security:
+      - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                setup_token: {type: string}
+                version: {type: integer, example: 1}
+              required: [setup_token, version]
+      responses:
+        '200':
+          description: Accepted.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  rules: {$ref: '#/components/schemas/CircleRules'}
+        '401': {description: "Missing or invalid access token, or the setup token is invalid or expired.", content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
+        '403': {description: "The setup token belongs to someone else (NOT_ALLOWED).", content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
+        '404': {description: "The circle has no rules to accept.", content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
+        '409': {description: "The rules changed; read the current version first.", content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
   /api/v1/auth/sacco-login:
     post:
       summary: Enter your circle with its PIN (the new name)
@@ -3094,6 +3183,162 @@ paths:
                     type: string
               required:
               - roles
+  /api/v1/saccos/{sacco_id}/rules:
+    parameters:
+    - $ref: '#/components/parameters/sacco_id'
+    get:
+      summary: The circle's rules
+      description: '**Who:** any active member (`sacco.view`), or the platform owner. `rules` is null until a circle has published rules. `accepted` says whether the caller accepted the current version (null for a platform owner). The rules are locked while `locked` is true.'
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: The current rules.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  rules: {allOf: [{$ref: '#/components/schemas/CircleRules'}], nullable: true}
+        '401': {description: "Unauthorized.", content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
+        '403': {description: "Forbidden.", content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
+        '404': {description: "Not found.", content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
+    post:
+      summary: Publish the circle's first rules
+      description: |-
+        **Who:** the circle admin (`sacco.update`) or the platform owner.
+
+        Only the first version. After that the rules are locked until the cycle ends (409 `RULES_LOCKED`) and change only by member vote. Amounts are whole cents. `interest_percent` has no default and must be sent. `loan_cap_multiple` defaults to 3 and `cycle_months` to 12. Every 400 carries `error.fields`, a plain-words reason for each bad field.
+      security:
+      - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/CircleRulesInput'}
+      responses:
+        '201':
+          description: Published, version 1, cycle starts today.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  rules: {$ref: '#/components/schemas/CircleRules'}
+        '400': {description: "A rule is missing or not valid (error.fields).", content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
+        '401': {description: "Unauthorized.", content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
+        '403': {description: "Forbidden.", content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
+        '404': {description: "Not found.", content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
+        '409': {description: "The circle already has rules, locked or awaiting a vote (RULES_LOCKED).", content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
+  /api/v1/saccos/{sacco_id}/rules/accept:
+    parameters:
+    - $ref: '#/components/parameters/sacco_id'
+    post:
+      summary: Accept the current rules
+      description: '**Who:** an active member. Send the `version` you read. Idempotent.'
+      security:
+      - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                version: {type: integer, example: 1}
+              required: [version]
+      responses:
+        '200':
+          description: Accepted.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  rules: {$ref: '#/components/schemas/CircleRules'}
+        '401': {description: "Unauthorized.", content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
+        '403': {description: "Only members accept rules.", content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
+        '404': {description: "Not found, or no rules yet.", content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
+        '409': {description: "The rules changed; read the current version.", content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
+  /api/v1/saccos/{sacco_id}/rules/proposals:
+    parameters:
+    - $ref: '#/components/parameters/sacco_id'
+    get:
+      summary: Proposed rule changes
+      description: '**Who:** any active member. The ten newest, with the vote count and the caller''s own vote.'
+      security:
+      - bearerAuth: []
+      responses:
+        '200':
+          description: Proposals.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  proposals: {type: array, items: {type: object}}
+        '401': {description: "Unauthorized.", content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
+        '403': {description: "Forbidden.", content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
+        '404': {description: "Not found.", content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
+    post:
+      summary: Propose a rule change
+      description: '**Who:** the circle admin or the platform owner, only after the cycle has ended (409 `RULES_LOCKED` before). Send the full set of rules. One open proposal at a time.'
+      security:
+      - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/CircleRulesInput'}
+      responses:
+        '201':
+          description: Open for a vote.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  proposal: {type: object}
+        '400': {description: "A rule is missing or not valid (error.fields).", content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
+        '401': {description: "Unauthorized.", content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
+        '403': {description: "Forbidden.", content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
+        '404': {description: "Not found.", content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
+        '409': {description: "Still locked, nothing to change yet, or a proposal is already open.", content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
+  /api/v1/saccos/{sacco_id}/rules/proposals/{proposal_id}/votes:
+    parameters:
+    - $ref: '#/components/parameters/sacco_id'
+    - name: proposal_id
+      in: path
+      required: true
+      schema: {type: integer}
+    post:
+      summary: Vote on a proposed change
+      description: '**Who:** an active member. A strict majority of all active members adopts it as the next version and starts a new cycle; it is rejected once it can no longer win. A member may change their vote while it is open.'
+      security:
+      - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                approve: {type: boolean}
+              required: [approve]
+      responses:
+        '200':
+          description: The proposal with its tally.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  proposal: {type: object}
+        '400': {description: "approve must be true or false.", content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
+        '401': {description: "Unauthorized.", content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
+        '403': {description: "Only members vote.", content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
+        '404': {description: "Not found.", content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
+        '409': {description: "Voting has closed.", content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
   /api/v1/saccos/{sacco_id}/settings:
     parameters:
     - $ref: '#/components/parameters/sacco_id'

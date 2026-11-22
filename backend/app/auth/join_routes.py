@@ -16,15 +16,16 @@ from app.auth.join import (
     digest_code,
     normalize_phone,
 )
-from app.auth.limits import write_limit
+from app.auth.limits import read_limit, write_limit
 from app.auth.pin import PinError, check_pin, set_pin
 from app.auth.suspension import SUSPENDED_MESSAGE
-from app.errors import CODE_WRONG, error_response, interface_error
+from app.errors import CODE_WRONG, RULES_NOT_ACCEPTED, error_response, interface_error
 from app.extensions import db
 from app.models.audit import AuditLog
 from app.models.identity import JoinCode, UserPhone
 from app.models.membership import MembershipStatus, SaccoMembership
 from app.models.sacco import Sacco, SaccoStatus
+from app.saccos import rules as circle_rules
 from app.savings.validation import MAX_ID
 from app.security.tenant import AccessDenied, current_user
 
@@ -189,6 +190,12 @@ def join_pin():
         return error_response(
             401, "The setup token is invalid or expired. Join again with your code."
         )
+    rules = circle_rules.current_rules(membership.sacco_id)
+    if rules is not None and not circle_rules.has_accepted(membership.id, rules.id):
+        db.session.rollback()
+        return interface_error(
+            RULES_NOT_ACCEPTED, "Read and accept the circle's rules before joining."
+        )
     try:
         set_pin(membership, str(body.get("pin", "")))
     except ValueError as exc:
@@ -236,3 +243,55 @@ def circle_login():
     _audit(membership, "member.circle_login", "ok")
     db.session.commit()
     return jsonify(ok=True, membership_id=membership.id, role=membership.role.value)
+
+
+def _joining_membership(body):
+    """The invited membership a setup token names, or (None, error response)."""
+    try:
+        data = _serializer().loads(str(body.get("setup_token", "")), max_age=SETUP_TTL)
+    except BadSignature:
+        return None, error_response(401, "The setup token is invalid or expired.")
+    membership = db.session.get(SaccoMembership, data["m"])
+    if (
+        membership is None
+        or membership.user_id != g.user.id
+        or data["u"] != g.user.id
+        or membership.status is not MembershipStatus.INVITED
+    ):
+        return None, error_response(403, "Not allowed.")
+    return membership, None
+
+
+@auth_bp.post("/join/rules")
+@read_limit
+def join_rules():
+    """The rules of the circle being joined, for the screen before the PIN."""
+    if error := _signed_in():
+        return error
+    membership, error = _joining_membership(_body())
+    if error:
+        return error
+    rules = circle_rules.current_rules(membership.sacco_id)
+    accepted = circle_rules.has_accepted(membership.id, rules.id) if rules else None
+    return jsonify(rules=circle_rules.rules_json(rules, accepted))
+
+
+@auth_bp.post("/join/rules/accept")
+@write_limit
+def join_accept_rules():
+    if error := _signed_in():
+        return error
+    body = _body()
+    membership, error = _joining_membership(body)
+    if error:
+        return error
+    rules = circle_rules.current_rules(membership.sacco_id)
+    if rules is None:
+        return error_response(404, "This circle has no rules to accept.")
+    version = body.get("version")
+    if type(version) is not int or version != rules.version:
+        return error_response(409, "The rules changed. Read the current version first.")
+    circle_rules.accept(membership.id, rules.id)
+    _audit(membership, "rules.accept", f"rules:{rules.id} v{rules.version}")
+    db.session.commit()
+    return jsonify(rules=circle_rules.rules_json(rules, True))

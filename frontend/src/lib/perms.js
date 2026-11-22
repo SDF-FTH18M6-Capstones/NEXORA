@@ -45,6 +45,7 @@ export const ROUTES = [
   { path: 'reports',     title: 'Reports',           icon: 'reports',   ok: p => sacco(p) && p.includes('report.view') },
   { path: 'audit',       title: 'Audit log',         icon: 'audit',     ok: p => sacco(p) && p.includes('audit.view') },
   { path: 'access',      title: 'Access requests',   icon: 'access',    ok: p => sacco(p) && p.includes('support.approve') },
+  { path: 'rules',       title: 'Circle rules',      icon: 'rules',     ok: p => sacco(p) && p.includes('sacco.view') },
   { path: 'settings',    title: 'SACCO settings',    icon: 'settings',  ok: p => sacco(p) && p.includes('sacco.update') },
   /* every signed-in person, every role, has My settings: colour theme, font, text size (AppearanceCard). Last item of the menu. */
   { path: 'my-settings', title: 'My settings',       icon: 'my-settings', ok: () => true }

@@ -121,6 +121,59 @@ Response **200**: PIN set, membership active.
 
 Error statuses: 400, 401, 403, 409, 429
 
+## POST /api/v1/auth/join/rules
+
+**The circle's rules, before the PIN step**
+
+**Who:** the signed-in user who just joined (send the `setup_token` from `/auth/join`).
+
+Returns every rule of the circle being joined, so the member can read them before accepting.
+
+Request body:
+
+```json
+{
+  "setup_token": "setup_token"
+}
+```
+
+Response **200**: The current rules and whether this member accepted them (`rules` is null if the circle has none).
+
+```json
+{
+  "rules": "rules"
+}
+```
+
+Error statuses: 401, 403
+
+## POST /api/v1/auth/join/rules/accept
+
+**Accept the circle's rules before joining**
+
+**Who:** the signed-in user who just joined.
+
+Records that this member accepted this version. `/auth/join/pin` answers 409 `RULES_NOT_ACCEPTED` until it is done.
+
+Request body:
+
+```json
+{
+  "setup_token": "setup_token",
+  "version": 1
+}
+```
+
+Response **200**: Accepted.
+
+```json
+{
+  "rules": "rules"
+}
+```
+
+Error statuses: 401, 403, 404, 409
+
 ## POST /api/v1/auth/sacco-login
 
 **Enter your circle with its PIN (the new name)**
@@ -1360,6 +1413,172 @@ Response **200**: The titles now held.
 ```
 
 Error statuses: 400, 401, 403, 404, 409, 423
+
+## GET /api/v1/saccos/{sacco_id}/rules
+
+**The circle's rules**
+
+**Who:** any active member (`sacco.view`), or the platform owner. `rules` is null until a circle has published rules. `accepted` says whether the caller accepted the current version (null for a platform owner). The rules are locked while `locked` is true.
+
+Parameters: `sacco_id` (path, integer)
+
+Response **200**: The current rules.
+
+```json
+{
+  "rules": "rules"
+}
+```
+
+Error statuses: 401, 403, 404
+
+## POST /api/v1/saccos/{sacco_id}/rules
+
+**Publish the circle's first rules**
+
+**Who:** the circle admin (`sacco.update`) or the platform owner.
+
+Only the first version. After that the rules are locked until the cycle ends (409 `RULES_LOCKED`) and change only by member vote. Amounts are whole cents. `interest_percent` has no default and must be sent. `loan_cap_multiple` defaults to 3 and `cycle_months` to 12. Every 400 carries `error.fields`, a plain-words reason for each bad field.
+
+Parameters: `sacco_id` (path, integer)
+
+Request body:
+
+```json
+{
+  "contribution_amount": 1,
+  "contribution_frequency": "weekly",
+  "loan_cap_multiple": 1,
+  "interest_percent": 1.0,
+  "repayment_period_value": 1,
+  "repayment_period_unit": "days",
+  "late_fine_amount": 1,
+  "cycle_months": 1,
+  "guarantors_required": 1,
+  "min_membership_days": 1,
+  "exit_rules": "exit_rules",
+  "loan_purposes": "loan_purposes"
+}
+```
+
+Response **201**: Published, version 1, cycle starts today.
+
+```json
+{
+  "rules": "rules"
+}
+```
+
+Error statuses: 400, 401, 403, 404, 409
+
+## POST /api/v1/saccos/{sacco_id}/rules/accept
+
+**Accept the current rules**
+
+**Who:** an active member. Send the `version` you read. Idempotent.
+
+Parameters: `sacco_id` (path, integer)
+
+Request body:
+
+```json
+{
+  "version": 1
+}
+```
+
+Response **200**: Accepted.
+
+```json
+{
+  "rules": "rules"
+}
+```
+
+Error statuses: 401, 403, 404, 409
+
+## GET /api/v1/saccos/{sacco_id}/rules/proposals
+
+**Proposed rule changes**
+
+**Who:** any active member. The ten newest, with the vote count and the caller's own vote.
+
+Parameters: `sacco_id` (path, integer)
+
+Response **200**: Proposals.
+
+```json
+{
+  "proposals": [
+    {}
+  ]
+}
+```
+
+Error statuses: 401, 403, 404
+
+## POST /api/v1/saccos/{sacco_id}/rules/proposals
+
+**Propose a rule change**
+
+**Who:** the circle admin or the platform owner, only after the cycle has ended (409 `RULES_LOCKED` before). Send the full set of rules. One open proposal at a time.
+
+Parameters: `sacco_id` (path, integer)
+
+Request body:
+
+```json
+{
+  "contribution_amount": 1,
+  "contribution_frequency": "weekly",
+  "loan_cap_multiple": 1,
+  "interest_percent": 1.0,
+  "repayment_period_value": 1,
+  "repayment_period_unit": "days",
+  "late_fine_amount": 1,
+  "cycle_months": 1,
+  "guarantors_required": 1,
+  "min_membership_days": 1,
+  "exit_rules": "exit_rules",
+  "loan_purposes": "loan_purposes"
+}
+```
+
+Response **201**: Open for a vote.
+
+```json
+{
+  "proposal": {}
+}
+```
+
+Error statuses: 400, 401, 403, 404, 409
+
+## POST /api/v1/saccos/{sacco_id}/rules/proposals/{proposal_id}/votes
+
+**Vote on a proposed change**
+
+**Who:** an active member. A strict majority of all active members adopts it as the next version and starts a new cycle; it is rejected once it can no longer win. A member may change their vote while it is open.
+
+Parameters: `sacco_id` (path, integer), `proposal_id` (path, integer)
+
+Request body:
+
+```json
+{
+  "approve": true
+}
+```
+
+Response **200**: The proposal with its tally.
+
+```json
+{
+  "proposal": {}
+}
+```
+
+Error statuses: 400, 401, 403, 404, 409
 
 ## GET /api/v1/saccos/{sacco_id}/settings
 

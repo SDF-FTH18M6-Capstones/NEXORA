@@ -4,9 +4,11 @@ import { useAsync } from '../../lib/useAsync.js';
 import { listSaccos, createSacco, inviteFirstAdmin } from '../../api/platform.js';
 import ErrorBanner from '../../components/ErrorBanner.jsx';
 import Field from '../../components/Field.jsx';
+import RulesForm from '../../components/RulesForm.jsx';
 import StatusChip from '../../components/StatusChip.jsx';
 import { Body } from '../people/shared.jsx';
 import { describe } from '../../lib/errors.js';
+import { checkRules, emptyRules, rulesBody } from '../../lib/rules.js';
 import PfSaccoDetail from './PfSaccoDetail.jsx';
 import '../../styles/neo.css';
 
@@ -19,6 +21,7 @@ export default function PfSaccos() {
   const [openId, setOpenId] = useState(opened);
   const [name, setName] = useState('');
   const [currency, setCurrency] = useState('KES');
+  const [rules, setRules] = useState(emptyRules);
   const [errors, setErrors] = useState({});
   const [notice, setNotice] = useState(null);
   const [created, setCreated] = useState(null);
@@ -42,22 +45,25 @@ export default function PfSaccos() {
 
   async function submit(event) {
     event.preventDefault();
-    if (!name.trim()) {
-      setErrors({ name: 'Give the SACCO a name.' });
+    const found = { ...(name.trim() ? {} : { name: 'Give the SACCO a name.' }), ...checkRules(rules) };
+    if (Object.keys(found).length) {
+      setErrors(found);
       return;
     }
     setErrors({});
     setNotice(null);
     setBusy(true);
     try {
-      const row = await createSacco({ name: name.trim(), currency });
+      const row = await createSacco({ name: name.trim(), currency, rules: rulesBody(rules) });
       setCreated(row);
       setName('');
+      setRules(emptyRules());
       list.reload();
       toast(`${row.name} was created.`);
     } catch (e) {
       const shown = describe(e, { context: 'settings' });
-      if (e.status === 400 || e.status === 409) setErrors({ name: shown.text });
+      if (e.fields) setErrors(e.fields);
+      else if (e.status === 400 || e.status === 409) setErrors({ name: shown.text });
       else setNotice(shown.text);
     } finally {
       setBusy(false);
@@ -121,6 +127,7 @@ export default function PfSaccos() {
               {CURRENCIES.map(c => <option key={c} value={c}>{c}</option>)}
             </select>
           </Field>
+          <RulesForm value={rules} onChange={value => { setRules(value); setErrors(current => ({ name: current.name })); }} errors={errors} disabled={busy} />
           <div>
             <button type="submit" className="btn" disabled={busy}>{busy ? 'Creating…' : 'Create SACCO'}</button>
           </div>
