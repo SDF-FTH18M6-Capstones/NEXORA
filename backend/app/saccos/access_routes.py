@@ -158,15 +158,21 @@ def set_roles(sacco_id, membership_id):
     if wanted != current:
         role_ids = dict(
             db.session.execute(
-                select(Role.code, Role.id).where(Role.code.in_(wanted))
+                select(Role.code, Role.id).where(Role.code.in_(wanted | current))
             ).all()
         )
-        db.session.execute(
-            delete(MembershipRoleLink).where(
-                MembershipRoleLink.membership_id == membership.id
+        # Only titles that actually change are touched: a kept title keeps its
+        # granted_at, which decides who may approve a waiting pay-in change.
+        if current - wanted:
+            db.session.execute(
+                delete(MembershipRoleLink).where(
+                    MembershipRoleLink.membership_id == membership.id,
+                    MembershipRoleLink.role_id.in_(
+                        [role_ids[c] for c in current - wanted]
+                    ),
+                )
             )
-        )
-        for code in sorted(wanted):
+        for code in sorted(wanted - current):
             db.session.add(
                 MembershipRoleLink(
                     membership_id=membership.id,

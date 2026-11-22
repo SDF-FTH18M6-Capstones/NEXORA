@@ -697,3 +697,102 @@ def test_holding_since_is_none_for_a_member_and_for_an_inactive_officer(schema_a
     secretary = officer(s, "secretary")
     assert holding_since(s.sacco.id, secretary.id, logic.PERMISSION) is None
     assert holding_since(s.sacco.id, make_user().id, logic.PERMISSION) is None
+
+
+# ---- titles keep granted_at; legacy admins; text; mail logs -------------------
+
+
+def _titles_url(s, membership_id):
+    return f"/api/v1/saccos/{s.sacco.id}/members/{membership_id}/roles"
+
+
+def _membership_of(s, user):
+    return (
+        db.session.query(SaccoMembership)
+        .filter_by(user_id=user.id, sacco_id=s.sacco.id)
+        .one()
+    )
+
+
+def _granted(membership_id):
+    from app.models.access import MembershipRoleLink, Role
+
+    return dict(
+        db.session.query(Role.code, MembershipRoleLink.granted_at)
+        .join(MembershipRoleLink, MembershipRoleLink.role_id == Role.id)
+        .filter(MembershipRoleLink.membership_id == membership_id)
+        .all()
+    )
+
+
+def test_editing_an_unrelated_title_keeps_granted_at_and_sends_no_alert(
+    schema_app,  # noqa: F811
+    mails,
+):
+    s = circle()
+    c = schema_app.test_client()
+    membership_id = _membership_of(s, s.finance).id
+    before = _granted(membership_id)
+    db.session.remove()
+    for roles in (["finance_officer", "secretary"], ["finance_officer"]):
+        put = c.put(
+            _titles_url(s, membership_id), json={"roles": roles}, headers=auth(s.admin)
+        )
+        assert put.status_code == 200, put.json
+    after = _granted(membership_id)
+    assert after["finance_officer"] == before["finance_officer"]
+    assert mails == []
+
+
+def test_adding_the_officer_title_sends_one_alert_and_stamps_only_that_title(
+    schema_app,  # noqa: F811
+    mails,
+):
+    s = circle()
+    c = schema_app.test_client()
+    membership_id = s.member_membership.id
+    url_ = _titles_url(s, membership_id)
+    assert (
+        c.put(url_, json={"roles": ["secretary"]}, headers=auth(s.admin)).status_code
+        == 200
+    )
+    secretary_at = _granted(membership_id)["secretary"]
+    db.session.remove()
+    assert mails == []
+    put = c.put(
+        url_, json={"roles": ["secretary", "finance_officer"]}, headers=auth(s.admin)
+    )
+    assert put.status_code == 200, put.json
+    assert len(mails) == 3  # one alert, to each of the 3 officers
+    assert {subject for _, subject, _ in mails} == {
+        "NEXORA: a new officer can change pay-in details"
+    }
+    granted = _granted(membership_id)
+    assert granted["secretary"] == secretary_at
+    assert granted["finance_officer"] > secretary_at
+    db.session.remove()
+    mails.clear()
+    again = c.put(
+        url_,
+        json={"roles": ["finance_officer", "secretary", "treasurer"]},
+        headers=auth(s.admin),
+    )
+    assert again.status_code in (200, 400), again.json
+    assert mails == []  # already an officer: nothing newly gained
+
+
+def test_a_waiting_change_can_still_be_approved_after_an_unrelated_title_edit(
+    schema_app,  # noqa: F811
+    mails,
+):
+    s = circle()
+    c = schema_app.test_client()
+    change = propose(c, s.admin, s).json["change"]
+    put = c.put(
+        _titles_url(s, _membership_of(s, s.finance).id),
+        json={"roles": ["finance_officer", "secretary"]},
+        headers=auth(s.admin),
+    )
+    assert put.status_code == 200, put.json
+    db.session.remove()
+    assert approve(c, s.finance, s, change["id"]).status_code == 200
