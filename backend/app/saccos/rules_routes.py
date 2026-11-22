@@ -269,8 +269,16 @@ def vote_on_proposal(sacco_id, proposal_id):
     db.session.flush()
     yes, no = _tally(proposal)
     if yes * 2 > proposal.active_members:  # more than half of ALL active members
+        yes_voters = db.session.execute(
+            select(RulesVote.membership_id).where(
+                RulesVote.proposal_id == proposal.id, RulesVote.approve.is_(True)
+            )
+        ).scalars()
         row = logic.publish_rules(
-            sacco_id, _from_json(proposal.fields), proposal.proposed_by_user_id
+            sacco_id,
+            _from_json(proposal.fields),
+            proposal.proposed_by_user_id,
+            carry_forward=yes_voters,
         )
         proposal.status = "adopted"
         _audit(

@@ -328,7 +328,9 @@ def test_a_change_is_rejected_once_the_missing_members_make_it_unwinnable(
     assert circle_rules.current_rules(s.sacco.id).version == 1
 
 
-def test_adopting_a_new_version_keeps_earlier_acceptances_for_loans(schema_app):  # noqa: F811
+def test_adopting_a_new_version_carries_a_yes_voters_acceptance_for_loans(  # noqa: F811
+    schema_app,  # noqa: F811
+):
     # The member's savings are KES 100.00 and the circle holds that much.
     from app.models.membership import MembershipRole, SaccoMembership
     from test_schema_rules import make_user
@@ -361,6 +363,49 @@ def test_adopting_a_new_version_keeps_earlier_acceptances_for_loans(schema_app):
         loan_service.request_loan(s.member.id, s.sacco.id, 10_000, 3).principal
         == 10_000
     )
+
+
+def test_only_yes_voters_keep_their_acceptance_when_a_change_is_adopted(
+    schema_app,  # noqa: F811
+):
+    from app.models.membership import SaccoMembership
+
+    # 5 active members, all accepted v1. Three vote yes (more than half of 5),
+    # one votes no, one does not vote.
+    s, (third, no_voter, silent) = _circle(extras=3, extras_accepting=3)
+    client = schema_app.test_client()
+    base, made = _propose(client, s)
+    pid = made.get_json()["proposal"]["id"]
+    assert _vote(client, base, pid, no_voter, approve=False)["status"] == "open"
+    _vote(client, base, pid, s.admin)
+    _vote(client, base, pid, s.member)
+    assert _vote(client, base, pid, third)["status"] == "adopted"
+
+    v2 = circle_rules.current_rules(s.sacco.id)
+    assert v2.version == 2
+
+    def membership_id(user):
+        return db.session.execute(
+            db.select(SaccoMembership.id).where(
+                SaccoMembership.user_id == user.id,
+                SaccoMembership.sacco_id == s.sacco.id,
+            )
+        ).scalar_one()
+
+    assert circle_rules.has_accepted(s.admin_membership.id, v2.id)
+    assert circle_rules.has_accepted(s.member_membership.id, v2.id)
+    assert circle_rules.has_accepted(membership_id(third), v2.id)
+    assert not circle_rules.has_accepted(membership_id(no_voter), v2.id)
+    assert not circle_rules.has_accepted(membership_id(silent), v2.id)
+
+    # The no-voter cannot ask for a loan until they accept v2; then they can.
+    holder = db.session.get(SaccoMembership, membership_id(no_voter))
+    with pytest.raises(Conflict) as blocked:
+        circle_rules.check_loan_request(holder, 10_000, 1_000, 3)
+    assert blocked.value.code == "RULES_NOT_ACCEPTED"
+    circle_rules.accept(holder.id, v2.id)
+    db.session.commit()
+    assert circle_rules.has_accepted(holder.id, v2.id)
 
 
 # ---- payout re-checks the cap and the pool; withdrawals keep the loan's cap ----

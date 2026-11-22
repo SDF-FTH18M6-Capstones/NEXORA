@@ -4,6 +4,7 @@ The rules only record and enforce. Nothing here moves or lends money.
 """
 
 import calendar
+from collections.abc import Iterable
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal, InvalidOperation
 
@@ -274,8 +275,19 @@ def lock_message(rules: CircleRules) -> str:
     return "This circle already has rules. Propose a change and the members vote on it."
 
 
-def publish_rules(sacco_id: int, values: dict, user_id: int | None) -> CircleRules:
-    """Add the next version and start its cycle today. The caller checked it may."""
+def publish_rules(
+    sacco_id: int,
+    values: dict,
+    user_id: int | None,
+    carry_forward: Iterable[int] = (),
+) -> CircleRules:
+    """Add the next version and start its cycle today. The caller checked it may.
+
+    `carry_forward` is the memberships whose acceptance of the last version
+    counts for this one: the members who voted yes on the change. Everyone else,
+    including members who voted no or did not vote, must accept again before
+    they can ask for a loan.
+    """
     current = current_rules(sacco_id)
     start = today()
     row = CircleRules(
@@ -288,16 +300,18 @@ def publish_rules(sacco_id: int, values: dict, user_id: int | None) -> CircleRul
     )
     db.session.add(row)
     db.session.flush()
-    if current is not None:
-        # Members who accepted the last version stay accepted, so adopting a new
-        # version does not stop every one of them from borrowing until they all
-        # open the app again. They can still read it and vote on the next change.
+    carried = list(carry_forward)
+    if current is not None and carried:
+        # A yes vote is agreement with the new rules, so those members need not
+        # open the app again to keep borrowing. A no vote is not: that member
+        # re-accepts (or leaves) before the next loan.
         db.session.execute(
             pg_insert(RulesAcceptance)
             .from_select(
                 ["membership_id", "rules_id"],
                 select(RulesAcceptance.membership_id, literal(row.id)).where(
-                    RulesAcceptance.rules_id == current.id
+                    RulesAcceptance.rules_id == current.id,
+                    RulesAcceptance.membership_id.in_(carried),
                 ),
             )
             .on_conflict_do_nothing()
