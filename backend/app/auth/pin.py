@@ -1,4 +1,4 @@
-"""Circle PIN: set and check. Section 2.
+"""SACCO PIN: set and check. Section 2.
 
 Four digits, hashed with Argon2. Five wrong entries lock it for 15 minutes,
 using the same numbers as the login lockout.

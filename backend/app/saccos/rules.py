@@ -1,4 +1,4 @@
-"""Circle rules: validation, publishing, acceptance and the loan checks.
+"""SACCO rules: validation, publishing, acceptance and the loan checks.
 
 The rules only record and enforce. Nothing here moves or lends money.
 """
@@ -20,7 +20,7 @@ from app.errors import (
 from app.extensions import db
 from app.models.loan import Loan, LoanRepayment, LoanStatus, SaccoSettings
 from app.models.membership import MembershipStatus, SaccoMembership
-from app.models.rules import CircleRules, RulesAcceptance
+from app.models.rules import RulesAcceptance, SaccoRules
 from app.models.sacco import Sacco
 from app.models.savings import SavingsAccount
 from app.savings.service import Conflict
@@ -29,7 +29,7 @@ FREQUENCIES = ("weekly", "twice_monthly", "monthly")
 FREQUENCY_WORDS = {"weekly": "week", "twice_monthly": "half month", "monthly": "month"}
 DEFAULT_LOAN_CAP_MULTIPLE = 3  # CARE VSLA manual: "up to but no more than 3x savings"
 DEFAULT_CYCLE_MONTHS = 12
-MAX_MONEY = 10**12  # minor units; far above any real circle, below BigInteger
+MAX_MONEY = 10**12  # minor units; far above any real SACCO, below BigInteger
 
 
 def kes(minor: int) -> str:
@@ -133,7 +133,7 @@ def validate_rules(body) -> tuple[dict, dict]:
     except InvalidOperation:
         errors["interest_percent"] = (
             "Interest or service charge is required and has no default: type the "
-            "percentage your circle agreed to charge per loan, from 0 to 100 with up "
+            "percentage your SACCO agreed to charge per loan, from 0 to 100 with up "
             "to 2 decimals. Example: 10 means 10% of each loan. Type 0 if loans "
             "carry no charge."
         )
@@ -212,10 +212,10 @@ def proposal_expired(proposal) -> bool:
 
 
 def lock_sacco(sacco_id: int) -> None:
-    """Serialise rule changes, loan checks, payouts and withdrawals for one circle.
+    """Serialise rule changes, loan checks, payouts and withdrawals for one SACCO.
 
     FOR NO KEY UPDATE, not FOR UPDATE: every ledger insert takes a KEY SHARE lock
-    on the circle's row (the foreign key), and a plain FOR UPDATE here would make a
+    on the SACCO's row (the foreign key), and a plain FOR UPDATE here would make a
     reversal or deposit that holds an account lock wait on a withdrawal that holds
     this one and waits for that account: a deadlock."""
     db.session.execute(
@@ -256,23 +256,23 @@ def can_still_pass(voters: int, rejections: int, active: int) -> bool:
     return (voters - rejections) * 2 > active
 
 
-def current_rules(sacco_id: int) -> CircleRules | None:
+def current_rules(sacco_id: int) -> SaccoRules | None:
     return db.session.execute(
-        select(CircleRules)
-        .where(CircleRules.sacco_id == sacco_id)
-        .order_by(CircleRules.version.desc())
+        select(SaccoRules)
+        .where(SaccoRules.sacco_id == sacco_id)
+        .order_by(SaccoRules.version.desc())
         .limit(1)
     ).scalar_one_or_none()
 
 
-def lock_message(rules: CircleRules) -> str:
+def lock_message(rules: SaccoRules) -> str:
     if today() < rules.cycle_ends_on:
         return (
             f"These rules are locked until the cycle ends on "
             f"{rules.cycle_ends_on:%d %b %Y}. "
             "They can change only after that, by a vote of the members."
         )
-    return "This circle already has rules. Propose a change and the members vote on it."
+    return "This SACCO already has rules. Propose a change and the members vote on it."
 
 
 def publish_rules(
@@ -280,7 +280,7 @@ def publish_rules(
     values: dict,
     user_id: int | None,
     carry_forward: Iterable[int] = (),
-) -> CircleRules:
+) -> SaccoRules:
     """Add the next version and start its cycle today. The caller checked it may.
 
     `carry_forward` is the memberships whose acceptance of the last version
@@ -290,7 +290,7 @@ def publish_rules(
     """
     current = current_rules(sacco_id)
     start = today()
-    row = CircleRules(
+    row = SaccoRules(
         sacco_id=sacco_id,
         version=current.version + 1 if current else 1,
         cycle_starts_on=start,
@@ -317,7 +317,7 @@ def publish_rules(
             .on_conflict_do_nothing()
         )
     # One source of truth: the loan service reads the multiple from the settings
-    # row when a circle has none, so keep that row in step.
+    # row when a SACCO has none, so keep that row in step.
     settings = db.session.get(SaccoSettings, sacco_id)
     if settings is None:
         db.session.add(
@@ -342,7 +342,7 @@ def accept(membership_id: int, rules_id: int) -> None:
     )
 
 
-def rules_json(rules: CircleRules | None, accepted: bool | None = None) -> dict | None:
+def rules_json(rules: SaccoRules | None, accepted: bool | None = None) -> dict | None:
     if rules is None:
         return None
     return {
@@ -368,13 +368,13 @@ def rules_json(rules: CircleRules | None, accepted: bool | None = None) -> dict 
 
 
 def pool_cash(sacco_id: int) -> int:
-    """Cash the circle can still lend, on the cautious side.
+    """Cash the SACCO can still lend, on the cautious side.
 
     A disbursed loan is credited to the borrower's account, so it is inside the
     balances total and has also left the pool: it is taken off twice. Loans still
     waiting for approval or payout are reserved so two requests cannot both claim
     the same cash. If a borrower withdrew the proceeds this can understate the
-    pool, which only ever makes the circle refuse a loan it could have made.
+    pool, which only ever makes the SACCO refuse a loan it could have made.
     """
     total = db.session.scalar(
         select(func.coalesce(func.sum(SavingsAccount.balance), 0)).where(
@@ -407,7 +407,7 @@ OPEN_LOAN_STATUSES = (LoanStatus.REQUESTED, LoanStatus.APPROVED, LoanStatus.DISB
 def check_loan_disburse(loan, savings: int) -> None:
     """Run the cap and pool checks again at payout. A loan is approved days after
     it was asked for: savings may have dropped and the pool may have been spent
-    since. The caller holds the circle lock. A circle without rules is not checked."""
+    since. The caller holds the SACCO lock. A SACCO without rules is not checked."""
     rules = current_rules(loan.sacco_id)
     if rules is None:
         return
@@ -423,7 +423,7 @@ def check_loan_disburse(loan, savings: int) -> None:
     available = pool_cash(loan.sacco_id) + loan.principal
     if loan.principal > available:
         raise Conflict(
-            f"The circle does not have enough cash for this loan now. It holds "
+            f"The SACCO does not have enough cash for this loan now. It holds "
             f"{kes(max(available, 0))} and the loan is {kes(loan.principal)}.",
             code=LOAN_POOL_SHORT,
         )
@@ -449,14 +449,14 @@ def _cap_floor(account) -> tuple[int, int, int] | None:
 
 def check_withdrawal(account, amount: int) -> None:
     """Refuse a withdrawal that would leave the member's savings too small for
-    the cap on a loan they still have open. The caller holds the circle lock."""
+    the cap on a loan they still have open. The caller holds the SACCO lock."""
     floor = _cap_floor(account)
     if floor is None:
         return
     principal, multiple, keep = floor
     if account.balance - amount < keep:
         raise Conflict(
-            f"You have an open loan of {kes(principal)}. This circle lets you borrow "
+            f"You have an open loan of {kes(principal)}. This SACCO lets you borrow "
             f"{multiple} times your savings, so your savings must stay at "
             f"{kes(keep)} or more while it is open. You can withdraw up to "
             f"{kes(max(account.balance - keep, 0))}.",
@@ -467,7 +467,7 @@ def check_withdrawal(account, amount: int) -> None:
 def reversal_cap_problem(account, amount: int) -> str | None:
     """Why taking `amount` off this account by a reversal would break the cap of
     the holder's open loan, or None when it would not. The caller holds the
-    circle lock."""
+    SACCO lock."""
     floor = _cap_floor(account)
     if floor is None:
         return None
@@ -484,15 +484,15 @@ def reversal_cap_problem(account, amount: int) -> str | None:
 
 
 def check_loan_request(membership, savings: int, principal: int, term_months) -> None:
-    """Refuse a loan that breaks the circle's rules, in plain words.
-    A circle without published rules is not checked."""
+    """Refuse a loan that breaks the SACCO's rules, in plain words.
+    A SACCO without published rules is not checked."""
     rules = current_rules(membership.sacco_id)
     if rules is None:
         return
     lock_sacco(membership.sacco_id)  # two requests cannot both spend the same pool
     if not has_accepted(membership.id, rules.id):
         raise Conflict(
-            "Read and accept your circle's rules before asking for a loan.",
+            "Read and accept your SACCO's rules before asking for a loan.",
             code=RULES_NOT_ACCEPTED,
         )
     # Member since: when they first accepted the rules (at joining), not when they
@@ -507,7 +507,7 @@ def check_loan_request(membership, savings: int, principal: int, term_months) ->
     if waited < rules.min_membership_days:
         ready = joined.toordinal() + rules.min_membership_days
         raise Conflict(
-            f"This circle lets members borrow after {rules.min_membership_days} days. "
+            f"This SACCO lets members borrow after {rules.min_membership_days} days. "
             f"You have been a member for {waited}. You can ask from "
             f"{date.fromordinal(ready):%d %b %Y}.",
             code=LOAN_RULE_BROKEN,
@@ -517,7 +517,7 @@ def check_loan_request(membership, savings: int, principal: int, term_months) ->
     )
     if term_months is not None and term_months * 30 > days:
         raise Conflict(
-            f"This circle's loans must be repaid within {rules.repayment_period_value} "
+            f"This SACCO's loans must be repaid within {rules.repayment_period_value} "
             f"{rules.repayment_period_unit}. You asked for {term_months} months.",
             code=LOAN_RULE_BROKEN,
         )
@@ -532,7 +532,7 @@ def check_loan_request(membership, savings: int, principal: int, term_months) ->
     pool = pool_cash(membership.sacco_id)
     if principal > pool:
         raise Conflict(
-            f"The circle does not have enough cash for this loan right now. It holds "
+            f"The SACCO does not have enough cash for this loan right now. It holds "
             f"{kes(max(pool, 0))} and you asked for {kes(principal)}. "
             "Ask for less, or try "
             "again after more contributions come in.",

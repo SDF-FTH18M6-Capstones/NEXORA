@@ -60,7 +60,7 @@
     <div class="ap-label">Text size</div>
     <div class="ap-grid" role="radiogroup" aria-label="Text size">${SIZES.map(s => `<button type="button" class="ap-opt" role="radio" aria-checked="${cur.size === s.id}" data-ap="size" data-v="${s.id}"><b>${s.name}</b></button>`).join('')}</div>
     <div class="ap-label">Preview</div>
-    <div class="ap-preview"><div class="eyebrow">Circle savings balance</div><div class="big">KES 186,400</div><p class="muted">Your next payment of KES 8,500 is due on 30 November.</p><div class="actions" style="margin:0"><button class="btn small" type="button" tabindex="-1">Primary</button><button class="btn ghost small" type="button" tabindex="-1">Ghost</button><span class="chip up">Confirmed</span><span class="chip warn">Pending</span><span class="chip bad">Rejected</span></div></div></div>`;
+    <div class="ap-preview"><div class="eyebrow">SACCO savings balance</div><div class="big">KES 186,400</div><p class="muted">Your next payment of KES 8,500 is due on 30 November.</p><div class="actions" style="margin:0"><button class="btn small" type="button" tabindex="-1">Primary</button><button class="btn ghost small" type="button" tabindex="-1">Ghost</button><span class="chip up">Confirmed</span><span class="chip warn">Pending</span><span class="chip bad">Rejected</span></div></div></div>`;
 
   /* a menu item of its own, for every signed-in person (members, officers, admin, platform owner) */
   N.ICONS['my-settings'] = '<circle cx="12" cy="12" r="8.5"/><circle cx="8.5" cy="10" r="1.2"/><circle cx="12" cy="7.8" r="1.2"/><circle cx="15.5" cy="10" r="1.2"/><path d="M12 20.5c-1.4 0-1.9-1.2-1.2-2.1.6-.8.1-1.9-1-1.9H8.3"/>';

@@ -69,7 +69,7 @@ export default function MemberProfile({ membershipId, onBack }) {
               <div className="neo-stack tight">
                 <b>Roles in this SACCO</b>
                 <div className="flex flex-wrap gap-2">
-                  {roles.includes('circle_admin') && (
+                  {roles.includes('sacco_admin') && (
                     <span className="chip up">SACCO admin (only the platform owner changes this)</span>
                   )}
                   {TITLES.map(code => (

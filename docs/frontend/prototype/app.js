@@ -424,7 +424,7 @@
     paintAvatars();
     $('#sacco-wrap').hidden = can('platform');
     const isOv = key === 'overview';
-    $('#ov-seg').hidden = true;   /* staff see the circle's overview only; a member sees their own. Nobody switches between the two. */
+    $('#ov-seg').hidden = true;   /* staff see the SACCO's overview only; a member sees their own. Nobody switches between the two. */
     if (isOv) { S.ov = S.role === 'member' ? 'member' : 'sacco'; ovSwitch(S.ov, true); }
     const bad = EXT.guard && EXT.guard(key);
     if (bad) EXT.errorPage(bad, key);

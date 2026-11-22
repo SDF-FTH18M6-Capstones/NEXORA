@@ -31,7 +31,7 @@ export const ROUTES = [
   { path: 'pf-access',   title: 'Access to SACCOs',  icon: 'pf-access', ok: p => p.includes('platform') },
   { path: 'pf-audit',    title: 'Platform audit',    icon: 'audit',     ok: p => p.includes('platform') },
   { path: 'overview',    title: 'Overview',          icon: 'overview',  ok: p => sacco(p) && p.includes('dashboard.view') },
-  /* My savings is the MEMBER's own page (permission savings.request). Staff run the circle, so they see the circle's savings under Accounts. */
+  /* My savings is the MEMBER's own page (permission savings.request). Staff run the SACCO, so they see the SACCO's savings under Accounts. */
   { path: 'savings',     title: 'My savings',        icon: 'savings',   ok: p => sacco(p) && p.includes('savings.request') },
   { path: 'deposit',     title: 'Deposit',           icon: 'deposit',   ok: p => sacco(p) && p.includes('savings.request') },
   { path: 'withdraw',    title: 'Withdraw',          icon: 'withdraw',  ok: p => sacco(p) && p.includes('savings.request') },

@@ -1,6 +1,6 @@
 import { dLong } from '../lib/format.js';
 
-/* The circle's pay-in details as members read them. `updated_at` is when a second officer approved them. */
+/* The SACCO's pay-in details as members read them. `updated_at` is when a second officer approved them. */
 export default function PayInView({ details, showDate = true }) {
   const d = details;
   return (
@@ -17,7 +17,7 @@ export default function PayInView({ details, showDate = true }) {
           <b>Bank</b>
           <p>{d.bank_name}{d.bank_branch ? `, ${d.bank_branch} branch` : ''}. Account name <b>{d.bank_account_name}</b>, account number <b>{d.bank_account_number}</b>.</p>
           {d.bank_uses_shared_paybill && (
-            <p className="muted text-sm">Bank paybill <b>{d.bank_paybill_number}</b>. <b>Manual confirm only:</b> these payments do not name the circle, so an officer confirms yours by hand against the bank statement.</p>
+            <p className="muted text-sm">Bank paybill <b>{d.bank_paybill_number}</b>. <b>Manual confirm only:</b> these payments do not name the SACCO, so an officer confirms yours by hand against the bank statement.</p>
           )}
         </div>
       )}

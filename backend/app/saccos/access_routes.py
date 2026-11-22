@@ -3,7 +3,7 @@
 Job titles: GET/PUT /saccos/<id>/members/<membership_id>/roles. The SACCO admin
 (or the platform owner) sets which job titles a membership holds, for example
 loans_officer or finance_officer. Only the platform owner gives or takes
-circle_admin, nobody changes their own titles, and a title can only be held by
+sacco_admin, nobody changes their own titles, and a title can only be held by
 an active membership.
 
 Settings: GET/PATCH /saccos/<id>/settings. Every active member may read the loan
@@ -34,7 +34,7 @@ from app.security.permissions import (
 )
 from app.security.tenant import permission_scoped
 
-OWNER_ONLY_TITLE = "circle_admin"
+OWNER_ONLY_TITLE = "sacco_admin"
 ADMIN_TITLES = {OWNER_ONLY_TITLE, "member"}
 SETTING_FIELDS = (
     "loan_cap",
@@ -145,12 +145,12 @@ def set_roles(sacco_id, membership_id):
             "or reads the audit log.",
         )
     # The admin routes check the membership's role, `can()` checks these titles.
-    # They must agree, so circle_admin moves only with the role (PATCH /members).
+    # They must agree, so sacco_admin moves only with the role (PATCH /members).
     if (OWNER_ONLY_TITLE in wanted) != is_admin:
         db.session.rollback()
         return error_response(
             409,
-            "circle_admin follows the SACCO admin role. Make or remove an admin "
+            "sacco_admin follows the SACCO admin role. Make or remove an admin "
             "with PATCH /saccos/<id>/members/<membership_id> instead.",
         )
 

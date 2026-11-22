@@ -39,7 +39,7 @@ Work in the backend on your branch. Run the tests with `pytest` from the repo ro
 
 **A4. Expose `Retry-After`** in the CORS config in `backend/app/cors.py` (`expose_headers`), so the browser lets the frontend read it on a 429. Test: a 429 response (or the CORS preflight) lists `Retry-After` in `Access-Control-Expose-Headers`.
 
-**A5. Rename `POST /auth/circle-login` to `/auth/sacco-login`**, and keep `/auth/circle-login` answering the same for one release (same function, two routes). Test: both paths work.
+**A5. Rename `POST /auth/sacco-login` to `/auth/sacco-login`**, and keep `/auth/sacco-login` answering the same for one release (same function, two routes). Test: both paths work.
 
 **A6. Member deposit and withdrawal requests (the biggest item; do it last, in this order).** Read the Master file, section 3b, first: it is the contract Sam builds against, so the names and shapes there are fixed.
 
@@ -68,7 +68,7 @@ Check: `pytest` is green. Post "A1-A6 done" in the team chat with the commit lis
 
 Pictures: ![](images/people-01-members.png) ![](images/people-02-member-profile.png) staff view without the Add button ![](images/add-member-04-staff-no-add.png)
 
-`MembersPage`: searchable list (`GET /saccos/<id>/members`), full width. Each row shows the **email** (the API has no names) with the initials circle from the first letter of the email, a role chip per role, a status chip, and opens `MemberProfile` (**Back to members**, because it is a drill-in). In the header of the list card, the SACCO admin (`can('member.manage')`) sees a button **Add a member** that goes to the Add a member page (N1b). Nobody else sees it. **The Add form is not on this page any more: adding a member is a section of its own.**
+`MembersPage`: searchable list (`GET /saccos/<id>/members`), full width. Each row shows the **email** (the API has no names) with the initials SACCO from the first letter of the email, a role chip per role, a status chip, and opens `MemberProfile` (**Back to members**, because it is a drill-in). In the header of the list card, the SACCO admin (`can('member.manage')`) sees a button **Add a member** that goes to the Add a member page (N1b). Nobody else sees it. **The Add form is not on this page any more: adding a member is a section of its own.**
 
 `MemberProfile`: details, roles (checkboxes; `PUT .../roles`, needs `member.manage`), status change (`PATCH`, asks to confirm), and for a member who is still **Invited** the button **Send a new code** (it goes to the same call as N1b and shows the new code in a card on the profile). Errors from the named codes show as banners.
 
@@ -102,7 +102,7 @@ Why it is its own page: members are added all the time and the admin must find i
 | The number was already invited and has not joined | info banner "This number was already invited. A new code was made and the old one stopped working." and the new code | same call; the role is replaced by the one chosen |
 | The admin leaves the page with a code showing | the code is gone when they return; the person is still in the invited table | the code is state in the component only |
 | The member does not join within 15 minutes | the code expires; the row stays Invited | admin presses Make a new code |
-| The circle is suspended | the 423 page | global 423 handling |
+| The SACCO is suspended | the 423 page | global 423 handling |
 | A role without `member.manage` opens `/add-member` | the 403 page (no menu item either) | `guardRoute` |
 | The network drops after pressing Make a join code | banner "We could not confirm that went through. Press Make a join code again; a new code is made and the old one stops working." | no money is involved, so a repeat just makes a new code |
 
@@ -125,11 +125,11 @@ Picture: ![](images/people-04-audit-log.png)
 
 Read-only timeline (`GET /admin/saccos/<id>/audit`) with filter chips and Load more; needs `audit.view` (Secretary). Each entry: what happened, who, when. Empty state "No activity yet."
 
-## 4b. How circles and join codes work, with every scenario (read before N1 and Part C)
+## 4b. How SACCOs and join codes work, with every scenario (read before N1 and Part C)
 
-Read "How people get in" in the Master file. You own the two places where it starts: **creating a circle** (Platform area) and **issuing a join code** (Members page). Pictures: ![](images/platform-02-saccos.png) ![](images/platform-03-sacco-detail.png) ![](images/people-01-members.png) ![](images/people-03-join-code.png)
+Read "How people get in" in the Master file. You own the two places where it starts: **creating a SACCO** (Platform area) and **issuing a join code** (Members page). Pictures: ![](images/platform-02-saccos.png) ![](images/platform-03-sacco-detail.png) ![](images/people-01-members.png) ![](images/people-03-join-code.png)
 
-**Creating a circle (platform owner, `pf-saccos`).** Note on the picture: the prototype's Create SACCO form shows **Name** and **First admin's email**. The real API takes a name and a currency (`POST /saccos`) and has no admin field, so build the form with **Name** and **Currency** (KES by default) and put the first admin in the second step below, by phone number and join code. The email box in the picture is replaced by that second step. The "Create SACCO" form has a **name** and a **currency** (a short list: KES default). Send `POST /saccos {name, currency}`. A new circle appears in the list with the chip **Active** and **0 members**. It cannot be used until it has an admin: after creating, show a card "Next: add the first SACCO admin" (name of the person's phone number, role SACCO admin) that opens the same add-member form with the role fixed to SACCO admin (`POST /saccos/<id>/members {phone, role:'circle_admin'}`; only a platform owner holds `admin.manage`, so the role list shows SACCO admin only to the platform owner). The platform owner then gives that admin the join code in person.
+**Creating a SACCO (platform owner, `pf-saccos`).** Note on the picture: the prototype's Create SACCO form shows **Name** and **First admin's email**. The real API takes a name and a currency (`POST /saccos`) and has no admin field, so build the form with **Name** and **Currency** (KES by default) and put the first admin in the second step below, by phone number and join code. The email box in the picture is replaced by that second step. The "Create SACCO" form has a **name** and a **currency** (a short list: KES default). Send `POST /saccos {name, currency}`. A new SACCO appears in the list with the chip **Active** and **0 members**. It cannot be used until it has an admin: after creating, show a card "Next: add the first SACCO admin" (name of the person's phone number, role SACCO admin) that opens the same add-member form with the role fixed to SACCO admin (`POST /saccos/<id>/members {phone, role:'sacco_admin'}`; only a platform owner holds `admin.manage`, so the role list shows SACCO admin only to the platform owner). The platform owner then gives that admin the join code in person.
 
 | Scenario | What the person sees | What the code does |
 |---|---|---|
@@ -137,7 +137,7 @@ Read "How people get in" in the Master file. You own the two places where it sta
 | Name already used | message under Name with the server sentence | 409 sentence shown as it is |
 | Currency not in the list | cannot happen (a select), but a 400 shows as a banner | server sentence |
 | Created | green banner "Alpha SACCO was created." and the row appears at the top with 0 members | refresh the list; offer "Add the first admin" |
-| Deactivate a circle | a confirm: "This locks the SACCO's records for all its members." then the chip becomes Suspended | `POST /saccos/<id>/deactivate`; members now see the 423 page everywhere except Account settings and My settings |
+| Deactivate a SACCO | a confirm: "This locks the SACCO's records for all its members." then the chip becomes Suspended | `POST /saccos/<id>/deactivate`; members now see the 423 page everywhere except Account settings and My settings |
 | Activate again | chip Active; members get in again with their existing PINs | `POST /saccos/<id>/activate` |
 | The platform owner tries to read money | there is no button, no link, no number | never call accounts, ledger or loans from `pf-*` pages |
 
@@ -149,8 +149,8 @@ Read "How people get in" in the Master file. You own the two places where it sta
 | Phone already an active member | message under Phone: "This number is already a member." | 409 sentence |
 | Phone not valid | message under Phone: "Enter a Safaricom number like 0712 345 678." | frontend check, then 400 |
 | The member says the code does not work | the admin opens the member's profile and presses **Send a new code** | same call as re-invite; the member row shows "Invited" until they join |
-| The member forgot their circle PIN | the admin presses **Re-add with a new code** on the profile; the member joins again and sets a new PIN | same call; PIN is replaced when the join completes |
-| The admin deactivates a member | the row shows Inactive; that person's next Enter-your-circle attempt shows the 403 page | `PATCH` status; ask for confirmation first |
+| The member forgot their SACCO PIN | the admin presses **Re-add with a new code** on the profile; the member joins again and sets a new PIN | same call; PIN is replaced when the join completes |
+| The admin deactivates a member | the row shows Inactive; that person's next Enter-your-sacco attempt shows the 403 page | `PATCH` status; ask for confirmation first |
 | The admin changes a member's role | the member's menu changes on their next page change | `PUT .../roles` (needs `member.manage`); a person cannot change their own role (server says so; show the sentence) |
 | Not allowed to add members (secretary, loans officer, finance officer, member) | there is no Add a member menu item and no button on Members | `can('member.manage')` hides both; typing `/add-member` gives the 403 page; the API call gets 403 |
 
@@ -196,7 +196,7 @@ Register your pages in `src/dev/registry.neo.js`: `members`, `add-member`, `sett
 - [ ] A6: `savings.request` permission, migration 0025 up and down, five endpoints, all 14 tests (a to n), docs updated; a confirm posts exactly one ledger entry and a second confirm does not
 - [ ] Members list (full width, with the Add a member button for the admin), profile, roles, status
 - [ ] **Add a member as its own page**: phone and role, join code shown once with a 15-minute countdown and Copy, Invited table with Make a new code, every scenario row handled
-- [ ] Section 4b: circle creation with "add the first admin", every scenario row handled and photographed
+- [ ] Section 4b: SACCO creation with "add the first admin", every scenario row handled and photographed
 - [ ] SACCO settings, Access requests (approve, deny, revoke by admin only), Audit log
 - [ ] Platform: overview with clickable rows, SACCOs with create/activate/deactivate and confirm, owners, access (no revoke), audit
 - [ ] Platform pages never request or show balances

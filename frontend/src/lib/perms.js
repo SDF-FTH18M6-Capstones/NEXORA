@@ -31,7 +31,7 @@ export const ROUTES = [
   { path: 'pf-access',   title: 'Access to SACCOs',  icon: 'pf-access', ok: p => p.includes('platform') },
   { path: 'pf-audit',    title: 'Platform audit',    icon: 'audit',     ok: p => p.includes('platform') },
   { path: 'overview',    title: 'Overview',          icon: 'overview',  ok: p => sacco(p) && p.includes('dashboard.view') },
-  /* My savings is the MEMBER's own page (permission savings.request). Staff run the circle, so they see the circle's savings under Accounts. */
+  /* My savings is the MEMBER's own page (permission savings.request). Staff run the SACCO, so they see the SACCO's savings under Accounts. */
   { path: 'savings',     title: 'My savings',        icon: 'savings',   ok: p => sacco(p) && p.includes('savings.request') },
   { path: 'deposit',     title: 'Deposit',           icon: 'deposit',   ok: p => sacco(p) && p.includes('savings.request') },
   { path: 'withdraw',    title: 'Withdraw',          icon: 'withdraw',  ok: p => sacco(p) && p.includes('savings.request') },
@@ -45,7 +45,7 @@ export const ROUTES = [
   { path: 'reports',     title: 'Reports',           icon: 'reports',   ok: p => sacco(p) && p.includes('report.view') },
   { path: 'audit',       title: 'Audit log',         icon: 'audit',     ok: p => sacco(p) && p.includes('audit.view') },
   { path: 'access',      title: 'Access requests',   icon: 'access',    ok: p => sacco(p) && p.includes('support.approve') },
-  { path: 'rules',       title: 'Circle rules',      icon: 'rules',     ok: p => sacco(p) && p.includes('sacco.view') },
+  { path: 'rules',       title: 'SACCO rules',      icon: 'rules',     ok: p => sacco(p) && p.includes('sacco.view') },
   { path: 'payin',       title: 'Pay-in details',    icon: 'money',     ok: p => sacco(p) && p.includes('payin.manage') },
   { path: 'settings',    title: 'SACCO settings',    icon: 'settings',  ok: p => sacco(p) && p.includes('sacco.update') },
   /* every signed-in person, every role, has My settings: colour theme, font, text size (AppearanceCard). Last item of the menu. */

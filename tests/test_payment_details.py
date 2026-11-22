@@ -1,4 +1,4 @@
-"""Circle pay-in details: formats, two-officer approval, audit, mail, tenancy.
+"""SACCO pay-in details: formats, two-officer approval, audit, mail, tenancy.
 
 Runs against the migration-built database (the CHECK constraints matter here).
 """
@@ -23,10 +23,10 @@ pytestmark = pytest.mark.schema
 GOOD = {
     "mpesa_type": "paybill",
     "mpesa_number": "400200",
-    "display_name": "Umoja Circle",
+    "display_name": "Umoja SACCO",
     "account_reference_hint": "your member number",
     "bank_name": "Equity Bank",
-    "bank_account_name": "Umoja Circle",
+    "bank_account_name": "Umoja SACCO",
     "bank_account_number": "0123456789",
     "bank_branch": "Kitale",
 }
@@ -58,7 +58,7 @@ def go_live(change_id):
     """Pretend the 24h delay has passed, so the next read applies the change."""
     db.session.execute(
         text(
-            "UPDATE circle_payment_detail_changes SET "
+            "UPDATE sacco_payment_detail_changes SET "
             "approved_at = approved_at - interval '25 hours', "
             "go_live_at = go_live_at - interval '25 hours' WHERE id = :i"
         ),
@@ -86,8 +86,8 @@ def mails(monkeypatch):
     return sent
 
 
-def circle():
-    """A circle with an admin, a finance officer (the second officer) and a member."""
+def new_sacco():
+    """A SACCO with an admin, a finance officer (the second officer) and a member."""
     s = Setup()
     s.finance = officer(s, "finance_officer")
     return s
@@ -108,13 +108,13 @@ BAD = [
     ("display_name", {"display_name": ...}),
     ("display_name", {"display_name": "x" * 61}),
     ("display_name", {"display_name": 12}),
-    ("display_name", {"display_name": "Umoja\nCircle"}),
+    ("display_name", {"display_name": "Umoja\nSACCO"}),
     ("display_name", {"display_name": "bad\ud800"}),
-    ("display_name", {"display_name": "Umoja\u202ecircle"}),  # right-to-left override
-    ("display_name", {"display_name": "Umoja\u200bCircle"}),  # zero-width space
-    ("display_name", {"display_name": "Umoja\u2028Circle"}),  # line separator
-    ("display_name", {"display_name": "Umoja\u00a0Circle"}),  # no-break space
-    ("display_name", {"display_name": "Um\u043eja Circle"}),  # Cyrillic o
+    ("display_name", {"display_name": "Umoja\u202eSACCO"}),  # right-to-left override
+    ("display_name", {"display_name": "Umoja\u200bSACCO"}),  # zero-width space
+    ("display_name", {"display_name": "Umoja\u2028Sacco"}),  # line separator
+    ("display_name", {"display_name": "Umoja\u00a0Sacco"}),  # no-break space
+    ("display_name", {"display_name": "Um\u043eja SACCO"}),  # Cyrillic o
     ("display_name", {"display_name": "Umoja\U000e0041"}),  # tag character
     ("display_name", {"display_name": "Umoja\ufeff"}),  # byte-order mark
     ("account_reference_hint", {"mpesa_type": "till", "account_reference_hint": "x"}),
@@ -140,7 +140,7 @@ def test_a_bad_value_is_refused_with_format_example_and_reason(
     field,
     change,
 ):
-    s = circle()
+    s = new_sacco()
     resp = propose(schema_app.test_client(), s.admin, s, **change)
     assert resp.status_code == 400, resp.json
     error = resp.json["error"]
@@ -152,7 +152,7 @@ def test_a_bad_value_is_refused_with_format_example_and_reason(
 
 
 def test_a_branch_without_a_bank_and_a_shared_paybill_without_a_bank(schema_app):  # noqa: F811
-    s = circle()
+    s = new_sacco()
     c = schema_app.test_client()
     only_mpesa = {
         "bank_name": ...,
@@ -174,7 +174,7 @@ def test_a_branch_without_a_bank_and_a_shared_paybill_without_a_bank(schema_app)
 
 
 def test_some_method_is_needed_and_unknown_fields_are_refused(schema_app):  # noqa: F811
-    s = circle()
+    s = new_sacco()
     c = schema_app.test_client()
     empty = c.post(url(s, "/changes"), json={}, headers=auth(s.admin))
     assert empty.status_code == 400
@@ -184,8 +184,8 @@ def test_some_method_is_needed_and_unknown_fields_are_refused(schema_app):  # no
     assert logic.validate([])[1] == {"_": "Send the pay-in details as a JSON object."}
 
 
-def test_a_circle_may_use_mpesa_only_or_bank_only(schema_app):  # noqa: F811
-    s = circle()
+def test_a_sacco_may_use_mpesa_only_or_bank_only(schema_app):  # noqa: F811
+    s = new_sacco()
     c = schema_app.test_client()
     bank_only = {k: ... for k in ("mpesa_type", "mpesa_number", "display_name")}
     bank_only["account_reference_hint"] = ...
@@ -200,7 +200,7 @@ def test_a_circle_may_use_mpesa_only_or_bank_only(schema_app):  # noqa: F811
 
 
 def test_a_proposal_is_not_live_until_approved(schema_app, mails):  # noqa: F811
-    s = circle()
+    s = new_sacco()
     c = schema_app.test_client()
     empty = {"details": None, "pending": None, "scheduled": None}
     assert read(c, s.member, s).json == empty
@@ -229,7 +229,7 @@ def test_updated_at_is_the_go_live_time_not_the_proposal_or_approval_time(  # no
     schema_app,  # noqa: F811
     mails,
 ):
-    s = circle()
+    s = new_sacco()
     c = schema_app.test_client()
     change = propose(c, s.admin, s).json["change"]
     approve_and_wait(c, s.finance, s, change["id"])
@@ -238,7 +238,7 @@ def test_updated_at_is_the_go_live_time_not_the_proposal_or_approval_time(  # no
     row = db.session.execute(
         text(
             "SELECT proposed_at, approved_at, go_live_at "
-            "FROM circle_payment_detail_changes WHERE id = :i"
+            "FROM sacco_payment_detail_changes WHERE id = :i"
         ),
         {"i": change["id"]},
     ).one()
@@ -251,7 +251,7 @@ def test_an_approved_change_waits_24_hours_and_members_only_see_when(  # noqa: F
     schema_app,  # noqa: F811
     mails,
 ):
-    s = circle()
+    s = new_sacco()
     c = schema_app.test_client()
     first = propose(c, s.admin, s).json["change"]
     approve_and_wait(c, s.finance, s, first["id"])
@@ -286,7 +286,7 @@ def test_an_approved_change_waits_24_hours_and_members_only_see_when(  # noqa: F
 
 
 def test_the_first_ever_details_also_wait_for_the_delay(schema_app, mails):  # noqa: F811
-    s = circle()
+    s = new_sacco()
     c = schema_app.test_client()
     approve(c, s.finance, s, propose(c, s.admin, s).json["change"]["id"])
     seen = read(c, s.member, s).json
@@ -294,7 +294,7 @@ def test_the_first_ever_details_also_wait_for_the_delay(schema_app, mails):  # n
 
 
 def test_a_newer_approval_replaces_a_change_still_waiting(schema_app, mails):  # noqa: F811
-    s = circle()
+    s = new_sacco()
     c = schema_app.test_client()
     old = propose(c, s.admin, s, mpesa_number="400111").json["change"]
     approve(c, s.finance, s, old["id"])
@@ -303,7 +303,7 @@ def test_a_newer_approval_replaces_a_change_still_waiting(schema_app, mails):  #
 
     status = dict(
         db.session.execute(
-            text("SELECT id, status FROM circle_payment_detail_changes")
+            text("SELECT id, status FROM sacco_payment_detail_changes")
         ).all()
     )
     assert status[old["id"]] == "superseded" and status[new["id"]] == "approved"
@@ -323,13 +323,13 @@ def test_a_newer_approval_replaces_a_change_still_waiting(schema_app, mails):  #
 
 
 def test_the_database_refuses_a_go_live_before_the_approval(schema_app, mails):  # noqa: F811
-    s = circle()
+    s = new_sacco()
     c = schema_app.test_client()
     change = propose(c, s.admin, s).json["change"]
     with pytest.raises(IntegrityError):
         db.session.execute(
             text(
-                "UPDATE circle_payment_detail_changes SET status = 'approved', "
+                "UPDATE sacco_payment_detail_changes SET status = 'approved', "
                 "approved_by = :u, approved_at = now(), "
                 "go_live_at = now() - interval '1 hour' WHERE id = :i"
             ),
@@ -351,7 +351,7 @@ def test_any_single_officer_can_cancel_an_approved_change_and_it_never_goes_live
 ):
     # The proposer, the approver and a third officer may each cancel alone.
     for canceller in ("admin", "finance", "third"):
-        s = circle()
+        s = new_sacco()
         third = officer(s, "finance_officer")
         who = {"admin": s.admin, "finance": s.finance, "third": third}[canceller]
         c = schema_app.test_client()
@@ -377,7 +377,7 @@ def test_any_single_officer_can_cancel_an_approved_change_and_it_never_goes_live
 
 
 def test_a_cancelled_first_change_leaves_the_details_unset(schema_app, mails):  # noqa: F811
-    s = circle()
+    s = new_sacco()
     c = schema_app.test_client()
     change = _approved(c, s)
     assert cancel(c, s.admin, s, change["id"]).status_code == 200
@@ -386,7 +386,7 @@ def test_a_cancelled_first_change_leaves_the_details_unset(schema_app, mails):  
 
 
 def test_a_cancel_is_audited_and_alerts_the_other_officers_only(schema_app, mails):  # noqa: F811
-    s = circle()
+    s = new_sacco()
     secretary = officer(s, "secretary")
     c = schema_app.test_client()
     change = _approved(c, s)
@@ -410,7 +410,7 @@ def test_a_cancel_is_audited_and_alerts_the_other_officers_only(schema_app, mail
 
 
 def test_only_an_approved_change_still_waiting_can_be_cancelled(schema_app, mails):  # noqa: F811
-    s = circle()
+    s = new_sacco()
     c = schema_app.test_client()
     # Still waiting for a second officer.
     pending = propose(c, s.admin, s).json["change"]
@@ -432,8 +432,8 @@ def test_only_an_approved_change_still_waiting_can_be_cancelled(schema_app, mail
     assert cancel(c, s.admin, s, 999999).status_code == 404
 
 
-def test_only_officers_of_this_circle_can_cancel(schema_app, mails):  # noqa: F811
-    s, other = circle(), circle()
+def test_only_officers_of_this_sacco_can_cancel(schema_app, mails):  # noqa: F811
+    s, other = new_sacco(), new_sacco()
     c = schema_app.test_client()
     change = _approved(c, s)
     assert cancel(c, s.member, s, change["id"]).status_code == 403
@@ -443,7 +443,7 @@ def test_only_officers_of_this_circle_can_cancel(schema_app, mails):  # noqa: F8
 
 
 def test_a_new_change_can_be_proposed_after_a_cancel(schema_app, mails):  # noqa: F811
-    s = circle()
+    s = new_sacco()
     c = schema_app.test_client()
     change = _approved(c, s)
     cancel(c, s.admin, s, change["id"])
@@ -454,7 +454,7 @@ def test_a_new_change_can_be_proposed_after_a_cancel(schema_app, mails):  # noqa
 
 
 def test_a_second_change_replaces_the_live_values(schema_app, mails):  # noqa: F811
-    s = circle()
+    s = new_sacco()
     c = schema_app.test_client()
     first = propose(c, s.admin, s).json["change"]
     approve_and_wait(c, s.finance, s, first["id"])
@@ -466,7 +466,7 @@ def test_a_second_change_replaces_the_live_values(schema_app, mails):  # noqa: F
     db.session.expire_all()
     assert (
         db.session.execute(
-            text("SELECT count(*) FROM circle_payment_details WHERE sacco_id = :s"),
+            text("SELECT count(*) FROM sacco_payment_details WHERE sacco_id = :s"),
             {"s": s.sacco.id},
         ).scalar_one()
         == 1
@@ -474,7 +474,7 @@ def test_a_second_change_replaces_the_live_values(schema_app, mails):  # noqa: F
 
 
 def test_proposing_what_is_already_live_is_refused(schema_app, mails):  # noqa: F811
-    s = circle()
+    s = new_sacco()
     c = schema_app.test_client()
     approve_and_wait(c, s.finance, s, propose(c, s.admin, s).json["change"]["id"])
     same = propose(c, s.admin, s)
@@ -483,7 +483,7 @@ def test_proposing_what_is_already_live_is_refused(schema_app, mails):  # noqa: 
 
 
 def test_a_newer_proposal_replaces_the_waiting_one(schema_app, mails):  # noqa: F811
-    s = circle()
+    s = new_sacco()
     c = schema_app.test_client()
     old = propose(c, s.admin, s).json["change"]
     new = propose(c, s.admin, s, mpesa_number="400999").json["change"]
@@ -496,7 +496,7 @@ def test_a_newer_proposal_replaces_the_waiting_one(schema_app, mails):  # noqa: 
 
 
 def test_an_unknown_change_is_404(schema_app):  # noqa: F811
-    s = circle()
+    s = new_sacco()
     assert approve(schema_app.test_client(), s.finance, s, 999999).status_code == 404
 
 
@@ -504,7 +504,7 @@ def test_an_unknown_change_is_404(schema_app):  # noqa: F811
 
 
 def test_the_proposer_cannot_approve_their_own_change(schema_app, mails):  # noqa: F811
-    s = circle()
+    s = new_sacco()
     c = schema_app.test_client()
     change = propose(c, s.admin, s).json["change"]
     own = approve(c, s.admin, s, change["id"])
@@ -516,20 +516,20 @@ def test_the_proposer_cannot_approve_their_own_change(schema_app, mails):  # noq
 
 def test_one_officer_holding_two_titles_is_still_one_person(schema_app, mails):  # noqa: F811
     # Proposing and approving as the same user is refused whatever the title.
-    s = circle()
+    s = new_sacco()
     c = schema_app.test_client()
     change = propose(c, s.finance, s).json["change"]
     assert approve(c, s.finance, s, change["id"]).status_code == 403
 
 
 def test_the_database_refuses_self_approval_and_a_second_pending(schema_app, mails):  # noqa: F811
-    s = circle()
+    s = new_sacco()
     c = schema_app.test_client()
     change = propose(c, s.admin, s).json["change"]
     with pytest.raises(IntegrityError):
         db.session.execute(
             text(
-                "UPDATE circle_payment_detail_changes SET status = 'approved', "
+                "UPDATE sacco_payment_detail_changes SET status = 'approved', "
                 "approved_by = proposed_by, approved_at = now(), go_live_at = now() "
                 "WHERE id = :i"
             ),
@@ -539,7 +539,7 @@ def test_the_database_refuses_self_approval_and_a_second_pending(schema_app, mai
     with pytest.raises(IntegrityError):
         db.session.execute(
             text(
-                "INSERT INTO circle_payment_detail_changes "
+                "INSERT INTO sacco_payment_detail_changes "
                 "(sacco_id, proposed_by, mpesa_type, mpesa_number, display_name) "
                 "VALUES (:s, :u, 'till', '123456', 'x')"
             ),
@@ -549,11 +549,11 @@ def test_the_database_refuses_self_approval_and_a_second_pending(schema_app, mai
 
 
 def test_the_database_refuses_a_bad_number_even_if_the_app_does_not(schema_app):  # noqa: F811
-    s = circle()
+    s = new_sacco()
     with pytest.raises(IntegrityError):
         db.session.execute(
             text(
-                "INSERT INTO circle_payment_details "
+                "INSERT INTO sacco_payment_details "
                 "(sacco_id, updated_by, mpesa_type, mpesa_number, display_name) "
                 "VALUES (:s, :u, 'paybill', '12', 'x')"
             ),
@@ -566,7 +566,7 @@ def test_the_database_refuses_a_bad_number_even_if_the_app_does_not(schema_app):
 
 
 def test_only_officers_with_the_permission_may_propose_or_approve(schema_app, mails):  # noqa: F811
-    s = circle()
+    s = new_sacco()
     c = schema_app.test_client()
     secretary = officer(s, "secretary")
     loans = officer(s, "loans_officer")
@@ -579,7 +579,7 @@ def test_only_officers_with_the_permission_may_propose_or_approve(schema_app, ma
 
 
 def test_a_platform_owner_reads_but_cannot_change_pay_in_details(schema_app, mails):  # noqa: F811
-    s = circle()
+    s = new_sacco()
     c = schema_app.test_client()
     owner = make_user(owner=True)
     change = propose(c, s.admin, s).json["change"]
@@ -589,7 +589,7 @@ def test_a_platform_owner_reads_but_cannot_change_pay_in_details(schema_app, mai
 
 
 def test_a_removed_officer_can_no_longer_approve(schema_app, mails):  # noqa: F811
-    s = circle()
+    s = new_sacco()
     c = schema_app.test_client()
     change = propose(c, s.admin, s).json["change"]
     membership = (
@@ -603,22 +603,22 @@ def test_a_removed_officer_can_no_longer_approve(schema_app, mails):  # noqa: F8
     assert approve(c, s.finance, s, change["id"]).status_code == 403
 
 
-def test_a_suspended_circle_answers_423(schema_app, mails):  # noqa: F811
+def test_a_suspended_sacco_answers_423(schema_app, mails):  # noqa: F811
     from app.models.sacco import Sacco
 
-    s = circle()
+    s = new_sacco()
     db.session.get(Sacco, s.sacco.id).status = SaccoStatus.SUSPENDED
     db.session.commit()
     db.session.remove()
     assert propose(schema_app.test_client(), s.admin, s).status_code == 423
 
 
-# ---- another circle ------------------------------------------------------------
+# ---- another SACCO ------------------------------------------------------------
 
 
-def test_someone_from_another_circle_gets_404_everywhere(schema_app, mails):  # noqa: F811
-    s = circle()
-    other = circle()
+def test_someone_from_another_sacco_gets_404_everywhere(schema_app, mails):  # noqa: F811
+    s = new_sacco()
+    other = new_sacco()
     c = schema_app.test_client()
     change = propose(c, s.admin, s).json["change"]
     approve_and_wait(c, s.finance, s, change["id"])
@@ -628,14 +628,14 @@ def test_someone_from_another_circle_gets_404_everywhere(schema_app, mails):  # 
         assert read(c, outsider, s).status_code == 404
         assert propose(c, outsider, s).status_code == 404
         assert approve(c, outsider, s, pending["id"]).status_code == 404
-    # An officer's own circle's route cannot reach this circle's change either.
+    # An officer's own SACCO's route cannot reach this SACCO's change either.
     for outsider in (other.admin, other.finance):
         assert approve(c, outsider, other, pending["id"]).status_code == 404
     assert read(c, s.member, s).json["details"]["mpesa_number"] == "400200"
 
 
-def test_each_circle_has_its_own_details(schema_app, mails):  # noqa: F811
-    a, b = circle(), circle()
+def test_each_sacco_has_its_own_details(schema_app, mails):  # noqa: F811
+    a, b = new_sacco(), new_sacco()
     c = schema_app.test_client()
     approve_and_wait(c, a.finance, a, propose(c, a.admin, a).json["change"]["id"])
     assert read(c, b.member, b).json["details"] is None
@@ -643,7 +643,7 @@ def test_each_circle_has_its_own_details(schema_app, mails):  # noqa: F811
 
 
 def test_a_signed_out_caller_gets_401(schema_app):  # noqa: F811
-    s = circle()
+    s = new_sacco()
     c = schema_app.test_client()
     assert c.get(url(s)).status_code == 401
     assert c.post(url(s, "/changes"), json=GOOD).status_code == 401
@@ -653,7 +653,7 @@ def test_a_signed_out_caller_gets_401(schema_app):  # noqa: F811
 
 
 def test_a_shared_bank_paybill_is_marked_manual_confirm_only(schema_app, mails):  # noqa: F811
-    s = circle()
+    s = new_sacco()
     c = schema_app.test_client()
     plain = propose(c, s.admin, s).json["change"]
     assert plain["values"]["bank_manual_confirm_only"] is False
@@ -672,7 +672,7 @@ def test_a_shared_bank_paybill_is_marked_manual_confirm_only(schema_app, mails):
 
 
 def test_every_proposal_and_approval_is_audited_without_the_numbers(schema_app, mails):  # noqa: F811
-    s = circle()
+    s = new_sacco()
     c = schema_app.test_client()
     first = propose(c, s.admin, s).json["change"]
     second = propose(c, s.finance, s, mpesa_number="400300").json["change"]
@@ -698,7 +698,7 @@ def test_every_proposal_and_approval_is_audited_without_the_numbers(schema_app, 
 
 
 def test_a_refused_proposal_leaves_no_audit_row(schema_app, mails):  # noqa: F811
-    s = circle()
+    s = new_sacco()
     propose(schema_app.test_client(), s.admin, s, mpesa_number="1")
     count = (
         db.session.query(AuditLog)
@@ -712,7 +712,7 @@ def test_a_refused_proposal_leaves_no_audit_row(schema_app, mails):  # noqa: F81
 
 
 def test_every_officer_and_only_officers_are_emailed(schema_app, mails):  # noqa: F811
-    s = circle()
+    s = new_sacco()
     secretary = officer(s, "secretary")
     c = schema_app.test_client()
     admin_email = db.session.get(User, s.admin.id).email
@@ -735,7 +735,7 @@ def test_every_officer_and_only_officers_are_emailed(schema_app, mails):  # noqa
 
 
 def test_an_inactive_officer_is_not_emailed(schema_app, mails):  # noqa: F811
-    s = circle()
+    s = new_sacco()
     membership = (
         db.session.query(SaccoMembership)
         .filter_by(user_id=s.finance.id, sacco_id=s.sacco.id)
@@ -754,7 +754,7 @@ def test_a_mail_outage_does_not_fail_or_undo_the_change(schema_app, monkeypatch)
         raise OSError("smtp down")
 
     monkeypatch.setattr(logic, "send_text_email", broken)
-    s = circle()
+    s = new_sacco()
     c = schema_app.test_client()
     made = propose(c, s.admin, s)
     assert made.status_code == 201
@@ -770,7 +770,7 @@ def test_a_failure_listing_the_officers_does_not_fail_the_change(
         raise RuntimeError("database hiccup")
 
     monkeypatch.setattr(logic, "officers", broken)
-    s = circle()
+    s = new_sacco()
     assert propose(schema_app.test_client(), s.admin, s).status_code == 201
 
 
@@ -792,7 +792,7 @@ def test_an_officer_made_after_the_proposal_cannot_approve_it(schema_app, mails)
 
 
 def test_granting_the_officer_title_tells_every_officer(schema_app, mails):  # noqa: F811
-    s = circle()
+    s = new_sacco()
     c = schema_app.test_client()
     admin_email = db.session.get(User, s.admin.id).email
     finance_email = db.session.get(User, s.finance.id).email
@@ -812,7 +812,7 @@ def test_granting_the_officer_title_tells_every_officer(schema_app, mails):  # n
 
 
 def test_giving_a_title_that_is_not_an_officer_title_sends_nothing(schema_app, mails):  # noqa: F811
-    s = circle()
+    s = new_sacco()
     resp = schema_app.test_client().put(
         f"/api/v1/saccos/{s.sacco.id}/members/{s.member_membership.id}/roles",
         json={"roles": ["secretary"]},
@@ -823,7 +823,7 @@ def test_giving_a_title_that_is_not_an_officer_title_sends_nothing(schema_app, m
 
 
 def test_adding_an_admin_or_changing_a_role_tells_the_officers(schema_app, mails):  # noqa: F811
-    s = circle()
+    s = new_sacco()
     c = schema_app.test_client()
     owner = make_user(owner=True)
     newcomer = make_user()
@@ -859,7 +859,7 @@ def test_a_proposal_from_someone_no_longer_an_officer_cannot_be_approved(
     schema_app,  # noqa: F811
     mails,
 ):
-    s = circle()
+    s = new_sacco()
     c = schema_app.test_client()
     change = propose(c, s.finance, s).json["change"]
     membership = (
@@ -877,7 +877,7 @@ def test_a_proposal_from_someone_no_longer_an_officer_cannot_be_approved(
 
 
 def test_the_waiting_change_names_its_proposer(schema_app, mails):  # noqa: F811
-    s = circle()
+    s = new_sacco()
     c = schema_app.test_client()
     propose(c, s.finance, s)
     pending = read(c, s.admin, s).json["pending"]
@@ -885,7 +885,7 @@ def test_the_waiting_change_names_its_proposer(schema_app, mails):  # noqa: F811
 
 
 def test_text_is_normalised_and_accents_are_allowed(schema_app, mails):  # noqa: F811
-    s = circle()
+    s = new_sacco()
     made = propose(
         schema_app.test_client(),
         s.admin,
@@ -897,8 +897,8 @@ def test_text_is_normalised_and_accents_are_allowed(schema_app, mails):  # noqa:
     assert made.json["change"]["values"]["display_name"] == "Caf\u00e9 Umoja"
 
 
-def test_a_circle_cannot_flood_its_officers_with_proposals(schema_app, mails):  # noqa: F811
-    s = circle()
+def test_a_sacco_cannot_flood_its_officers_with_proposals(schema_app, mails):  # noqa: F811
+    s = new_sacco()
     c = schema_app.test_client()
     for n in range(logic.MAX_PROPOSALS_PER_HOUR):
         ok = propose(c, s.admin, s, mpesa_number=f"4002{n:02d}")
@@ -916,7 +916,7 @@ def test_smtp_mail_goes_out_on_a_background_thread(schema_app, monkeypatch):  # 
         logic, "send_text_email", lambda *a: seen.append(threading.current_thread())
     )
     monkeypatch.setitem(schema_app.config, "MAIL_BACKEND", "smtp")
-    s = circle()
+    s = new_sacco()
     made = propose(schema_app.test_client(), s.admin, s)
     assert made.status_code == 201
     for thread in threading.enumerate():
@@ -929,7 +929,7 @@ def test_smtp_mail_goes_out_on_a_background_thread(schema_app, monkeypatch):  # 
 def test_holding_since_is_none_for_a_member_and_for_an_inactive_officer(schema_app):  # noqa: F811
     from app.security.permissions import holding_since
 
-    s = circle()
+    s = new_sacco()
     assert holding_since(s.sacco.id, s.member.id, logic.PERMISSION) is None
     assert holding_since(s.sacco.id, s.finance.id, logic.PERMISSION) is not None
     # A legacy admin with no title rows counts from when the membership began.
@@ -969,7 +969,7 @@ def test_editing_an_unrelated_title_keeps_granted_at_and_sends_no_alert(
     schema_app,  # noqa: F811
     mails,
 ):
-    s = circle()
+    s = new_sacco()
     c = schema_app.test_client()
     membership_id = _membership_of(s, s.finance).id
     before = _granted(membership_id)
@@ -988,7 +988,7 @@ def test_adding_the_officer_title_sends_one_alert_and_stamps_only_that_title(
     schema_app,  # noqa: F811
     mails,
 ):
-    s = circle()
+    s = new_sacco()
     c = schema_app.test_client()
     membership_id = s.member_membership.id
     url_ = _titles_url(s, membership_id)
@@ -1025,7 +1025,7 @@ def test_a_waiting_change_can_still_be_approved_after_an_unrelated_title_edit(
     schema_app,  # noqa: F811
     mails,
 ):
-    s = circle()
+    s = new_sacco()
     c = schema_app.test_client()
     change = propose(c, s.admin, s).json["change"]
     put = c.put(
@@ -1039,14 +1039,14 @@ def test_a_waiting_change_can_still_be_approved_after_an_unrelated_title_edit(
 
 
 def test_a_legacy_admin_may_approve_another_officers_change(schema_app, mails):  # noqa: F811
-    s = circle()  # the admin has no title rows: the role column alone grants it
+    s = new_sacco()  # the admin has no title rows: the role column alone grants it
     c = schema_app.test_client()
     change = propose(c, s.finance, s).json["change"]
     assert approve(c, s.admin, s, change["id"]).status_code == 200
 
 
 def test_a_legacy_admin_cannot_approve_their_own_change(schema_app, mails):  # noqa: F811
-    s = circle()
+    s = new_sacco()
     c = schema_app.test_client()
     change = propose(c, s.admin, s).json["change"]
     blocked = approve(c, s.admin, s, change["id"])
@@ -1060,7 +1060,7 @@ def test_a_legacy_admin_created_after_the_proposal_is_still_a_new_officer(
 ):
     from app.models.membership import MembershipRole
 
-    s = circle()
+    s = new_sacco()
     c = schema_app.test_client()
     change = propose(c, s.finance, s).json["change"]
     late = make_user()
@@ -1086,24 +1086,24 @@ TEXT_FIELDS = (
 
 
 def test_apostrophes_ampersands_full_stops_and_brackets_are_accepted(schema_app, mails):  # noqa: F811
-    s = circle()
+    s = new_sacco()
     made = propose(
         schema_app.test_client(),
         s.admin,
         s,
-        display_name="St. Mary's Teachers' Circle & Co.",
+        display_name="St. Mary's Teachers' SACCO & Co.",
         bank_account_name="Nyeri Women's Group (2026)",
     )
     assert made.status_code == 201, made.json
     values = made.json["change"]["values"]
-    assert values["display_name"] == "St. Mary's Teachers' Circle & Co."
+    assert values["display_name"] == "St. Mary's Teachers' SACCO & Co."
     assert values["bank_account_name"] == "Nyeri Women's Group (2026)"
 
 
 @pytest.mark.parametrize("field", TEXT_FIELDS)
 @pytest.mark.parametrize(
     "bad",
-    ["Umoja \u0421ircle", "Umoja\u202ecircle", "\u202eUmoja"],
+    ["Umoja SA\u0421CO", "Umoja\u202eSACCO", "\u202eUmoja"],
     ids=["cyrillic", "bidi", "bidi-lead"],
 )
 def test_cyrillic_and_bidi_characters_are_refused_in_every_text_field(
@@ -1112,13 +1112,13 @@ def test_cyrillic_and_bidi_characters_are_refused_in_every_text_field(
     field,
     bad,
 ):
-    s = circle()
+    s = new_sacco()
     resp = propose(schema_app.test_client(), s.admin, s, **{field: bad})
     assert resp.status_code == 400, resp.json
     assert field in resp.json["error"]["fields"]
 
 
-def test_a_mail_failure_is_logged_with_circle_and_officer_ids_never_the_numbers(
+def test_a_mail_failure_is_logged_with_sacco_and_officer_ids_never_the_numbers(
     schema_app,  # noqa: F811
     monkeypatch,
     caplog,
@@ -1130,11 +1130,11 @@ def test_a_mail_failure_is_logged_with_circle_and_officer_ids_never_the_numbers(
     # The migration run in the schema_app fixture calls logging.fileConfig, which
     # disables loggers that already exist.
     monkeypatch.setattr(logic.log, "disabled", False)
-    s = circle()
+    s = new_sacco()
     with caplog.at_level("ERROR", logger=logic.log.name):
         assert propose(schema_app.test_client(), s.admin, s).status_code == 201
     text = caplog.text
     for officer_id in (s.admin.id, s.finance.id):
-        assert f"officer {officer_id} of circle {s.sacco.id}" in text
+        assert f"officer {officer_id} of SACCO {s.sacco.id}" in text
     for number in ("400200", "0123456789"):
         assert number not in text

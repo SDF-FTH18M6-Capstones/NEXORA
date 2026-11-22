@@ -191,7 +191,7 @@ def _post(
     actor = _actor(user_id, account.sacco_id)
 
     if kind is TransactionType.WITHDRAWAL:
-        # Circle lock before the account lock, the order a loan payout uses too.
+        # SACCO lock before the account lock, the order a loan payout uses too.
         from app.saccos.rules import lock_sacco  # rules imports this module
 
         lock_sacco(account.sacco_id)

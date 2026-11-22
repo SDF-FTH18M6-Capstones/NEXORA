@@ -1,4 +1,4 @@
-/* Circle rules: the form's empty state, the browser-side check and the request body.
+/* SACCO rules: the form's empty state, the browser-side check and the request body.
  * The server checks the same things; these messages say the format, give an example
  * and give the reason, so nobody has to guess. Keys are the API's field names. */
 import { parseAmount, toMinor } from './format.js';
@@ -18,7 +18,7 @@ export function checkRules(v) {
   if (!(parseAmount(v.contribution) > 0)) e.contribution_amount = 'Enter the amount each member pays, above 0. Example: 500 means KES 500.';
   if (!whole(v.multiple) || v.multiple < 1 || v.multiple > 10) e.loan_cap_multiple = 'Enter a whole number from 1 to 10. Example: 3 means savings of KES 1,000 allow a loan of up to KES 3,000.';
   const rate = String(v.interest).trim();
-  if (!/^\d+(\.\d{1,2})?$/.test(rate) || Number(rate) > 100) e.interest_percent = 'Type the percentage your circle charges per loan, from 0 to 100 with up to 2 decimals. Example: 10 means 10%. Type 0 for no charge. There is no default.';
+  if (!/^\d+(\.\d{1,2})?$/.test(rate) || Number(rate) > 100) e.interest_percent = 'Type the percentage your SACCO charges per loan, from 0 to 100 with up to 2 decimals. Example: 10 means 10%. Type 0 for no charge. There is no default.';
   const max = v.periodUnit === 'days' ? 730 : 24;
   if (!whole(v.periodValue) || v.periodValue < 1 || v.periodValue > max) e.repayment_period_value = `Enter a whole number from 1 to ${max} ${v.periodUnit}. Example: 6 months.`;
   if (String(v.fine).trim() === '' || Number.isNaN(Number(String(v.fine).replace(/[^\d.]/g, ''))) || parseAmount(v.fine) < 0) e.late_fine_amount = 'Enter a flat amount for each late payment. Example: 50 means KES 50. Type 0 for no fine.';

@@ -26,7 +26,7 @@ export default function Enter() {
   const location = useLocation();
   const {
     enteredSaccoId,
-    enterCircle,
+    enterSacco,
     logout,
     navigate,
     perms,
@@ -60,11 +60,11 @@ export default function Enter() {
   );
   const showChooser = forceChooser || (
     !location.state?.enterSelected
-    && Boolean(location.state?.chooseCircle)
+    && Boolean(location.state?.chooseSacco)
   );
   const currentIsEntered = enteredSaccoId != null
     && String(enteredSaccoId) === String(saccoId);
-  const circleLocked = lockedSaccoId != null
+  const saccoLocked = lockedSaccoId != null
     && String(lockedSaccoId) === String(saccoId)
     && lockedSeconds > 0;
 
@@ -108,7 +108,7 @@ export default function Enter() {
       } else {
         navigate('/enter', {
           replace: true,
-          state: { ...location.state, chooseCircle: false, enterSelected: true },
+          state: { ...location.state, chooseSacco: false, enterSelected: true },
         });
       }
       return;
@@ -137,7 +137,7 @@ export default function Enter() {
     }
     setSwitching(true);
     try {
-      const nextSession = await enterCircle(saccoId, pin);
+      const nextSession = await enterSacco(saccoId, pin);
       setDigits(['', '', '', '']);
       const target = location.state?.from || '/' + homeFor(nextSession.perms);
       navigate(target, { replace: true });
@@ -165,7 +165,7 @@ export default function Enter() {
   if (!activeSaccos.length) {
     return (
       <div className="mx-auto flex w-full max-w-2xl flex-col content-center gap-5 p-4 text-center md:p-6">
-        <h1 className="font-serif text-3xl">You are not in a circle yet</h1>
+        <h1 className="font-serif text-3xl">You are not in a SACCO yet</h1>
         <p className="text-muted">
           Ask your SACCO admin or a staff member for a join code, then use it here.
         </p>
@@ -194,8 +194,8 @@ export default function Enter() {
     return (
       <div className="mx-auto flex w-full max-w-2xl flex-col gap-4 p-4 md:p-6">
         <header className="flex flex-col gap-2">
-          <h1 className="font-serif text-3xl">Choose your circle</h1>
-          <p className="text-muted">Choose a circle, then enter its PIN.</p>
+          <h1 className="font-serif text-3xl">Choose your SACCO</h1>
+          <p className="text-muted">Choose a SACCO, then enter its PIN.</p>
         </header>
         {activeSaccos.map(item => (
           <button
@@ -260,19 +260,19 @@ export default function Enter() {
   return (
     <div className="mx-auto w-full max-w-xl p-4 md:p-6">
       <section className="glass flex flex-col gap-3">
-        {location.state?.justJoined && <ErrorBanner kind="ok">You are in. Now enter your circle.</ErrorBanner>}
-        <div className="eyebrow">Enter your circle</div>
-        <h1 className="font-serif text-2xl">Enter your circle</h1>
-        <p className="text-muted">{sacco ? sacco.name : 'Choose a circle to continue.'}</p>
+        {location.state?.justJoined && <ErrorBanner kind="ok">You are in. Now enter your SACCO.</ErrorBanner>}
+        <div className="eyebrow">Enter your SACCO</div>
+        <h1 className="font-serif text-2xl">Enter your SACCO</h1>
+        <p className="text-muted">{sacco ? sacco.name : 'Choose a SACCO to continue.'}</p>
         {error && <ErrorBanner>{error}</ErrorBanner>}
-        {circleLocked && (
+        {saccoLocked && (
           <ErrorBanner kind="warn">
             Try again in {Math.ceil(lockedSeconds / 60)} minutes.
           </ErrorBanner>
         )}
         {saccoId && (
           <form className="flex flex-col gap-3" onSubmit={submitPin}>
-            <div className="pin-row" role="group" aria-label="Four-digit circle PIN">
+            <div className="pin-row" role="group" aria-label="Four-digit SACCO PIN">
               {digits.map((digit, index) => (
                 <input
                   key={index}
@@ -295,7 +295,7 @@ export default function Enter() {
             <button
               className="btn block"
               type="submit"
-              disabled={switching || circleLocked || digits.join('').length !== 4}
+              disabled={switching || saccoLocked || digits.join('').length !== 4}
             >
               {switching ? 'Checking PIN...' : 'Continue'}
             </button>
@@ -310,7 +310,7 @@ export default function Enter() {
             setForceChooser(true);
           }}
         >
-          Not your circle? Choose another
+          Not your SACCO? Choose another
         </button>
       </section>
     </div>

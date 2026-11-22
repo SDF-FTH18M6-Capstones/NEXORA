@@ -30,8 +30,8 @@ const COPY = {
   }
 };
 
-/* What the circle's officers set under Pay-in details. Nothing here is a sample: with no details set the page says so. */
-/* A withdrawal sends money out of the circle, so it needs no pay-in details and is never blocked by them. */
+/* What the SACCO's officers set under Pay-in details. Nothing here is a sample: with no details set the page says so. */
+/* A withdrawal sends money out of the SACCO, so it needs no pay-in details and is never blocked by them. */
 function WhatHappensNext() {
   return (
     <ol className="sam-steps">
@@ -46,7 +46,7 @@ function HowToPay({ method, pay }) {
   if (pay.status === 'loading') return <Loading lines={3} />;
   if (pay.status === 'error') return <ErrorBanner onRetry={pay.reload}>We could not load the pay-in details. Try again.</ErrorBanner>;
   const details = pay.data.details;
-  if (!details) return <ErrorBanner kind="warn">Pay-in details not set. Ask an officer of your circle to set them. You cannot send a request until they are.</ErrorBanner>;
+  if (!details) return <ErrorBanner kind="warn">Pay-in details not set. Ask an officer of your SACCO to set them. You cannot send a request until they are.</ErrorBanner>;
   const till = details.mpesa_type === 'till';
   const scheduled = pay.data.scheduled;
   return (
@@ -89,7 +89,7 @@ export default function RequestPage({ kind }) {
   const notSet = !withdrawing && pay.status === 'ready' && !details;
   /* until the details have loaded, a deposit cannot say where to pay */
   const payUnready = !withdrawing && pay.status !== 'ready';
-  /* a deposit by a method the circle does not offer cannot be paid anywhere */
+  /* a deposit by a method the SACCO does not offer cannot be paid anywhere */
   const methodOff = !withdrawing && !!details && (method === 'mpesa' ? !details.mpesa_number : !details.bank_name);
 
   const account = useAsync(() => (withdrawing ? getMyAccount(saccoId) : Promise.resolve('skip')), [saccoId, kind], { isEmpty: () => false });
@@ -175,8 +175,8 @@ export default function RequestPage({ kind }) {
           )}
 
           {banner && banner.kind !== 'ok' && <ErrorBanner kind={banner.kind}>{banner.text}</ErrorBanner>}
-          {notSet && <ErrorBanner kind="warn">Pay-in details not set. Ask an officer of your circle to set them.</ErrorBanner>}
-          {methodOff && <ErrorBanner kind="warn">This circle does not take {method === 'mpesa' ? 'M-Pesa' : 'bank'} payments. Choose the other way to pay.</ErrorBanner>}
+          {notSet && <ErrorBanner kind="warn">Pay-in details not set. Ask an officer of your SACCO to set them.</ErrorBanner>}
+          {methodOff && <ErrorBanner kind="warn">This SACCO does not take {method === 'mpesa' ? 'M-Pesa' : 'bank'} payments. Choose the other way to pay.</ErrorBanner>}
           <button type="submit" className="btn" disabled={sending || noBalance || notSet || methodOff || payUnready}>{sending ? 'Sending...' : t.button}</button>
           <p className="sam-note">This sends a request only. Your balance changes after an officer confirms it. Each request has its own reference, so a retry never sends it twice.</p>
         </form>

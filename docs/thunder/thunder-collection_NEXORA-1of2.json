@@ -724,7 +724,7 @@
       "_id": "4d2dffa7-923d-5017-b8b0-e076f777aae2",
       "colId": "699f9786-1851-5a25-b520-a244f85a5e9b",
       "containerId": "c66e4ac8-b4b2-58b1-ae3d-dd0e4cf749b7",
-      "name": "07 Admin: cannot grant circle_admin (403)",
+      "name": "07 Admin: cannot grant sacco_admin (403)",
       "url": "{{baseUrl}}/api/v1/saccos/{{saccoId}}/members/{{staffMembershipId}}/roles",
       "method": "PUT",
       "sortNum": 70000,
@@ -747,7 +747,7 @@
       ],
       "body": {
         "type": "json",
-        "raw": "{\"roles\": [\"circle_admin\"]}",
+        "raw": "{\"roles\": [\"sacco_admin\"]}",
         "form": []
       },
       "auth": {
@@ -782,7 +782,7 @@
       ],
       "body": {
         "type": "json",
-        "raw": "{\"roles\": [\"circle_admin\", \"finance_officer\"]}",
+        "raw": "{\"roles\": [\"sacco_admin\", \"finance_officer\"]}",
         "form": []
       },
       "auth": {
@@ -794,7 +794,7 @@
       "_id": "2120a340-fe5d-595f-b6ed-17ea7b6c8450",
       "colId": "699f9786-1851-5a25-b520-a244f85a5e9b",
       "containerId": "c66e4ac8-b4b2-58b1-ae3d-dd0e4cf749b7",
-      "name": "09 Owner: circle_admin only moves with the admin role (409)",
+      "name": "09 Owner: sacco_admin only moves with the admin role (409)",
       "url": "{{baseUrl}}/api/v1/saccos/{{saccoId}}/members/{{adminMembershipId}}/roles",
       "method": "PUT",
       "sortNum": 90000,

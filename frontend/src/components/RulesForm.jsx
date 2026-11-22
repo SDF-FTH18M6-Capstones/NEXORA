@@ -3,14 +3,14 @@ import NotEnforced from './NotEnforced.jsx';
 
 const Hint = ({ children }) => <p className="muted text-sm">{children}</p>;
 
-/* The circle rules form. `value` is the object from emptyRules(); `errors` holds a
+/* The SACCO rules form. `value` is the object from emptyRules(); `errors` holds a
  * plain-words reason per API field name. Every field says its format and an example. */
 export default function RulesForm({ value, onChange, errors = {}, disabled = false }) {
   const set = key => event => onChange({ ...value, [key]: event.target.value });
   const input = (key, extra = {}) => ({ value: value[key], onChange: set(key), disabled, ...extra });
   return (
     <div className="neo-stack">
-      <b>Circle rules</b>
+      <b>SACCO rules</b>
       <p className="muted text-sm">Every member sees these and accepts them before joining. They are locked for the whole cycle.</p>
 
       <Field id="rule-contribution" label="Contribution amount (KES)" error={errors.contribution_amount}>
@@ -32,7 +32,7 @@ export default function RulesForm({ value, onChange, errors = {}, disabled = fal
       <Field id="rule-interest" label={<>Interest or service charge per loan (%)<NotEnforced /></>} error={errors.interest_percent}>
         <input {...input('interest', { inputMode: 'decimal', placeholder: 'Type the rate' })} />
       </Field>
-      <Hint>Required, with no default, because no standard rate has been verified. Type what your circle agreed, from 0 to 100. Example: 10 means 10% of each loan. Type 0 for no charge. NEXORA records the rate; it does not add interest to any loan.</Hint>
+      <Hint>Required, with no default, because no standard rate has been verified. Type what your SACCO agreed, from 0 to 100. Example: 10 means 10% of each loan. Type 0 for no charge. NEXORA records the rate; it does not add interest to any loan.</Hint>
 
       <div className="grid grid-cols-2 gap-3">
         <Field id="rule-period" label="Repayment period" error={errors.repayment_period_value}>

@@ -1,10 +1,10 @@
-"""Circle rules: read, publish, accept, propose a change, vote.
+"""SACCO rules: read, publish, accept, propose a change, vote.
 
 GET  /saccos/<id>/rules                       any active member: the current rules
-POST /saccos/<id>/rules                       circle admin or platform owner
+POST /saccos/<id>/rules                       SACCO admin or platform owner
 POST /saccos/<id>/rules/accept                a member accepts the current version
 GET  /saccos/<id>/rules/proposals             any active member
-POST /saccos/<id>/rules/proposals             circle admin or platform owner
+POST /saccos/<id>/rules/proposals             SACCO admin or platform owner
 POST /saccos/<id>/rules/proposals/<pid>/votes a member votes; a majority adopts it
 """
 
@@ -37,7 +37,7 @@ def invalid(errors: dict):
     body = {
         "error": {
             "code": "validation_error",
-            "message": "Some circle rules are missing or not valid. See fields.",
+            "message": "Some SACCO rules are missing or not valid. See fields.",
             "fields": errors,
         }
     }
@@ -91,10 +91,10 @@ def publish_first_rules(sacco_id):
 def accept_rules(sacco_id):
     membership = g.access.membership
     if membership is None:
-        return error_response(403, "Only members of the circle accept its rules.")
+        return error_response(403, "Only members of the SACCO accept its rules.")
     rules = logic.current_rules(sacco_id)
     if rules is None:
-        return error_response(404, "This circle has no rules yet.")
+        return error_response(404, "This SACCO has no rules yet.")
     version = _body().get("version")
     if type(version) is not int or version != rules.version:
         return error_response(
@@ -169,7 +169,7 @@ def propose_rules(sacco_id):
         return error_response(409, "Publish the first rules before proposing a change.")
     if logic.today() < current.cycle_ends_on:
         return interface_error(RULES_LOCKED, logic.lock_message(current))
-    # A vote nobody finishes must not block the circle for ever: it lapses.
+    # A vote nobody finishes must not block the SACCO for ever: it lapses.
     for stale in db.session.scalars(
         select(RulesProposal).where(
             RulesProposal.sacco_id == sacco_id, RulesProposal.status == "open"
@@ -228,7 +228,7 @@ def propose_rules(sacco_id):
 def vote_on_proposal(sacco_id, proposal_id):
     membership = g.access.membership
     if membership is None:
-        return error_response(403, "Only members of the circle vote.")
+        return error_response(403, "Only members of the SACCO vote.")
     approve = _body().get("approve")
     if not isinstance(approve, bool):
         return error_response(400, "Send approve: true or false.")

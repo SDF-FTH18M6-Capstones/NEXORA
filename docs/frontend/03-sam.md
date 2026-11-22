@@ -4,7 +4,7 @@ Same format as the files of Ryan, Neo and Collins. First read the Master file on
 
 ## 1. Your goal
 
-Build every screen that shows or moves money: Overview (the circle's version for staff, the member's own version for members, with charts), My savings (members only), **Deposit and Withdraw (members choose M-Pesa or Bank)**, Accounts and the ledger, Post money (officers post a deposit, withdrawal, reverse), **Requests (officers confirm or reject the members' requests)**, Loans (list, detail, request, decide, disburse, repay) and Reports.
+Build every screen that shows or moves money: Overview (the SACCO's version for staff, the member's own version for members, with charts), My savings (members only), **Deposit and Withdraw (members choose M-Pesa or Bank)**, Accounts and the ledger, Post money (officers post a deposit, withdrawal, reverse), **Requests (officers confirm or reject the members' requests)**, Loans (list, detail, request, decide, disburse, repay) and Reports.
 
 You do **not** depend on Ryan's shell or Neo's backend. You build and test in the **dev harness** with sample data and the role picker. Your pages read everything from `useSession()`, so they drop into Ryan's real shell with no change.
 
@@ -66,7 +66,7 @@ Balance, a 12-month line chart, and the member's transactions list with **Load m
 
 API: `GET /savings/accounts/me`, `GET /savings/accounts/<id>/transactions`.
 
-Check: all four states (loading, empty "No transactions yet.", error with Try again, ready); both buttons open the right page; the card is visible only when `can('savings.request')`. **My savings belongs to the member.** The loans officer, finance officer, secretary and SACCO admin do not have this page in their menu: the circle's savings are under Accounts. If a staff role types `/savings`, they get the 403 page.
+Check: all four states (loading, empty "No transactions yet.", error with Try again, ready); both buttons open the right page; the card is visible only when `can('savings.request')`. **My savings belongs to the member.** The loans officer, finance officer, secretary and SACCO admin do not have this page in their menu: the SACCO's savings are under Accounts. If a staff role types `/savings`, they get the 403 page.
 
 ### S3a. The request API and its mock (do this before S3b to S3d)
 
@@ -250,7 +250,7 @@ These cases come from "How people get in" and "Problems and how each is handled"
 | Scenario | What the person sees | What your code does |
 |---|---|---|
 | A new member who has joined but has no savings account yet | My savings: balance KES 0 and the sentence "Your savings account opens when an officer posts your first deposit." Deposit is allowed (a request) | `GET /savings/accounts/me` returns none: show the empty state, not an error; Withdraw shows "You have no balance to withdraw." and disables Send |
-| The person belongs to two circles | the circle switcher decides; every page loads the current `saccoId` only | pass `saccoId` to every API function; never mix data between circles; reload when it changes |
+| The person belongs to two SACCOs | the SACCO switcher decides; every page loads the current `saccoId` only | pass `saccoId` to every API function; never mix data between SACCOs; reload when it changes |
 | The role changes while the page is open (an admin made a member an officer) | after the next page change the menu and buttons match | read `can()` fresh on each render; never store it |
 | The SACCO is suspended while the member fills the Deposit form | the 423 page replaces the page and says the records are locked | the 423 answer on the send; keep nothing, say nothing was sent |
 | The member sends two deposit requests for the same amount on purpose | two requests, two history rows | different `reference` for each form open, so the server accepts both |
@@ -271,10 +271,10 @@ These cases come from "How people get in" and "Problems and how each is handled"
 | Role | Must see | Must NOT see |
 |---|---|---|
 | Member | Overview (member), My savings, **Deposit, Withdraw**, Loans (own, with Request) | Accounts, Post money, Requests, Reports, Approve/Disburse buttons |
-| Loans officer | Overview (circle), Loans with Approve/Reject, Reports | My savings, Post money, Requests, Deposit, Withdraw, Disburse, Reverse |
-| Finance officer | Overview (circle), Accounts, Post money, **Requests (Confirm, Reject)**, Reverse, Loans with Disburse/Repay, Reports | My savings, Approve/Reject, Deposit, Withdraw (typing /savings or /deposit gives 403) |
-| Secretary | Overview (circle), Accounts (read), Loans (read), Reports | My savings, Post money, Requests, Deposit, Withdraw, any action button |
-| SACCO admin | Overview (circle), Accounts, Post money, **Requests**, Loans (read), Reports | My savings, Approve, Disburse, Deposit, Withdraw |
+| Loans officer | Overview (SACCO), Loans with Approve/Reject, Reports | My savings, Post money, Requests, Deposit, Withdraw, Disburse, Reverse |
+| Finance officer | Overview (SACCO), Accounts, Post money, **Requests (Confirm, Reject)**, Reverse, Loans with Disburse/Repay, Reports | My savings, Approve/Reject, Deposit, Withdraw (typing /savings or /deposit gives 403) |
+| Secretary | Overview (SACCO), Accounts (read), Loans (read), Reports | My savings, Post money, Requests, Deposit, Withdraw, any action button |
+| SACCO admin | Overview (SACCO), Accounts, Post money, **Requests**, Loans (read), Reports | My savings, Approve, Disburse, Deposit, Withdraw |
 | Platform owner | none of your pages (menu has no money items; typing `/loans` gives 403) | all |
 
 ## 6. Photos to hand in (in `docs/frontend/done/sam/`)
@@ -292,7 +292,7 @@ For `overview` (SACCO and member), `savings`, `deposit` (M-Pesa, Bank, errors, s
 - [ ] Post money: field errors, banner errors, safe retry with the same reference, no double post
 - [ ] Loans: list, filter, request, detail, approve/reject, disburse, repay, with permission-based buttons and named error codes
 - [ ] Reports with sort and print
-- [ ] Section 4b: every scenario row handled (no account yet, two circles, role change, suspended, own requests, offline, themes)
+- [ ] Section 4b: every scenario row handled (no account yet, two SACCOs, role change, suspended, own requests, offline, themes)
 - [ ] Minor units used on the wire; no float maths on money
 - [ ] Every page has loading, empty, error (with Try again) and ready states
 - [ ] 11-point check passed for every role on every page; no bare px sizes; no hex colours in className; no `role ===`; no `fetch(`

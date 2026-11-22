@@ -16,7 +16,7 @@ the santa-review round 1 fixes and the schema rules (brief item 13).
 | E7 | `API=http://127.0.0.1:5055 bash backend/scripts/demo.sh` | Every step answered its documented status, including the owner reading the audit log (200) and the admin refused (403). |
 | E8 | OpenAPI: PyYAML load plus `$ref` resolution | 44 paths, 53 operations, 0 unresolved refs. `tests/test_openapi_spec.py` passes. |
 | E9 | Mutation checks: each fix reverted on purpose, then the tests run | Round 1: 5 tests failed (drift guard, demote sync, 2 settings bounds, reversed-retry). Schema rules: 4 tests failed (approval count, reason, transitions, owner self-revoke). With the app's one-open-loan check removed, the database index still refuses the second loan. All code restored, and `git diff` was checked afterwards. |
-| E10 | santa-review round 1 (2 independent breakers) | Both FAIL. Fixed: the `circle_admin` revocation leak (Major, found by both), the `savings_multiple` overflow 500 (Major per C), and 4 Lows. Their proof tests are folded into `tests/test_roles_settings.py`. |
+| E10 | santa-review round 1 (2 independent breakers) | Both FAIL. Fixed: the `sacco_admin` revocation leak (Major, found by both), the `savings_multiple` overflow 500 (Major per C), and 4 Lows. Their proof tests are folded into `tests/test_roles_settings.py`. |
 
 ## Checklist item → evidence
 

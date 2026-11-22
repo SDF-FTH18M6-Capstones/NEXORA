@@ -26,7 +26,7 @@ function messageFor(error) {
     case 'PHONE_ACCOUNT_MISMATCH':
       return 'That phone belongs to another account.';
     case 'ALREADY_MEMBER':
-      return 'You are already a member of this circle.';
+      return 'You are already a member of this SACCO.';
     case 'CODE_LOCKED':
       return 'This code is locked after too many wrong tries. Ask your admin to add you again.';
     case 'SETUP_EXPIRED':
@@ -37,7 +37,7 @@ function messageFor(error) {
         return 'That phone belongs to another account.';
       }
       if (error && error.status === 409 && /already.*member|already.*joined/i.test(serverMessage)) {
-        return 'You are already a member of this circle.';
+        return 'You are already a member of this SACCO.';
       }
       return describe(error).text;
   }
@@ -95,8 +95,8 @@ export default function Join() {
         ) {
           setNotice(
             failure.code === 'ALREADY_MEMBER'
-              ? 'You are already a member of this circle.'
-              : 'If you already joined, enter your circle with its PIN.',
+              ? 'You are already a member of this SACCO.'
+              : 'If you already joined, enter your SACCO with its PIN.',
           );
           setNoticeHasEnterLink(true);
         }
@@ -198,16 +198,16 @@ export default function Join() {
      * starts at 1280 where both columns still have room. */
     <div className="mx-auto flex w-full max-w-[64rem] flex-col gap-8 p-4 md:p-6 xl:min-h-[calc(100vh-13rem)] xl:flex-row xl:items-center xl:justify-between xl:gap-12">
       <div className="flex w-full max-w-[26rem] shrink-0 flex-col gap-3">
-        <div className="eyebrow">Join a circle</div>
+        <div className="eyebrow">Join a SACCO</div>
         <h1 className="font-serif text-[clamp(2rem,2.4vw,3rem)] leading-[1.05]">
-          {step === 1 ? 'Join with a code' : needsRules ? 'Read the circle rules' : 'Set your PIN'}
+          {step === 1 ? 'Join with a code' : needsRules ? 'Read the SACCO rules' : 'Set your PIN'}
         </h1>
         <p className="text-muted">
           {step === 1
             ? 'Use the phone number your SACCO admin added and the 6-digit code they gave you.'
             : needsRules
               ? 'Every fee, fine and rule is below. You join only after you accept them.'
-              : 'Choose a 4-digit PIN for this circle.'}
+              : 'Choose a 4-digit PIN for this SACCO.'}
         </p>
       </div>
       <section className="glass flex w-full flex-col gap-3 xl:max-w-[30rem]">
@@ -221,7 +221,7 @@ export default function Join() {
                 className="link-btn"
                 onClick={() => navigate('/enter')}
               >
-                Enter my circle
+                Enter my SACCO
               </button>
             )}
           </ErrorBanner>

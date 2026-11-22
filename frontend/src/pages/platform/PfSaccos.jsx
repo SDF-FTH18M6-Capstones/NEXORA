@@ -29,7 +29,7 @@ export default function PfSaccos() {
   const [adminPhone, setAdminPhone] = useState('');
   const [adminCode, setAdminCode] = useState(null);
   const [adminError, setAdminError] = useState(null);
-  /* the circle the owner just made goes to the top of the list, as the scenario table says, whatever order the list came back in */
+  /* the SACCO the owner just made goes to the top of the list, as the scenario table says, whatever order the list came back in */
   const rows = created
     ? [created, ...(list.data || []).filter(s => s.id !== created.id)]
     : (list.data || []);
@@ -88,7 +88,7 @@ export default function PfSaccos() {
       <section className="glass neo-span-7 neo-stack tight">
         <div>
           <h2 className="font-serif text-xl">SACCOs</h2>
-          <p className="muted text-sm">Every circle on NEXORA, with its size and status.</p>
+          <p className="muted text-sm">Every SACCO on NEXORA, with its size and status.</p>
         </div>
         <Body
           status={list.status}

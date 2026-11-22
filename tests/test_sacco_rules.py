@@ -1,4 +1,4 @@
-"""Circle rules: the loan cap check, the lock during a cycle, accept before join."""
+"""SACCO rules: the loan cap check, the lock during a cycle, accept before join."""
 
 import uuid
 from datetime import UTC, datetime
@@ -10,7 +10,7 @@ from app.extensions import db
 from app.loans import service as loan_service
 from app.models.rules import RulesAcceptance
 from app.models.user import User
-from app.saccos import rules as circle_rules
+from app.saccos import rules as sacco_rules
 from app.savings.service import Conflict
 from savings_support import Setup, release_session, schema_app  # noqa: F401
 
@@ -33,10 +33,10 @@ def _auth(user):
 
 def test_a_loan_above_the_cap_or_the_pool_is_refused_in_plain_words(schema_app):  # noqa: F811
     s = Setup(balance=10_000)  # savings of KES 100.00
-    values, errors = circle_rules.validate_rules(RULES)
+    values, errors = sacco_rules.validate_rules(RULES)
     assert not errors and values["loan_cap_multiple"] == 3  # the default
-    rules = circle_rules.publish_rules(s.sacco.id, values, s.admin.id)
-    circle_rules.accept(s.member_membership.id, rules.id)
+    rules = sacco_rules.publish_rules(s.sacco.id, values, s.admin.id)
+    sacco_rules.accept(s.member_membership.id, rules.id)
     db.session.commit()
 
     # 3 x savings is KES 300.00, so KES 400.00 is over the cap.
@@ -46,7 +46,7 @@ def test_a_loan_above_the_cap_or_the_pool_is_refused_in_plain_words(schema_app):
     assert "up to 3 times your savings" in over.value.message
     assert "KES 300.00" in over.value.message
 
-    # Inside the cap, but the circle only holds KES 100.00.
+    # Inside the cap, but the SACCO only holds KES 100.00.
     with pytest.raises(Conflict) as short:
         loan_service.request_loan(s.member.id, s.sacco.id, 20_000, 3)
     assert short.value.code == "LOAN_POOL_SHORT"
@@ -139,10 +139,10 @@ def test_a_member_must_accept_the_rules_before_joining(schema_app):  # noqa: F81
 
 def test_interest_has_no_default_and_every_error_says_what_to_send(schema_app):  # noqa: F811
     body = {k: v for k, v in RULES.items() if k != "interest_percent"}
-    _, errors = circle_rules.validate_rules(body)
+    _, errors = sacco_rules.validate_rules(body)
     assert set(errors) == {"interest_percent"}
     assert "no default" in errors["interest_percent"]
-    _, errors = circle_rules.validate_rules(
+    _, errors = sacco_rules.validate_rules(
         {**RULES, "cycle_months": 8, "late_fine_amount": -1}
     )
     assert (
@@ -162,8 +162,8 @@ def test_after_the_cycle_a_majority_vote_adopts_the_next_version(schema_app):  #
             f"{base}/accept", json={"version": 1}, headers=_auth(who)
         )
         assert accepted.status_code == 200
-    rules = circle_rules.current_rules(s.sacco.id)
-    rules.cycle_ends_on = circle_rules.today()  # the cycle has just ended
+    rules = sacco_rules.current_rules(s.sacco.id)
+    rules.cycle_ends_on = sacco_rules.today()  # the cycle has just ended
     db.session.commit()
 
     change = {**RULES, "late_fine_amount": 0}
@@ -174,14 +174,14 @@ def test_after_the_cycle_a_majority_vote_adopts_the_next_version(schema_app):  #
     assert one.get_json()["proposal"]["status"] == "open"  # 1 of 2 is not a majority
     two = client.post(url, json={"approve": True}, headers=_auth(member))
     assert two.get_json()["proposal"]["status"] == "adopted"
-    assert circle_rules.current_rules(s.sacco.id).version == 2
+    assert sacco_rules.current_rules(s.sacco.id).version == 2
 
 
 def test_bad_types_are_refused_not_crashed_and_old_votes_cannot_reopen(schema_app):  # noqa: F811
     client = schema_app.test_client()
-    _, errors = circle_rules.validate_rules({**RULES, "repayment_period_unit": []})
+    _, errors = sacco_rules.validate_rules({**RULES, "repayment_period_unit": []})
     assert "repayment_period_value" in errors  # a list used to raise a TypeError
-    _, errors = circle_rules.validate_rules({**RULES, "exit_rules": "\ud800"})
+    _, errors = sacco_rules.validate_rules({**RULES, "exit_rules": "\ud800"})
     assert "exit_rules" in errors  # a lone surrogate would break the insert
 
     s = Setup()
@@ -198,19 +198,21 @@ def test_bad_types_are_refused_not_crashed_and_old_votes_cannot_reopen(schema_ap
             == 200
         )
 
-    circle_rules.current_rules(s.sacco.id).cycle_ends_on = circle_rules.today()
+    sacco_rules.current_rules(s.sacco.id).cycle_ends_on = sacco_rules.today()
     db.session.commit()
     first = client.post(f"{base}/proposals", json=RULES, headers=_auth(admin))
     assert first.status_code == 201
     second = client.post(f"{base}/proposals", json=RULES, headers=_auth(admin))
-    assert second.status_code == 409  # one open vote per circle
+    assert second.status_code == 409  # one open vote per SACCO
 
 
 # ---- vote: more than half of ALL active members, quorum, carried acceptance ----
 
 
-def _circle(extras=0, extras_accepting=0, admin_accepts=True, member_accepts=True):
-    """A circle with rules v1 whose cycle has just ended, `extras` more active
+def _sacco_with_rules(
+    extras=0, extras_accepting=0, admin_accepts=True, member_accepts=True
+):
+    """A SACCO with rules v1 whose cycle has just ended, `extras` more active
     members, and the first `extras_accepting` of them (plus whoever is named)
     having accepted v1. Returns (setup, [extra users])."""
     from app.models.membership import MembershipRole, SaccoMembership
@@ -218,12 +220,12 @@ def _circle(extras=0, extras_accepting=0, admin_accepts=True, member_accepts=Tru
 
     s = Setup()
     users = [make_user() for _ in range(extras)]  # make_user ends the session
-    values, _ = circle_rules.validate_rules(RULES)
-    rules = circle_rules.publish_rules(s.sacco.id, values, s.admin.id)
+    values, _ = sacco_rules.validate_rules(RULES)
+    rules = sacco_rules.publish_rules(s.sacco.id, values, s.admin.id)
     if admin_accepts:
-        circle_rules.accept(s.admin_membership.id, rules.id)
+        sacco_rules.accept(s.admin_membership.id, rules.id)
     if member_accepts:
-        circle_rules.accept(s.member_membership.id, rules.id)
+        sacco_rules.accept(s.member_membership.id, rules.id)
     people = []
     for n, user in enumerate(users):
         membership = SaccoMembership(
@@ -232,9 +234,9 @@ def _circle(extras=0, extras_accepting=0, admin_accepts=True, member_accepts=Tru
         db.session.add(membership)
         db.session.flush()
         if n < extras_accepting:
-            circle_rules.accept(membership.id, rules.id)
+            sacco_rules.accept(membership.id, rules.id)
         people.append(user)
-    rules.cycle_ends_on = circle_rules.today()
+    rules.cycle_ends_on = sacco_rules.today()
     db.session.commit()
     return s, people
 
@@ -261,7 +263,7 @@ def test_a_change_needs_more_than_half_of_all_active_members_not_of_acceptors(
 ):
     # 4 active members; 3 accepted. The old count (more than half of the 3
     # acceptors) would adopt on 2 yes. More than half of all 4 needs 3.
-    s, (third, _fourth) = _circle(extras=2, extras_accepting=1)
+    s, (third, _fourth) = _sacco_with_rules(extras=2, extras_accepting=1)
     client = schema_app.test_client()
     base, made = _propose(client, s)
     assert made.status_code == 201, made.get_json()
@@ -273,14 +275,14 @@ def test_a_change_needs_more_than_half_of_all_active_members_not_of_acceptors(
         _vote(client, base, pid, s.member)["status"] == "open"
     )  # 2 of 4 is not enough
     assert _vote(client, base, pid, third)["status"] == "adopted"  # 3 of 4
-    assert circle_rules.current_rules(s.sacco.id).version == 2
+    assert sacco_rules.current_rules(s.sacco.id).version == 2
 
 
 def test_the_count_is_frozen_when_the_change_is_proposed(schema_app):  # noqa: F811
     from app.models.membership import MembershipRole, SaccoMembership
     from test_schema_rules import make_user
 
-    s, _ = _circle()  # 2 active members, both accepted
+    s, _ = _sacco_with_rules()  # 2 active members, both accepted
     client = schema_app.test_client()
     base, made = _propose(client, s)
     pid = made.get_json()["proposal"]["id"]
@@ -297,13 +299,13 @@ def test_the_count_is_frozen_when_the_change_is_proposed(schema_app):  # noqa: F
 
 def test_a_proposal_with_no_voters_or_no_quorum_is_refused(schema_app):  # noqa: F811
     client = schema_app.test_client()
-    s, _ = _circle(admin_accepts=False, member_accepts=False)
+    s, _ = _sacco_with_rules(admin_accepts=False, member_accepts=False)
     base, none = _propose(client, s)
     assert none.status_code == 409
     assert "Nobody has accepted" in none.get_json()["error"]["message"]
 
     # 1 acceptor of 5 active members: it could never get more than half.
-    s, _ = _circle(extras=3, member_accepts=False)
+    s, _ = _sacco_with_rules(extras=3, member_accepts=False)
     base, short = _propose(client, s)
     assert short.status_code == 409
     assert "1 of 5 members" in short.get_json()["error"]["message"]
@@ -320,33 +322,33 @@ def test_a_change_is_rejected_once_the_missing_members_make_it_unwinnable(
 ):
     # 4 active members need 3 yes, and only 3 accepted: a single "no" leaves at
     # most 2 yes, so it is closed at once instead of waiting 30 days.
-    s, (third, _fourth) = _circle(extras=2, extras_accepting=1)
+    s, (third, _fourth) = _sacco_with_rules(extras=2, extras_accepting=1)
     client = schema_app.test_client()
     base, made = _propose(client, s)
     pid = made.get_json()["proposal"]["id"]
     assert _vote(client, base, pid, s.admin, approve=False)["status"] == "rejected"
-    assert circle_rules.current_rules(s.sacco.id).version == 1
+    assert sacco_rules.current_rules(s.sacco.id).version == 1
 
 
 def test_adopting_a_new_version_carries_a_yes_voters_acceptance_for_loans(  # noqa: F811
     schema_app,  # noqa: F811
 ):
-    # The member's savings are KES 100.00 and the circle holds that much.
+    # The member's savings are KES 100.00 and the SACCO holds that much.
     from app.models.membership import MembershipRole, SaccoMembership
     from test_schema_rules import make_user
 
     s = Setup(balance=10_000)
     outsider = make_user()
-    values, _ = circle_rules.validate_rules(RULES)
-    v1 = circle_rules.publish_rules(s.sacco.id, values, s.admin.id)
+    values, _ = sacco_rules.validate_rules(RULES)
+    v1 = sacco_rules.publish_rules(s.sacco.id, values, s.admin.id)
     stranger = SaccoMembership(
         user_id=outsider.id, sacco_id=s.sacco.id, role=MembershipRole.MEMBER
     )
     db.session.add(stranger)
     db.session.flush()
     for membership in (s.admin_membership, s.member_membership):
-        circle_rules.accept(membership.id, v1.id)
-    v1.cycle_ends_on = circle_rules.today()
+        sacco_rules.accept(membership.id, v1.id)
+    v1.cycle_ends_on = sacco_rules.today()
     db.session.commit()
 
     client = schema_app.test_client()
@@ -355,10 +357,10 @@ def test_adopting_a_new_version_carries_a_yes_voters_acceptance_for_loans(  # no
     _vote(client, base, pid, s.admin)
     assert _vote(client, base, pid, s.member)["status"] == "adopted"  # 2 of 3
 
-    v2 = circle_rules.current_rules(s.sacco.id)
+    v2 = sacco_rules.current_rules(s.sacco.id)
     assert v2.version == 2
-    assert circle_rules.has_accepted(s.member_membership.id, v2.id)
-    assert not circle_rules.has_accepted(stranger.id, v2.id)  # never accepted v1
+    assert sacco_rules.has_accepted(s.member_membership.id, v2.id)
+    assert not sacco_rules.has_accepted(stranger.id, v2.id)  # never accepted v1
     assert (
         loan_service.request_loan(s.member.id, s.sacco.id, 10_000, 3).principal
         == 10_000
@@ -372,7 +374,7 @@ def test_only_yes_voters_keep_their_acceptance_when_a_change_is_adopted(
 
     # 5 active members, all accepted v1. Three vote yes (more than half of 5),
     # one votes no, one does not vote.
-    s, (third, no_voter, silent) = _circle(extras=3, extras_accepting=3)
+    s, (third, no_voter, silent) = _sacco_with_rules(extras=3, extras_accepting=3)
     client = schema_app.test_client()
     base, made = _propose(client, s)
     pid = made.get_json()["proposal"]["id"]
@@ -381,7 +383,7 @@ def test_only_yes_voters_keep_their_acceptance_when_a_change_is_adopted(
     _vote(client, base, pid, s.member)
     assert _vote(client, base, pid, third)["status"] == "adopted"
 
-    v2 = circle_rules.current_rules(s.sacco.id)
+    v2 = sacco_rules.current_rules(s.sacco.id)
     assert v2.version == 2
 
     def membership_id(user):
@@ -392,20 +394,20 @@ def test_only_yes_voters_keep_their_acceptance_when_a_change_is_adopted(
             )
         ).scalar_one()
 
-    assert circle_rules.has_accepted(s.admin_membership.id, v2.id)
-    assert circle_rules.has_accepted(s.member_membership.id, v2.id)
-    assert circle_rules.has_accepted(membership_id(third), v2.id)
-    assert not circle_rules.has_accepted(membership_id(no_voter), v2.id)
-    assert not circle_rules.has_accepted(membership_id(silent), v2.id)
+    assert sacco_rules.has_accepted(s.admin_membership.id, v2.id)
+    assert sacco_rules.has_accepted(s.member_membership.id, v2.id)
+    assert sacco_rules.has_accepted(membership_id(third), v2.id)
+    assert not sacco_rules.has_accepted(membership_id(no_voter), v2.id)
+    assert not sacco_rules.has_accepted(membership_id(silent), v2.id)
 
     # The no-voter cannot ask for a loan until they accept v2; then they can.
     holder = db.session.get(SaccoMembership, membership_id(no_voter))
     with pytest.raises(Conflict) as blocked:
-        circle_rules.check_loan_request(holder, 10_000, 1_000, 3)
+        sacco_rules.check_loan_request(holder, 10_000, 1_000, 3)
     assert blocked.value.code == "RULES_NOT_ACCEPTED"
-    circle_rules.accept(holder.id, v2.id)
+    sacco_rules.accept(holder.id, v2.id)
     db.session.commit()
-    assert circle_rules.has_accepted(holder.id, v2.id)
+    assert sacco_rules.has_accepted(holder.id, v2.id)
 
 
 # ---- payout re-checks the cap and the pool; withdrawals keep the loan's cap ----
@@ -417,11 +419,11 @@ def _approved_loan(s, principal, multiple=None):
     from app.models.loan import LoanDecisionKind
     from test_loans_and_ledger import _add_officer
 
-    values, _ = circle_rules.validate_rules(
+    values, _ = sacco_rules.validate_rules(
         {**RULES, **({"loan_cap_multiple": multiple} if multiple else {})}
     )
-    rules = circle_rules.publish_rules(s.sacco.id, values, s.admin.id)
-    circle_rules.accept(s.member_membership.id, rules.id)
+    rules = sacco_rules.publish_rules(s.sacco.id, values, s.admin.id)
+    sacco_rules.accept(s.member_membership.id, rules.id)
     db.session.commit()
     loan = loan_service.request_loan(s.member.id, s.sacco.id, principal, 3)
     for n in range(1, loan.required_approvals + 1):
@@ -490,7 +492,7 @@ def test_withdrawals_are_free_without_an_open_loan_or_without_rules(schema_app):
     s = Setup(balance=10_000)  # no rules at all
     assert savings.withdraw(s.admin.id, s.account.id, 10_000, "w-a").balance == 0
     s = Setup(balance=10_000)
-    values, _ = circle_rules.validate_rules(RULES)
-    circle_rules.publish_rules(s.sacco.id, values, s.admin.id)
+    values, _ = sacco_rules.validate_rules(RULES)
+    sacco_rules.publish_rules(s.sacco.id, values, s.admin.id)
     db.session.commit()  # rules, but the member has no loan
     assert savings.withdraw(s.admin.id, s.account.id, 10_000, "w-b").balance == 0

@@ -32,8 +32,6 @@ def parse_invite_role(raw) -> tuple[MembershipRole, str]:
     Raises InvalidMember for anything the catalogue does not name.
     """
     value = str(raw)
-    if value == "circle_admin":
-        return MembershipRole.SACCO_ADMIN, value
     if value in INVITE_ROLES:
         role = INVITE_ROLES[value]
         return role, LEGACY_ROLE_CODES[role]

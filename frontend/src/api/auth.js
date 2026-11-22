@@ -1,7 +1,7 @@
 import { ApiError, MOCK, getTokens, http, mockDelay } from '../lib/http.js';
 import { ROLES } from '../lib/perms.js';
 import {
-  RYAN_CIRCLE_PIN,
+  RYAN_SACCO_PIN,
   RYAN_JOIN_CODES,
   RYAN_JOIN_PHONES,
   RYAN_JOIN_SACCO_ID,
@@ -138,7 +138,7 @@ export async function joinRequest(phone, code) {
     throw new ApiError(409, 'PHONE_ACCOUNT_MISMATCH', 'That phone belongs to another account.');
   }
   if (normalizedPhone === RYAN_JOIN_PHONES.alreadyMember) {
-    throw new ApiError(409, 'ALREADY_MEMBER', 'You are already a member of this circle.');
+    throw new ApiError(409, 'ALREADY_MEMBER', 'You are already a member of this SACCO.');
   }
   if (normalizedPhone === RYAN_JOIN_PHONES.suspended) {
     throw new ApiError(423, 'SACCO_SUSPENDED', 'This SACCO is suspended.');
@@ -177,9 +177,9 @@ export async function joinPinRequest(setupToken, pin) {
   };
 }
 
-export async function circleLoginRequest(session, saccoId, pin) {
+export async function saccoLoginRequest(session, saccoId, pin) {
   if (!MOCK) {
-    return http.post('/auth/circle-login', {
+    return http.post('/auth/sacco-login', {
       body: { sacco_id: saccoId, pin },
     });
   }
@@ -192,7 +192,7 @@ export async function circleLoginRequest(session, saccoId, pin) {
   if (String(sacco.status).toLowerCase() === 'suspended') {
     throw new ApiError(423, 'SACCO_SUSPENDED', 'This SACCO is suspended.');
   }
-  if (session.sourceUser.circleLogin === 'deactivated') {
+  if (session.sourceUser.saccoLogin === 'deactivated') {
     throw new ApiError(403, 'NOT_ALLOWED', 'You do not have access to this page.');
   }
 
@@ -201,7 +201,7 @@ export async function circleLoginRequest(session, saccoId, pin) {
   if (lockedUntil > Date.now()) {
     throw lockError('PIN_LOCKED', 'Too many wrong PINs.',);
   }
-  if (pin !== RYAN_CIRCLE_PIN) {
+  if (pin !== RYAN_SACCO_PIN) {
     const failures = (pinFailures.get(attemptKey) || 0) + 1;
     pinFailures.set(attemptKey, failures);
     if (failures >= 5) {

@@ -94,13 +94,13 @@ export async function inviteFirstAdmin(saccoId, phone) {
     return {
       id: 1000 + Number(saccoId),
       phone: normal,
-      role: 'circle_admin',
+      role: 'sacco_admin',
       status: 'invited',
       join_code: String(Math.floor(100000 + Math.random() * 900000)),
       expires_at: new Date(Date.now() + 15 * 60000).toISOString(),
     };
   }
-  return http.post(`/saccos/${saccoId}/members`, { body: { phone, role: 'circle_admin' } });
+  return http.post(`/saccos/${saccoId}/members`, { body: { phone, role: 'sacco_admin' } });
 }
 
 export async function askForAccess(saccoId, { reason, scope }) {

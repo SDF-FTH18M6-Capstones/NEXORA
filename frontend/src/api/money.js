@@ -8,7 +8,7 @@ const PER_PAGE = 10;
 const lost = () => new ApiError(0, 'offline', 'You are offline.');
 const paged = (rows, page) => ({ items: rows.slice((page - 1) * PER_PAGE, page * PER_PAGE), page, hasMore: page * PER_PAGE < rows.length });
 
-/* The signed-in member's account in THIS circle, or null when an officer has not opened it yet (that is not an error). */
+/* The signed-in member's account in THIS SACCO, or null when an officer has not opened it yet (that is not an error). */
 export async function getMyAccount(saccoId) {
   if (MOCK) {
     await mockDelay();
@@ -31,7 +31,7 @@ export async function listTransactions(accountId, page = 1) {
   return { items: body.transactions, page: body.page, hasMore: body.page * body.per_page < body.total };
 }
 
-/* GET /admin/saccos/<id>/accounts : every account of the circle (savings.view_all). */
+/* GET /admin/saccos/<id>/accounts : every account of the SACCO (savings.view_all). */
 export async function listAccounts(saccoId, page = 1) {
   if (MOCK) { await mockDelay(); return { ...paged(store.accounts.map(a => ({ ...a })), page) }; }
   const body = await http.get(`/admin/saccos/${saccoId}/accounts`, { params: { page, per_page: 50 } });

@@ -32,7 +32,7 @@ export async function voteOnProposal(saccoId, proposalId, approve) {
   return (await http.post(`/saccos/${saccoId}/rules/proposals/${proposalId}/votes`, { body: { approve } })).proposal;
 }
 
-/* The rules of the circle being joined, read with the setup token before the PIN step. */
+/* The rules of the SACCO being joined, read with the setup token before the PIN step. */
 export async function joinRules(setupToken) {
   if (MOCK) { await mockDelay(); return null; }
   return (await http.post('/auth/join/rules', { body: { setup_token: setupToken } })).rules;

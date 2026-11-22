@@ -70,9 +70,9 @@ Every seeded user's password is `Dev-Seed-Pass-2026`.
 Useful logins: `alpha-admin@example.com`, `alpha-finance@example.com`,
 `alpha-m1@example.com`, `owner@example.com`.
 
-## One-time: give seeded memberships a circle PIN (development only)
+## One-time: give seeded memberships a SACCO PIN (development only)
 
-After signing in, the app asks for a four-digit circle PIN, and the seed does not set one.
+After signing in, the app asks for a four-digit SACCO PIN, and the seed does not set one.
 
 ```bash
 cd ~/projects/NEXORA/backend
@@ -119,7 +119,7 @@ cd ~/projects/NEXORA && docker compose down      # add -v to also wipe the datab
 |---|---|
 | Browser says "blocked by CORS policy" | Set `CORS_ORIGINS=http://localhost:5173` in `backend/.env`, restart `python app.py` |
 | "Something went wrong on our side" on sign-in | Make sure `frontend/src/api/session.js` has the `withJobTitles` fix |
-| "No PIN has been set" on the circle screen | Run the PIN step above |
+| "No PIN has been set" on the SACCO screen | Run the PIN step above |
 | Blank page and "Throttling navigation" warning | DevTools, Application, Clear site data, then reload |
 | Backend cannot connect to the database | `docker compose ps`, wait for `healthy`, check `DATABASE_URL` |
 | Port 5000 or 5173 already in use | Stop the old process, or find it with `lsof -i :5000` |

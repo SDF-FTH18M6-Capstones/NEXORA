@@ -107,9 +107,9 @@ def test_joining_or_pin_login_in_a_suspended_sacco_is_423(schema_app):  # noqa: 
         headers=auth(person),
     )
     assert joined.status_code == 423
-    circle = client.post(
-        "/api/v1/auth/circle-login",
+    entered = client.post(
+        "/api/v1/auth/sacco-login",
         json={"sacco_id": s.sacco.id, "pin": "4826"},
         headers=auth(s.member),
     )
-    assert circle.status_code == 423
+    assert entered.status_code == 423

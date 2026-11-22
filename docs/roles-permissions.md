@@ -81,7 +81,7 @@ Restrictions:
 Every membership holds job titles; `can()` in `backend/app/security/permissions.py`
 answers every permission question from them. The legacy role column only says
 whether a membership is the SACCO admin (`sacco_admin`); every membership the
-API creates or changes stores the title its role implies (admin: circle_admin,
+API creates or changes stores the title its role implies (admin: sacco_admin,
 staff: secretary, member: member).
 
 | Permission | SACCO admin | Secretary | Finance officer | Loans officer | Member |
@@ -97,7 +97,7 @@ staff: secretary, member: member).
 | sacco.view (SACCO name, status, settings) | yes | yes | yes | yes | yes |
 | sacco.update (rename the SACCO) | yes | | | | |
 | support.approve (approve, deny or revoke a platform owner's support access) | yes | | | | |
-| payin.manage (propose, approve or cancel the circle's pay-in details; a different officer must approve, any one may cancel before it goes live) | yes | | yes | | |
+| payin.manage (propose, approve or cancel the SACCO's pay-in details; a different officer must approve, any one may cancel before it goes live) | yes | | yes | | |
 | audit.view (SACCO audit log) | **never** | yes | | | |
 | loan.view (every loan) | yes | yes | yes | yes | own only |
 | loan.approve | **never** | | | yes | |
@@ -105,8 +105,8 @@ staff: secretary, member: member).
 | loan.request | | | | | yes |
 | loan.repay | | | yes | | own loan |
 
-`payin.manage` is held by no platform role: the platform owner can read a circle's live pay-in
-details (`sacco.view`) but never proposes or approves them. A circle needs two people holding it
+`payin.manage` is held by no platform role: the platform owner can read a SACCO's live pay-in
+details (`sacco.view`) but never proposes or approves them. A SACCO needs two people holding it
 (the admin plus a finance officer) before its first details can go live.
 
 The platform owner holds every permission, needs no membership, and is the only
@@ -120,7 +120,7 @@ decides by role name (`tests/test_access_by_permission.py` enforces this).
 - A SACCO admin never approves or disburses loans and never reads the audit log,
   whatever titles the membership holds.
 - Nobody changes their own titles; only the platform owner touches an admin;
-  `circle_admin` moves only with the admin role. The database records who
+  `sacco_admin` moves only with the admin role. The database records who
   granted every title and refuses a title granted by the user who owns that
   membership (platform owners exempt, migration 0021). Collusion between two
   people is not blocked; title changes are in the audit log.

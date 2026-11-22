@@ -1,7 +1,7 @@
-"""Where a circle's members pay in, and the changes waiting for a second officer.
+"""Where a SACCO's members pay in, and the changes waiting for a second officer.
 
-`circle_payment_details` holds the live values members see (one row per circle).
-`circle_payment_detail_changes` holds every proposed change. A change goes live
+`sacco_payment_details` holds the live values members see (one row per SACCO).
+`sacco_payment_detail_changes` holds every proposed change. A change goes live
 only when a different officer approves it, so one person alone can never point
 members at a new paybill or bank account.
 
@@ -99,9 +99,9 @@ class _Values:
     bank_paybill_number: Mapped[str | None] = mapped_column(String(7))
 
 
-class CirclePaymentDetails(_Values, db.Model):
-    __tablename__ = "circle_payment_details"
-    __table_args__ = tuple(value_checks("circle_payment_details"))
+class SaccoPaymentDetails(_Values, db.Model):
+    __tablename__ = "sacco_payment_details"
+    __table_args__ = tuple(value_checks("sacco_payment_details"))
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     sacco_id: Mapped[int] = mapped_column(
@@ -115,13 +115,13 @@ class CirclePaymentDetails(_Values, db.Model):
     updated_by: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
 
 
-class CirclePaymentDetailsChange(_Values, db.Model):
-    __tablename__ = "circle_payment_detail_changes"
+class SaccoPaymentDetailsChange(_Values, db.Model):
+    __tablename__ = "sacco_payment_detail_changes"
     __table_args__ = (
-        *value_checks("circle_payment_detail_changes"),
+        *value_checks("sacco_payment_detail_changes"),
         CheckConstraint(
             "status IN ('pending', 'approved', 'superseded', 'cancelled')",
-            name="ck_circle_payment_detail_changes_status",
+            name="ck_sacco_payment_detail_changes_status",
         ),
         # An approved change replaced or cancelled before it went live keeps its
         # approval but becomes 'superseded' or 'cancelled', so only "approved"
@@ -129,21 +129,21 @@ class CirclePaymentDetailsChange(_Values, db.Model):
         CheckConstraint(
             "(approved_by IS NULL) = (approved_at IS NULL) "
             "AND (status <> 'approved' OR approved_by IS NOT NULL)",
-            name="ck_circle_payment_detail_changes_approval_pair",
+            name="ck_sacco_payment_detail_changes_approval_pair",
         ),
         CheckConstraint(
             "(approved_at IS NULL) = (go_live_at IS NULL) "
             "AND (go_live_at IS NULL OR go_live_at >= approved_at)",
-            name="ck_circle_payment_detail_changes_go_live",
+            name="ck_sacco_payment_detail_changes_go_live",
         ),
         # Two officers, always: the database refuses a self-approval too.
         CheckConstraint(
             "approved_by IS NULL OR approved_by <> proposed_by",
-            name="ck_circle_payment_detail_changes_two_people",
+            name="ck_sacco_payment_detail_changes_two_people",
         ),
-        # At most one change waits for approval per circle.
+        # At most one change waits for approval per SACCO.
         Index(
-            "uq_circle_payment_detail_changes_one_pending",
+            "uq_sacco_payment_detail_changes_one_pending",
             "sacco_id",
             unique=True,
             postgresql_where=text("status = 'pending'"),

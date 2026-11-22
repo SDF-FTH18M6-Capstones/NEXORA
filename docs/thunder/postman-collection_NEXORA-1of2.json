@@ -843,7 +843,7 @@
           ]
         },
         {
-          "name": "07 Admin: cannot grant circle_admin (403)",
+          "name": "07 Admin: cannot grant sacco_admin (403)",
           "request": {
             "method": "PUT",
             "header": [
@@ -869,7 +869,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"roles\": [\"circle_admin\"]}",
+              "raw": "{\"roles\": [\"sacco_admin\"]}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -918,7 +918,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"roles\": [\"circle_admin\", \"finance_officer\"]}",
+              "raw": "{\"roles\": [\"sacco_admin\", \"finance_officer\"]}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -941,7 +941,7 @@
           ]
         },
         {
-          "name": "09 Owner: circle_admin only moves with the admin role (409)",
+          "name": "09 Owner: sacco_admin only moves with the admin role (409)",
           "request": {
             "method": "PUT",
             "header": [

@@ -22,8 +22,8 @@ export const RYAN_MOCK_ACCOUNTS = {
     memberships: [member(1, 1), member(2, 2), member(3, 3)],
     saccos: RYAN_SACCOS.slice(0, 3),
   },
-  'no-circle@example.test': {
-    id: 'ryan-no-circle',
+  'no-sacco@example.test': {
+    id: 'ryan-no-sacco',
     name: 'Amina Hassan',
     initials: 'AH',
     verified: true,
@@ -31,8 +31,8 @@ export const RYAN_MOCK_ACCOUNTS = {
     memberships: [],
     saccos: [],
   },
-  'one-circle@example.test': {
-    id: 'ryan-one-circle',
+  'one-sacco@example.test': {
+    id: 'ryan-one-sacco',
     name: 'Peter Otieno',
     initials: 'PO',
     verified: true,
@@ -40,8 +40,8 @@ export const RYAN_MOCK_ACCOUNTS = {
     memberships: [member(11, 1)],
     saccos: [RYAN_SACCOS[0]],
   },
-  'two-circles@example.test': {
-    id: 'ryan-two-circles',
+  'two-saccos@example.test': {
+    id: 'ryan-two-saccos',
     name: 'Faith Njeri',
     initials: 'FN',
     verified: true,
@@ -82,7 +82,7 @@ export const RYAN_MOCK_ACCOUNTS = {
     initials: 'DM',
     verified: true,
     is_platform_owner: false,
-    circleLogin: 'deactivated',
+    saccoLogin: 'deactivated',
     memberships: [member(51, 1)],
     saccos: [RYAN_SACCOS[0]],
   },
@@ -121,7 +121,7 @@ export const RYAN_JOIN_PHONES = {
   expiredSetup: '0712000004',
 };
 
-export const RYAN_CIRCLE_PIN = '1234';
+export const RYAN_SACCO_PIN = '1234';
 export const RYAN_JOIN_SACCO_ID = 2;
 
 export const RYAN_AUDIT = [
@@ -166,7 +166,7 @@ export const RYAN_R5B_SCENARIOS = {
   wrongPassword: { email: 'wrong-password@example.test', password: 'wrong' },
   loginLocked: { email: 'locked-login@example.test', failedAttempts: 5 },
   unverifiedEmail: { email: 'unverified@example.test' },
-  noCircles: { email: 'no-circle@example.test' },
+  noSaccos: { email: 'no-sacco@example.test' },
   wrongCode: { phone: RYAN_JOIN_PHONES.success, code: '999999' },
   expiredCode: { phone: RYAN_JOIN_PHONES.success, code: RYAN_JOIN_CODES.expired },
   usedCode: { phone: RYAN_JOIN_PHONES.success, code: RYAN_JOIN_CODES.used },
@@ -176,13 +176,13 @@ export const RYAN_R5B_SCENARIOS = {
   suspendedAtJoin: { phone: RYAN_JOIN_PHONES.suspended, code: RYAN_JOIN_CODES.success },
   expiredSetup: { phone: RYAN_JOIN_PHONES.expiredSetup, code: RYAN_JOIN_CODES.success },
   mismatchedPins: { pin: '1234', repeatPin: '5678' },
-  wrongCirclePin: { pin: '0000', email: 'one-circle@example.test' },
-  lockedCirclePin: { failedAttempts: 5, email: 'one-circle@example.test' },
-  deactivatedMembership: { email: 'deactivated@example.test', pin: RYAN_CIRCLE_PIN },
+  wrongSaccoPin: { pin: '0000', email: 'one-sacco@example.test' },
+  lockedSaccoPin: { failedAttempts: 5, email: 'one-sacco@example.test' },
+  deactivatedMembership: { email: 'deactivated@example.test', pin: RYAN_SACCO_PIN },
   suspendedAtPin: { email: 'suspended-choice@example.test', saccoId: 3 },
   suspendedWhileInside: { email: 'suspended-choice@example.test', saccoId: 3 },
-  twoCirclesOneSuspended: { email: 'suspended-choice@example.test' },
-  reloadInsideCircle: { email: 'one-circle@example.test', pin: RYAN_CIRCLE_PIN },
-  sharedComputerFirstPerson: { email: 'one-circle@example.test' },
+  twoSaccosOneSuspended: { email: 'suspended-choice@example.test' },
+  reloadInsideSacco: { email: 'one-sacco@example.test', pin: RYAN_SACCO_PIN },
+  sharedComputerFirstPerson: { email: 'one-sacco@example.test' },
   sharedComputerSecondPerson: { email: 'second-person@example.test' },
 };

@@ -366,7 +366,7 @@ def _reset_titles(membership: SaccoMembership) -> None:
 
     Titles left behind would keep powers the new role does not have (a loans
     officer demoted to member could still approve). With no title rows, `can()`
-    answers from the role column; a new admin gets circle_admin as a row, so
+    answers from the role column; a new admin gets sacco_admin as a row, so
     `can()` and the admin routes (which read the role) agree.
     """
     db.session.execute(
@@ -379,7 +379,7 @@ def _reset_titles(membership: SaccoMembership) -> None:
 
 def _grant_default_title(membership: SaccoMembership, title: str | None = None) -> None:
     """Store the job title the invite asked for (or the one the role implies:
-    admin -> circle_admin, staff -> secretary, member -> member), so `can()`
+    admin -> sacco_admin, staff -> secretary, member -> member), so `can()`
     reads a title row for every membership the API creates or changes, never the
     role column.
     """

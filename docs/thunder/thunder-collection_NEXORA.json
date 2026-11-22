@@ -766,7 +766,7 @@
       "_id": "4d2dffa7-923d-5017-b8b0-e076f777aae2",
       "colId": "c10fe5b5-b489-5b3a-b28d-fde84b4cbc77",
       "containerId": "c66e4ac8-b4b2-58b1-ae3d-dd0e4cf749b7",
-      "name": "07 Admin: cannot grant circle_admin (403)",
+      "name": "07 Admin: cannot grant sacco_admin (403)",
       "url": "{{baseUrl}}/api/v1/saccos/{{saccoId}}/members/{{staffMembershipId}}/roles",
       "method": "PUT",
       "sortNum": 70000,
@@ -789,7 +789,7 @@
       ],
       "body": {
         "type": "json",
-        "raw": "{\"roles\": [\"circle_admin\"]}",
+        "raw": "{\"roles\": [\"sacco_admin\"]}",
         "form": []
       },
       "auth": {
@@ -824,7 +824,7 @@
       ],
       "body": {
         "type": "json",
-        "raw": "{\"roles\": [\"circle_admin\", \"finance_officer\"]}",
+        "raw": "{\"roles\": [\"sacco_admin\", \"finance_officer\"]}",
         "form": []
       },
       "auth": {
@@ -836,7 +836,7 @@
       "_id": "2120a340-fe5d-595f-b6ed-17ea7b6c8450",
       "colId": "c10fe5b5-b489-5b3a-b28d-fde84b4cbc77",
       "containerId": "c66e4ac8-b4b2-58b1-ae3d-dd0e4cf749b7",
-      "name": "09 Owner: circle_admin only moves with the admin role (409)",
+      "name": "09 Owner: sacco_admin only moves with the admin role (409)",
       "url": "{{baseUrl}}/api/v1/saccos/{{saccoId}}/members/{{adminMembershipId}}/roles",
       "method": "PUT",
       "sortNum": 90000,
@@ -2677,8 +2677,8 @@
       "_id": "64f80d55-74a4-5fc8-9fad-2fccc6ace59e",
       "colId": "c10fe5b5-b489-5b3a-b28d-fde84b4cbc77",
       "containerId": "b8eb125c-f267-5e5a-af55-d716b00a6a58",
-      "name": "05 Member m1: circle login with the PIN",
-      "url": "{{baseUrl}}/api/v1/auth/circle-login",
+      "name": "05 Member m1: SACCO login with the PIN",
+      "url": "{{baseUrl}}/api/v1/auth/sacco-login",
       "method": "POST",
       "sortNum": 50000,
       "created": "2026-11-17T20:00:00.000Z",
@@ -2719,7 +2719,7 @@
       "colId": "c10fe5b5-b489-5b3a-b28d-fde84b4cbc77",
       "containerId": "b8eb125c-f267-5e5a-af55-d716b00a6a58",
       "name": "06 Member m1: wrong PIN is refused",
-      "url": "{{baseUrl}}/api/v1/auth/circle-login",
+      "url": "{{baseUrl}}/api/v1/auth/sacco-login",
       "method": "POST",
       "sortNum": 60000,
       "created": "2026-11-17T20:00:00.000Z",

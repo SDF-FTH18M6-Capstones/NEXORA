@@ -9,15 +9,15 @@
 
 | Method | Path | Role / Permission | Request Body | Success |
 |---|---|---|---|---|
-| `POST` | `/api/v1/savings/accounts` | `circle_admin`, `finance_officer` (`savings.post`) | `{"membership_id": int}` | `201` Account object |
+| `POST` | `/api/v1/savings/accounts` | `sacco_admin`, `finance_officer` (`savings.post`) | `{"membership_id": int}` | `201` Account object |
 | `GET` | `/api/v1/savings/accounts/me` | Any signed-in member | — | `200` `{"accounts": [...]}` |
 | `GET` | `/api/v1/savings/accounts/<account_id>` | Owner member or SACCO staff (`savings.view`) | — | `200` Account object |
 | `GET` | `/api/v1/savings/accounts/<account_id>/transactions` | Owner member or SACCO staff (`savings.view`) | Query: `?page=1&per_page=20` | `200` `{"transactions": [...], "page": int, "per_page": int, "total": int}` |
-| `POST` | `/api/v1/savings/accounts/<account_id>/deposits` | `circle_admin`, `finance_officer` (`savings.post`) | `{"amount": int, "reference": str}` | `201` Ledger entry + updated `balance` |
-| `POST` | `/api/v1/savings/accounts/<account_id>/withdrawals` | `circle_admin`, `finance_officer` (`savings.post`) | `{"amount": int, "reference": str}` | `201` Ledger entry + updated `balance` |
-| `POST` | `/api/v1/savings/accounts/<account_id>/interest` | `circle_admin`, `finance_officer` (`savings.post`) | `{"amount": int, "reference": str}` | `201` Ledger entry + updated `balance` |
-| `POST` | `/api/v1/savings/accounts/<account_id>/fees` | `circle_admin`, `finance_officer` (`savings.post`) | `{"amount": int, "reference": str}` | `201` Ledger entry + updated `balance` |
-| `POST` | `/api/v1/savings/transactions/<transaction_id>/reversals` | `circle_admin`, `finance_officer` (`savings.reverse`) | `{"reference": str}` | `201` Reversal entry (`reverses_id` set) + updated `balance` |
+| `POST` | `/api/v1/savings/accounts/<account_id>/deposits` | `sacco_admin`, `finance_officer` (`savings.post`) | `{"amount": int, "reference": str}` | `201` Ledger entry + updated `balance` |
+| `POST` | `/api/v1/savings/accounts/<account_id>/withdrawals` | `sacco_admin`, `finance_officer` (`savings.post`) | `{"amount": int, "reference": str}` | `201` Ledger entry + updated `balance` |
+| `POST` | `/api/v1/savings/accounts/<account_id>/interest` | `sacco_admin`, `finance_officer` (`savings.post`) | `{"amount": int, "reference": str}` | `201` Ledger entry + updated `balance` |
+| `POST` | `/api/v1/savings/accounts/<account_id>/fees` | `sacco_admin`, `finance_officer` (`savings.post`) | `{"amount": int, "reference": str}` | `201` Ledger entry + updated `balance` |
+| `POST` | `/api/v1/savings/transactions/<transaction_id>/reversals` | `sacco_admin`, `finance_officer` (`savings.reverse`) | `{"reference": str}` | `201` Reversal entry (`reverses_id` set) + updated `balance` |
 
 ## 2. Loan Endpoints
 
@@ -26,7 +26,7 @@
 | `POST` | `/api/v1/loans/saccos/<sacco_id>` | `member` (`loan.request`) | `{"principal": int}` | `201` Loan object (`status: "requested"`, `required_approvals` frozen from `sacco_settings`) |
 | `GET` | `/api/v1/loans/saccos/<sacco_id>` | Any SACCO member (`member` sees own loans only; officers see SACCO loans) | Query: `?page=1&per_page=20` | `200` `{"loans": [...], "page": int, "per_page": int}` |
 | `GET` | `/api/v1/loans/<loan_id>` | Owner member or SACCO officer | — | `200` Loan object + `decisions: [...]` |
-| `POST` | `/api/v1/loans/<loan_id>/decisions` | `circle_admin`, `loans_officer` (`loan.approve`) | `{"step": int, "decision": "approve" | "reject"}` | `201` Updated Loan object (`status` becomes `"approved"` once `step == required_approvals`, or `"rejected"`) |
+| `POST` | `/api/v1/loans/<loan_id>/decisions` | `sacco_admin`, `loans_officer` (`loan.approve`) | `{"step": int, "decision": "approve" | "reject"}` | `201` Updated Loan object (`status` becomes `"approved"` once `step == required_approvals`, or `"rejected"`) |
 | `POST` | `/api/v1/loans/<loan_id>/disbursements` | `finance_officer` only (`loan.disburse`) | `{"reference": str}` | `201` Updated Loan object (`status: "disbursed"`), credits borrower's savings account |
 | `POST` | `/api/v1/loans/<loan_id>/repayments` | `member` (own loan) or `finance_officer` (`loan.repay`) | `{"amount": int, "reference": str}` | `201` Repayment object (`repayment_id`, `transaction_id`, `repaid_total`, `loan_status`, `account_balance`) |
 

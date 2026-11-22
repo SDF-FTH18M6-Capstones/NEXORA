@@ -1,6 +1,6 @@
 /* addmember.js: "Add a member", a section of its own (permission member.manage, the SACCO admin).
    The admin types a phone number and picks a role; NEXORA makes a 6-digit join code that works once and lasts 15 minutes.
-   The person then signs in to their own account, opens "Join with a code", enters this phone number and code, and sets their circle PIN. */
+   The person then signs in to their own account, opens "Join with a code", enters this phone number and code, and sets their SACCO PIN. */
 (() => {
   const N = window.NX;
   const { $, $$, can, toast, EXT, mem, ROLES } = N;

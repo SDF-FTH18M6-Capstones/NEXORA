@@ -47,7 +47,7 @@ reversals, audit, join/PIN and loans merged on `development`, but:
 6. A repeated identical deposit answers 200 with `replayed: true`. The same reference with a different amount answers 409 `DUPLICATE_REFERENCE`.
 7. Job titles:
    - the admin makes members loans or finance officers;
-   - only the platform owner grants `circle_admin`;
+   - only the platform owner grants `sacco_admin`;
    - nobody changes their own titles;
    - another SACCO's member answers 404.
 8. Settings: every active member reads them; only the platform owner changes them; bad values answer 400.

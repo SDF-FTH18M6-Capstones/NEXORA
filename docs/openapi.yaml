@@ -343,7 +343,7 @@ components:
           schema:
             $ref: '#/components/schemas/Error'
   schemas:
-    CircleRulesInput:
+    SaccoRulesInput:
       type: object
       description: Amounts are whole cents (50000 = KES 500.00).
       properties:
@@ -360,9 +360,9 @@ components:
         exit_rules: {type: string, maxLength: 500}
         loan_purposes: {type: string, maxLength: 200}
       required: [contribution_amount, contribution_frequency, interest_percent, repayment_period_value, repayment_period_unit, late_fine_amount]
-    CircleRules:
+    SaccoRules:
       allOf:
-      - $ref: '#/components/schemas/CircleRulesInput'
+      - $ref: '#/components/schemas/SaccoRulesInput'
       - type: object
         properties:
           id: {type: integer}
@@ -496,7 +496,7 @@ components:
           items:
             type: string
             enum:
-            - circle_admin
+            - sacco_admin
             - secretary
             - finance_officer
             - loans_officer
@@ -839,7 +839,7 @@ paths:
       description: |-
         **Who:** a signed-in user holding a join code.
 
-        The code is six digits, valid for the SACCO's `join_code_ttl_minutes` (15 by default) and usable once. Five wrong entries burn it. Only a membership that is currently `invited` can be joined; a cancelled invite answers like a wrong code. A phone may be invited to several SACCOs: the code decides which one is joined, and a wrong code counts against every live code for that phone. On success the phone is linked to the user and a setup token (valid 10 minutes, tied to this code) is returned for setting the circle PIN; a re-invite makes older setup tokens invalid.
+        The code is six digits, valid for the SACCO's `join_code_ttl_minutes` (15 by default) and usable once. Five wrong entries burn it. Only a membership that is currently `invited` can be joined; a cancelled invite answers like a wrong code. A phone may be invited to several SACCOs: the code decides which one is joined, and a wrong code counts against every live code for that phone. On success the phone is linked to the user and a setup token (valid 10 minutes, tied to this code) is returned for setting the SACCO PIN; a re-invite makes older setup tokens invalid.
       security:
       - bearerAuth: []
       requestBody:
@@ -870,7 +870,7 @@ paths:
         '429': {description: "Rate limit exceeded (rate_limited).", content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
   /api/v1/auth/join/pin:
     post:
-      summary: Set the circle PIN and activate the membership
+      summary: Set the SACCO PIN and activate the membership
       description: |-
         **Who:** the signed-in user who just joined.
 
@@ -905,11 +905,11 @@ paths:
         '429': {description: "Rate limit exceeded (rate_limited).", content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
   /api/v1/auth/join/rules:
     post:
-      summary: The circle's rules, before the PIN step
+      summary: The SACCO's rules, before the PIN step
       description: |-
         **Who:** the signed-in user who just joined (send the `setup_token` from `/auth/join`).
 
-        Returns every rule of the circle being joined, so the member can read them before accepting.
+        Returns every rule of the SACCO being joined, so the member can read them before accepting.
       security:
       - bearerAuth: []
       requestBody:
@@ -923,18 +923,18 @@ paths:
               required: [setup_token]
       responses:
         '200':
-          description: The current rules and whether this member accepted them (`rules` is null if the circle has none).
+          description: The current rules and whether this member accepted them (`rules` is null if the SACCO has none).
           content:
             application/json:
               schema:
                 type: object
                 properties:
-                  rules: {allOf: [{$ref: '#/components/schemas/CircleRules'}], nullable: true}
+                  rules: {allOf: [{$ref: '#/components/schemas/SaccoRules'}], nullable: true}
         '401': {description: "Missing or invalid access token, or the setup token is invalid or expired.", content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
         '403': {description: "The setup token belongs to someone else (NOT_ALLOWED).", content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
   /api/v1/auth/join/rules/accept:
     post:
-      summary: Accept the circle's rules before joining
+      summary: Accept the SACCO's rules before joining
       description: |-
         **Who:** the signed-in user who just joined.
 
@@ -959,15 +959,15 @@ paths:
               schema:
                 type: object
                 properties:
-                  rules: {$ref: '#/components/schemas/CircleRules'}
+                  rules: {$ref: '#/components/schemas/SaccoRules'}
         '401': {description: "Missing or invalid access token, or the setup token is invalid or expired.", content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
         '403': {description: "The setup token belongs to someone else (NOT_ALLOWED).", content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
-        '404': {description: "The circle has no rules to accept.", content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
+        '404': {description: "The SACCO has no rules to accept.", content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
         '409': {description: "The rules changed; read the current version first.", content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
   /api/v1/auth/sacco-login:
     post:
-      summary: Enter your circle with its PIN (the new name)
-      description: 'The same endpoint as `/auth/circle-login`, kept under both names
+      summary: Enter your SACCO with its PIN (the new name)
+      description: 'The same endpoint as `/auth/sacco-login`, kept under both names
         for one release so older clients keep working.
 
 
@@ -987,9 +987,9 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
-  /api/v1/auth/circle-login:
+  /api/v1/auth/sacco-login:
     post:
-      summary: Check the circle PIN
+      summary: Check the SACCO PIN
       description: |-
         **Who:** a signed-in user with an active membership in the SACCO.
 
@@ -2109,7 +2109,7 @@ paths:
         an inactive phone member can be invited again (`status: invited`), which answers with a fresh
         `join_code` and kills the old ones. An invited or PIN-less phone member becomes active only by
         joining with their code (409). Setting `inactive` kills unused join codes. Making or removing an admin moves
-        the `circle_admin` title with the role.'
+        the `sacco_admin` title with the role.'
       responses:
         '200':
           description: Updated member. A re-invite (`status` inactive -> invited) also returns
@@ -2447,7 +2447,7 @@ paths:
         Insufficient funds is 409 `Insufficient funds.`. `reference` is required. A new entry answers
         **201**; repeating the same reference with the same request answers **200** with `replayed: true`;
         the same reference with a different request is 409. Holders of `savings.post` (admin, finance officer) post money, others cannot
-        (403), and nobody may post on their own account (403). A withdrawal that would leave the savings below the loan cap of an open loan is 409 `LOAN_OVER_CAP` (circles with published rules). Amounts are integers in minor units.'
+        (403), and nobody may post on their own account (403). A withdrawal that would leave the savings below the loan cap of an open loan is 409 `LOAN_OVER_CAP` (SACCOs with published rules). Amounts are integers in minor units.'
       responses:
         '201':
           description: New entry.
@@ -3163,7 +3163,7 @@ paths:
       summary: Set a member's job titles
       description: '**Who:** holders of `member.manage` (the SACCO admin), or the platform owner. Replaces the whole list. Only the
         platform owner edits an admin''s titles; nobody changes their own titles; the membership must
-        be active (409). `circle_admin` follows the SACCO admin role: keep it on an admin and leave it
+        be active (409). `sacco_admin` follows the SACCO admin role: keep it on an admin and leave it
         off everyone else (409), and make or remove admins with PATCH /saccos/{sacco_id}/members/{membership_id},
         which moves the title with the role.'
       responses:
@@ -3205,8 +3205,8 @@ paths:
     parameters:
     - $ref: '#/components/parameters/sacco_id'
     get:
-      summary: The circle's rules
-      description: '**Who:** any active member (`sacco.view`), or the platform owner. `rules` is null until a circle has published rules. `accepted` says whether the caller accepted the current version (null for a platform owner). The rules are locked while `locked` is true.'
+      summary: The SACCO's rules
+      description: '**Who:** any active member (`sacco.view`), or the platform owner. `rules` is null until a SACCO has published rules. `accepted` says whether the caller accepted the current version (null for a platform owner). The rules are locked while `locked` is true.'
       security:
       - bearerAuth: []
       responses:
@@ -3217,14 +3217,14 @@ paths:
               schema:
                 type: object
                 properties:
-                  rules: {allOf: [{$ref: '#/components/schemas/CircleRules'}], nullable: true}
+                  rules: {allOf: [{$ref: '#/components/schemas/SaccoRules'}], nullable: true}
         '401': {description: "Unauthorized.", content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
         '403': {description: "Forbidden.", content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
         '404': {description: "Not found.", content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
     post:
-      summary: Publish the circle's first rules
+      summary: Publish the SACCO's first rules
       description: |-
-        **Who:** the circle admin (`sacco.update`) or the platform owner.
+        **Who:** the SACCO admin (`sacco.update`) or the platform owner.
 
         Only the first version. After that the rules are locked until the cycle ends (409 `RULES_LOCKED`) and change only by member vote. Amounts are whole cents. `interest_percent` has no default and must be sent. `loan_cap_multiple` defaults to 3 and `cycle_months` to 12. Every 400 carries `error.fields`, a plain-words reason for each bad field.
       security:
@@ -3233,7 +3233,7 @@ paths:
         required: true
         content:
           application/json:
-            schema: {$ref: '#/components/schemas/CircleRulesInput'}
+            schema: {$ref: '#/components/schemas/SaccoRulesInput'}
       responses:
         '201':
           description: Published, version 1, cycle starts today.
@@ -3242,12 +3242,12 @@ paths:
               schema:
                 type: object
                 properties:
-                  rules: {$ref: '#/components/schemas/CircleRules'}
+                  rules: {$ref: '#/components/schemas/SaccoRules'}
         '400': {description: "A rule is missing or not valid (error.fields).", content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
         '401': {description: "Unauthorized.", content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
         '403': {description: "Forbidden.", content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
         '404': {description: "Not found.", content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
-        '409': {description: "The circle already has rules, locked or awaiting a vote (RULES_LOCKED).", content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
+        '409': {description: "The SACCO already has rules, locked or awaiting a vote (RULES_LOCKED).", content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
   /api/v1/saccos/{sacco_id}/rules/accept:
     parameters:
     - $ref: '#/components/parameters/sacco_id'
@@ -3273,7 +3273,7 @@ paths:
               schema:
                 type: object
                 properties:
-                  rules: {$ref: '#/components/schemas/CircleRules'}
+                  rules: {$ref: '#/components/schemas/SaccoRules'}
         '401': {description: "Unauthorized.", content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
         '403': {description: "Only members accept rules.", content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
         '404': {description: "Not found, or no rules yet.", content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
@@ -3283,8 +3283,8 @@ paths:
     - $ref: '#/components/parameters/sacco_id'
     get:
       summary: Where members pay in
-      description: '**Who:** any active member of the circle (`sacco.view`), or the platform owner. Returns
-        `details` (the live values, or `null` when the circle has not set any) and `pending` (the change
+      description: '**Who:** any active member of the SACCO (`sacco.view`), or the platform owner. Returns
+        `details` (the live values, or `null` when the SACCO has not set any) and `pending` (the change
         waiting for a second officer, or `null`). `pending` is only filled for holders of `payin.manage`;
         a member never sees a change before it is live. `scheduled` is the approved change still waiting
         for its go-live time (24 hours after approval): holders of `payin.manage` get the change with
@@ -3318,7 +3318,7 @@ paths:
     - $ref: '#/components/parameters/sacco_id'
     post:
       summary: Propose new pay-in details
-      description: '**Who:** holders of `payin.manage` (the circle admin and the finance officer). Changes
+      description: '**Who:** holders of `payin.manage` (the SACCO admin and the finance officer). Changes
         nothing members see: the change waits until a different officer approves it. A newer proposal replaces
         the one waiting. Give M-Pesa details, bank details or both. M-Pesa: `mpesa_type` (`paybill` or `till`),
         `mpesa_number` (5 to 7 digits), `display_name`, optional `account_reference_hint` (paybill only). Bank:
@@ -3326,7 +3326,7 @@ paths:
         bank paybill: `bank_uses_shared_paybill` true with `bank_paybill_number` (5 to 7 digits). Every proposal
         is audited (`payin.propose`, `payin.supersede`) and every officer is emailed. Text fields take Latin
         letters, ASCII digits and ordinary punctuation on one line (invisible, look-alike and
-        non-Latin letters are refused). A circle may send 10 proposals an hour (429).
+        non-Latin letters are refused). A SACCO may send 10 proposals an hour (429).
 
 
         **Rate limit:** 30 per minute.'
@@ -3510,14 +3510,14 @@ paths:
         '404': {description: "Not found.", content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
     post:
       summary: Propose a rule change
-      description: '**Who:** the circle admin or the platform owner, only after the cycle has ended (409 `RULES_LOCKED` before). Send the full set of rules. One open proposal at a time.'
+      description: '**Who:** the SACCO admin or the platform owner, only after the cycle has ended (409 `RULES_LOCKED` before). Send the full set of rules. One open proposal at a time.'
       security:
       - bearerAuth: []
       requestBody:
         required: true
         content:
           application/json:
-            schema: {$ref: '#/components/schemas/CircleRulesInput'}
+            schema: {$ref: '#/components/schemas/SaccoRulesInput'}
       responses:
         '201':
           description: Open for a vote.
@@ -3795,7 +3795,7 @@ paths:
     post:
       summary: Pay out an approved loan
       description: '**Who:** finance officer (`loan.disburse`) who approved no step (`LOAN_SAME_OFFICER`).
-        Credits the principal to the borrower''s savings account. The ledger row cannot be reversed. In a circle with published rules the cap and the pool are checked again at payout under the circle lock (409 `LOAN_OVER_CAP`, `LOAN_POOL_SHORT`).'
+        Credits the principal to the borrower''s savings account. The ledger row cannot be reversed. In a SACCO with published rules the cap and the pool are checked again at payout under the SACCO lock (409 `LOAN_OVER_CAP`, `LOAN_POOL_SHORT`).'
       responses:
         '201':
           description: The loan, status `disbursed`.

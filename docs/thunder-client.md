@@ -179,7 +179,7 @@ Access:
   reads it only while that SACCO's support grant is approved.
 - Only the platform owner changes loan settings or SACCO admins.
 - Nobody changes their own titles.
-- `circle_admin` moves only with the admin role.
+- `sacco_admin` moves only with the admin role.
 - At least two platform owners always remain, and nobody revokes themselves.
 - An active member can't be moved back to invited.
 
@@ -219,9 +219,9 @@ Access:
 | 04 | **Owner: bad setting value (400)**<br>`PATCH /api/v1/saccos/{{saccoId}}/settings` | ownerToken | `{"required_approvals": 5}` | **400** |  |
 | 05 | **Admin: make staff a secretary + loans officer**<br>`PUT /api/v1/saccos/{{saccoId}}/members/{{staffMembershipId}}/roles` | adminToken | `{"roles": ["secretary", "loans_officer"]}` | **200** |  |
 | 06 | **Admin: read staff titles**<br>`GET /api/v1/saccos/{{saccoId}}/members/{{staffMembershipId}}/roles` | adminToken |  | **200** |  |
-| 07 | **Admin: cannot grant circle_admin (403)**<br>`PUT /api/v1/saccos/{{saccoId}}/members/{{staffMembershipId}}/roles` | adminToken | `{"roles": ["circle_admin"]}` | **403** |  |
-| 08 | **Admin: cannot change own titles (403)**<br>`PUT /api/v1/saccos/{{saccoId}}/members/{{adminMembershipId}}/roles` | adminToken | `{"roles": ["circle_admin", "finance_officer"]}` | **403** |  |
-| 09 | **Owner: circle_admin only moves with the admin role (409)**<br>`PUT /api/v1/saccos/{{saccoId}}/members/{{adminMembershipId}}/roles` | ownerToken | `{"roles": ["member"]}` | **409** |  |
+| 07 | **Admin: cannot grant sacco_admin (403)**<br>`PUT /api/v1/saccos/{{saccoId}}/members/{{staffMembershipId}}/roles` | adminToken | `{"roles": ["sacco_admin"]}` | **403** |  |
+| 08 | **Admin: cannot change own titles (403)**<br>`PUT /api/v1/saccos/{{saccoId}}/members/{{adminMembershipId}}/roles` | adminToken | `{"roles": ["sacco_admin", "finance_officer"]}` | **403** |  |
+| 09 | **Owner: sacco_admin only moves with the admin role (409)**<br>`PUT /api/v1/saccos/{{saccoId}}/members/{{adminMembershipId}}/roles` | ownerToken | `{"roles": ["member"]}` | **409** |  |
 
 ### 4. Savings and safe retries
 
@@ -313,8 +313,8 @@ part of the grant.
 | 02 | **Beta admin: invite a phone into Beta (shows join_code)**<br>`POST /api/v1/saccos/{{betaSaccoId}}/members` | betaAdminToken | `{"phone": "+2547000100{{run}}", "role": "member"}` | **201** | `joinCode` |
 | 03 | **Member m1: join Beta with the code**<br>`POST /api/v1/auth/join` | memberToken | `{"phone": "+2547000100{{run}}", "code": "{{joinCode}}"}` | **200** | `setupToken` |
 | 04 | **Member m1: set a 4-digit PIN**<br>`POST /api/v1/auth/join/pin` | memberToken | `{"setup_token": "{{setupToken}}", "pin": "4826"}` | **200**<br>`status` = active |  |
-| 05 | **Member m1: circle login with the PIN**<br>`POST /api/v1/auth/circle-login` | memberToken | `{"sacco_id": {{betaSaccoId}}, "pin": "4826"}` | **200**<br>`ok` = true |  |
-| 06 | **Member m1: wrong PIN is refused**<br>`POST /api/v1/auth/circle-login` | memberToken | `{"sacco_id": {{betaSaccoId}}, "pin": "0000"}` | **401** |  |
+| 05 | **Member m1: SACCO login with the PIN**<br>`POST /api/v1/auth/sacco-login` | memberToken | `{"sacco_id": {{betaSaccoId}}, "pin": "4826"}` | **200**<br>`ok` = true |  |
+| 06 | **Member m1: wrong PIN is refused**<br>`POST /api/v1/auth/sacco-login` | memberToken | `{"sacco_id": {{betaSaccoId}}, "pin": "0000"}` | **401** |  |
 
 ## 7. Troubleshooting
 

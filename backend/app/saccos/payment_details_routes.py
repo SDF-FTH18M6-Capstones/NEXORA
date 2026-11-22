@@ -1,4 +1,4 @@
-"""Circle pay-in details: where members pay in, changed by two officers.
+"""SACCO pay-in details: where members pay in, changed by two officers.
 
 GET  .../payment-details                       any active member: the live details
 POST .../payment-details/changes               an officer (`payin.manage`): propose
@@ -29,7 +29,7 @@ from app.errors import (
     interface_error,
 )
 from app.extensions import db
-from app.models.payment_details import CirclePaymentDetailsChange
+from app.models.payment_details import SaccoPaymentDetailsChange
 from app.saccos import payment_details as logic
 from app.security.permissions import can, holders, holding_since
 from app.security.tenant import permission_scoped
@@ -51,11 +51,11 @@ def _invalid(errors: dict):
     return jsonify(body), 400
 
 
-def _email_body(circle: str, lead: str, actor: str) -> str:
+def _email_body(sacco_name: str, lead: str, actor: str) -> str:
     return (
-        f"{lead}\n\nCircle: {circle}\nBy: {actor}\n\n"
+        f"{lead}\n\nSacco: {sacco_name}\nBy: {actor}\n\n"
         "Open NEXORA and go to Pay-in details to review it. If you did not "
-        "expect this, tell your circle admin before anyone approves it."
+        "expect this, tell your SACCO admin before anyone approves it."
     )
 
 
@@ -98,7 +98,7 @@ def propose_payment_details(sacco_id):
         db.session.rollback()
         return error_response(
             429,
-            "This circle has sent too many pay-in proposals in the last hour. "
+            "This SACCO has sent too many pay-in proposals in the last hour. "
             "Wait, and agree the right numbers with the other officers first.",
         )
     fields = logic.changed_fields(logic.live_details(sacco_id), values)
@@ -109,9 +109,9 @@ def propose_payment_details(sacco_id):
     replaced = logic.pending_change(sacco_id)
     if replaced is not None:
         replaced.status = "superseded"
-        db.session.flush()  # frees the one-pending-per-circle slot
+        db.session.flush()  # frees the one-pending-per-sacco slot
         audit_log.record(sacco_id, user.id, "payin.supersede", f"change:{replaced.id}")
-    change = CirclePaymentDetailsChange(
+    change = SaccoPaymentDetailsChange(
         sacco_id=sacco_id, proposed_by=user.id, **values
     )
     db.session.add(change)
@@ -123,13 +123,13 @@ def propose_payment_details(sacco_id):
         f"change:{change.id} fields:{','.join(fields)}",
     )
     body = logic.change_json(change)
-    circle, actor = g.access.sacco.name, user.email
+    sacco_name, actor = g.access.sacco.name, user.email
     db.session.commit()
     logic.notify_officers(
         sacco_id,
         "NEXORA: pay-in details change waiting for approval",
         _email_body(
-            circle,
+            sacco_name,
             "A change to the pay-in details is waiting for a second officer.",
             actor,
         ),
@@ -145,10 +145,10 @@ def approve_payment_details(sacco_id, change_id):
     logic.apply_due(sacco_id)  # commits, so it must come before the lock
     logic.lock_sacco(sacco_id)
     change = db.session.execute(
-        select(CirclePaymentDetailsChange)
+        select(SaccoPaymentDetailsChange)
         .where(
-            CirclePaymentDetailsChange.id == change_id,
-            CirclePaymentDetailsChange.sacco_id == sacco_id,
+            SaccoPaymentDetailsChange.id == change_id,
+            SaccoPaymentDetailsChange.sacco_id == sacco_id,
         )
         .with_for_update()
     ).scalar_one_or_none()
@@ -171,7 +171,7 @@ def approve_payment_details(sacco_id, change_id):
         db.session.rollback()
         return error_response(
             409,
-            "The officer who proposed this is no longer an officer of this circle. "
+            "The officer who proposed this is no longer an officer of this SACCO. "
             "Ask a current officer to send a new proposal.",
         )
     since = holding_since(sacco_id, user.id, logic.PERMISSION)
@@ -180,7 +180,7 @@ def approve_payment_details(sacco_id, change_id):
         return interface_error(
             PAYIN_NEW_OFFICER,
             "You became an officer after this change was proposed. Ask for a new "
-            "proposal, so the officers the circle already had stand behind it.",
+            "proposal, so the officers the SACCO already had stand behind it.",
         )
 
     # A change still waiting for its go-live time is replaced, not stacked: two
@@ -201,14 +201,14 @@ def approve_payment_details(sacco_id, change_id):
         "payin.approve",
         f"change:{change.id} go_live_at:{change.go_live_at.isoformat()}",
     )
-    circle, actor = g.access.sacco.name, user.email
+    sacco_name, actor = g.access.sacco.name, user.email
     body = logic.change_json(change)
     db.session.commit()
     logic.notify_officers(
         sacco_id,
         "NEXORA: pay-in details will change in 24 hours",
         _email_body(
-            circle,
+            sacco_name,
             "New pay-in details were approved and go live for members at "
             f"{change.go_live_at:%d %b %Y %H:%M} UTC. Until then members keep "
             "seeing the current details.",
@@ -229,10 +229,10 @@ def cancel_payment_details(sacco_id, change_id):
     logic.apply_due(sacco_id)  # commits, so it must come before the lock
     logic.lock_sacco(sacco_id)
     change = db.session.execute(
-        select(CirclePaymentDetailsChange)
+        select(SaccoPaymentDetailsChange)
         .where(
-            CirclePaymentDetailsChange.id == change_id,
-            CirclePaymentDetailsChange.sacco_id == sacco_id,
+            SaccoPaymentDetailsChange.id == change_id,
+            SaccoPaymentDetailsChange.sacco_id == sacco_id,
         )
         .with_for_update()
     ).scalar_one_or_none()
@@ -250,14 +250,14 @@ def cancel_payment_details(sacco_id, change_id):
         )
     change.status = "cancelled"
     audit_log.record(sacco_id, user.id, "payin.cancel", f"change:{change.id}")
-    circle, actor = g.access.sacco.name, user.email
+    sacco_name, actor = g.access.sacco.name, user.email
     body = logic.change_json(change)
     db.session.commit()
     logic.notify_officers(
         sacco_id,
         "NEXORA: a pay-in details change was cancelled",
         _email_body(
-            circle,
+            sacco_name,
             "An approved change to the pay-in details was cancelled before it went "
             "live. Members keep seeing the current details.",
             actor,

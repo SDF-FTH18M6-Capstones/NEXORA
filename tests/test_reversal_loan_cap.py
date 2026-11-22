@@ -14,7 +14,7 @@ from app.models.audit import AuditLog
 from app.savings import service
 from app.security.permissions import ROLE_PERMISSIONS
 from savings_support import Setup, release_session, schema_app  # noqa: F401
-from test_circle_rules import _approved_loan
+from test_sacco_rules import _approved_loan
 
 pytestmark = pytest.mark.schema
 
@@ -98,7 +98,7 @@ def test_a_finance_officer_cannot_override_even_though_they_can_reverse(schema_a
     assert "savings.reverse_override" not in ROLE_PERMISSIONS["finance_officer"]
     code = "savings.reverse_override"
     holders = [r for r, p in ROLE_PERMISSIONS.items() if code in p]
-    assert holders == ["circle_admin"]
+    assert holders == ["sacco_admin"]
 
 
 def test_a_reversal_that_keeps_savings_above_the_cap_needs_no_override(schema_app):

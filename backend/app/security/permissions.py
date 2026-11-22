@@ -65,7 +65,7 @@ PERMISSIONS: dict[str, str] = {
     # approves, denies or revokes a support-access request.
     "support.approve": "Approve or revoke a platform owner's support access",
     # Where members pay in. Never held by the platform owner: a second officer of
-    # the circle must approve every change.
+    # the SACCO must approve every change.
     "payin.manage": "Set or approve where members pay in",
 }
 
@@ -73,7 +73,7 @@ PERMISSIONS: dict[str, str] = {
 # a SACCO admin never approves loans and cannot read the audit log; the
 # secretary is read-only and the only SACCO role that reads the audit log.
 ROLE_PERMISSIONS: dict[str, frozenset[str]] = {
-    "circle_admin": frozenset(
+    "sacco_admin": frozenset(
         {
             "sacco.view",
             "member.view",
@@ -145,7 +145,7 @@ ROLE_PERMISSIONS: dict[str, frozenset[str]] = {
 ADMIN_NEVER = frozenset({"loan.approve", "loan.disburse", "audit.view"})
 
 ROLE_NAMES = {
-    "circle_admin": "Circle administrator",
+    "sacco_admin": "SACCO administrator",
     "secretary": "Secretary",
     "finance_officer": "Finance officer",
     "loans_officer": "Loans officer",
@@ -155,7 +155,7 @@ ROLE_NAMES = {
 # Bridge for rows written before `membership_roles` existed (and for databases
 # built with create_all, where the migration's backfill never ran).
 LEGACY_ROLE_CODES = {
-    MembershipRole.SACCO_ADMIN: "circle_admin",
+    MembershipRole.SACCO_ADMIN: "sacco_admin",
     MembershipRole.STAFF: "secretary",
     MembershipRole.MEMBER: "member",
 }
@@ -253,7 +253,7 @@ def _role_codes(membership: SaccoMembership) -> set[str]:
 
 def is_admin_membership(membership: SaccoMembership) -> bool:
     """Is this membership the SACCO admin? (The role column says so; migration
-    0010 and the role routes keep the circle_admin title in step with it.)"""
+    0010 and the role routes keep the sacco_admin title in step with it.)"""
     return membership.role is MembershipRole.SACCO_ADMIN
 
 

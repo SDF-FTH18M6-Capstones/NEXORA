@@ -72,7 +72,7 @@ class SaccoMembership(db.Model):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
-    # Circle PIN (Section 2 sets and checks it; Section 1 owns the columns).
+    # SACCO PIN (Section 2 sets and checks it; Section 1 owns the columns).
     # Stored hashed, never in clear. Five wrong entries lock it for 15 minutes.
     pin_hash: Mapped[str | None] = mapped_column(String(255), nullable=True)
     pin_attempts: Mapped[int] = mapped_column(

@@ -1,4 +1,4 @@
-"""Circle pay-in details: validation, the live row, and the two-officer change.
+"""SACCO pay-in details: validation, the live row, and the two-officer change.
 
 A change is proposed by one officer (`payin.manage`) and goes live only when a
 different officer approves that exact proposal. Nothing here moves money.
@@ -17,8 +17,8 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from app.extensions import db
 from app.mail import send_text_email
 from app.models.payment_details import (
-    CirclePaymentDetails,
-    CirclePaymentDetailsChange,
+    SaccoPaymentDetails,
+    SaccoPaymentDetailsChange,
 )
 from app.models.sacco import Sacco
 from app.models.user import User
@@ -49,7 +49,7 @@ BANK_ACCOUNT = re.compile(r"[0-9]{6,20}")
 
 
 def lock_sacco(sacco_id: int) -> None:
-    """Serialise proposals and approvals for one circle."""
+    """Serialise proposals and approvals for one SACCO."""
     db.session.execute(
         select(Sacco.id).where(Sacco.id == sacco_id).with_for_update()
     ).scalar_one_or_none()
@@ -122,12 +122,12 @@ def validate(body) -> tuple[dict, dict]:
         if reason:
             errors[field] = reason
 
-    text_field("display_name", 60, "Name members will see", "Umoja Circle Savings")
+    text_field("display_name", 60, "Name members will see", "Umoja SACCO Savings")
     text_field(
         "account_reference_hint", 60, "Account reference hint", "your member number"
     )
     text_field("bank_name", 60, "Bank name", "Equity Bank")
-    text_field("bank_account_name", 80, "Bank account name", "Umoja Circle")
+    text_field("bank_account_name", 80, "Bank account name", "Umoja SACCO")
     text_field("bank_branch", 60, "Bank branch", "Kitale")
 
     mpesa_type = body.get("mpesa_type")
@@ -155,7 +155,7 @@ def validate(body) -> tuple[dict, dict]:
         if values["display_name"] is None and "display_name" not in errors:
             errors["display_name"] = (
                 "Add the name members will see when M-Pesa shows the business "
-                "name, so they can check it before paying. Example: Umoja Circle "
+                "name, so they can check it before paying. Example: Umoja SACCO "
                 "Savings."
             )
     if values["account_reference_hint"] and values["mpesa_type"] != "paybill":
@@ -173,7 +173,7 @@ def validate(body) -> tuple[dict, dict]:
     if has_bank:
         for field, label, example in (
             ("bank_name", "Bank name", "Equity Bank"),
-            ("bank_account_name", "Bank account name", "Umoja Circle"),
+            ("bank_account_name", "Bank account name", "Umoja SACCO"),
         ):
             if values[field] is None and field not in errors:
                 errors[field] = (
@@ -241,17 +241,17 @@ def validate(body) -> tuple[dict, dict]:
 def values_json(row) -> dict:
     return {
         **{field: getattr(row, field) for field in FIELDS},
-        # A shared bank paybill cannot name the circle, so only an officer who
+        # A shared bank paybill cannot name the SACCO, so only an officer who
         # reads the bank statement can confirm those payments.
         "bank_manual_confirm_only": row.bank_uses_shared_paybill,
     }
 
 
-def live_json(row: CirclePaymentDetails) -> dict:
+def live_json(row: SaccoPaymentDetails) -> dict:
     return {**values_json(row), "updated_at": row.updated_at.isoformat()}
 
 
-def change_json(row: CirclePaymentDetailsChange) -> dict:
+def change_json(row: SaccoPaymentDetailsChange) -> dict:
     proposer = db.session.get(User, row.proposed_by)
     return {
         "id": row.id,
@@ -266,41 +266,41 @@ def change_json(row: CirclePaymentDetailsChange) -> dict:
     }
 
 
-def live_details(sacco_id: int) -> CirclePaymentDetails | None:
+def live_details(sacco_id: int) -> SaccoPaymentDetails | None:
     return db.session.execute(
-        select(CirclePaymentDetails).where(CirclePaymentDetails.sacco_id == sacco_id)
+        select(SaccoPaymentDetails).where(SaccoPaymentDetails.sacco_id == sacco_id)
     ).scalar_one_or_none()
 
 
-def waiting_change(sacco_id: int) -> CirclePaymentDetailsChange | None:
+def waiting_change(sacco_id: int) -> SaccoPaymentDetailsChange | None:
     """The approved change whose go-live time has not come yet (call
     `apply_due` first, so anything already due is live and not waiting)."""
     return db.session.execute(
-        select(CirclePaymentDetailsChange)
+        select(SaccoPaymentDetailsChange)
         .where(
-            CirclePaymentDetailsChange.sacco_id == sacco_id,
-            CirclePaymentDetailsChange.status == "approved",
-            CirclePaymentDetailsChange.go_live_at > datetime.now(UTC),
+            SaccoPaymentDetailsChange.sacco_id == sacco_id,
+            SaccoPaymentDetailsChange.status == "approved",
+            SaccoPaymentDetailsChange.go_live_at > datetime.now(UTC),
         )
-        .order_by(CirclePaymentDetailsChange.go_live_at.desc())
+        .order_by(SaccoPaymentDetailsChange.go_live_at.desc())
         .limit(1)
     ).scalar_one_or_none()
 
 
-def _due_change(sacco_id: int) -> CirclePaymentDetailsChange | None:
+def _due_change(sacco_id: int) -> SaccoPaymentDetailsChange | None:
     live = live_details(sacco_id)
     query = (
-        select(CirclePaymentDetailsChange)
+        select(SaccoPaymentDetailsChange)
         .where(
-            CirclePaymentDetailsChange.sacco_id == sacco_id,
-            CirclePaymentDetailsChange.status == "approved",
-            CirclePaymentDetailsChange.go_live_at <= datetime.now(UTC),
+            SaccoPaymentDetailsChange.sacco_id == sacco_id,
+            SaccoPaymentDetailsChange.status == "approved",
+            SaccoPaymentDetailsChange.go_live_at <= datetime.now(UTC),
         )
-        .order_by(CirclePaymentDetailsChange.go_live_at.desc())
+        .order_by(SaccoPaymentDetailsChange.go_live_at.desc())
         .limit(1)
     )
     if live is not None:
-        query = query.where(CirclePaymentDetailsChange.go_live_at > live.updated_at)
+        query = query.where(SaccoPaymentDetailsChange.go_live_at > live.updated_at)
     return db.session.execute(query).scalar_one_or_none()
 
 
@@ -320,11 +320,11 @@ def apply_due(sacco_id: int) -> None:
     db.session.commit()
 
 
-def pending_change(sacco_id: int) -> CirclePaymentDetailsChange | None:
+def pending_change(sacco_id: int) -> SaccoPaymentDetailsChange | None:
     return db.session.execute(
-        select(CirclePaymentDetailsChange).where(
-            CirclePaymentDetailsChange.sacco_id == sacco_id,
-            CirclePaymentDetailsChange.status == "pending",
+        select(SaccoPaymentDetailsChange).where(
+            SaccoPaymentDetailsChange.sacco_id == sacco_id,
+            SaccoPaymentDetailsChange.status == "pending",
         )
     ).scalar_one_or_none()
 
@@ -351,7 +351,7 @@ def _send_all(
             send_text_email(email, subject, body)
         except Exception:
             # Ids only: the pay-in numbers must never reach the logs.
-            log.exception("Could not email officer %s of circle %s", user_id, sacco_id)
+            log.exception("Could not email officer %s of SACCO %s", user_id, sacco_id)
 
 
 def notify_officers(
@@ -370,7 +370,7 @@ def notify_officers(
             if user.id != skip_user_id
         ]
     except Exception:
-        log.exception("Could not list the officers of circle %s", sacco_id)
+        log.exception("Could not list the officers of SACCO %s", sacco_id)
         return
     if current_app.config["MAIL_BACKEND"] != "smtp":
         _send_all(sacco_id, recipients, subject, body)
@@ -407,36 +407,36 @@ def announce_new_officers(sacco_id: int, before: set[int], actor_email: str) -> 
                 ).scalars()
             )
         )
-        circle = db.session.get(Sacco, sacco_id).name
+        sacco_name = db.session.get(Sacco, sacco_id).name
     except Exception:
-        log.exception("Could not announce new officers of circle %s", sacco_id)
+        log.exception("Could not announce new officers of SACCO %s", sacco_id)
         return
     notify_officers(
         sacco_id,
         "NEXORA: a new officer can change pay-in details",
-        f"Circle: {circle}\nNew officer: {names}\nGiven by: {actor_email}\n\n"
+        f"SACCO: {sacco_name}\nNew officer: {names}\nGiven by: {actor_email}\n\n"
         "This person can now propose and approve changes to where members pay "
-        "in. If you did not expect this, tell your circle admin straight away.",
+        "in. If you did not expect this, tell your SACCO admin straight away.",
     )
 
 
 def too_many_proposals(sacco_id: int) -> bool:
-    """A circle may send a handful of proposals an hour: each one emails every
+    """A SACCO may send a handful of proposals an hour: each one emails every
     officer, and a hostile officer could otherwise bury the honest ones."""
     since = datetime.now(UTC) - timedelta(hours=1)
     recent = db.session.execute(
         select(func.count())
-        .select_from(CirclePaymentDetailsChange)
+        .select_from(SaccoPaymentDetailsChange)
         .where(
-            CirclePaymentDetailsChange.sacco_id == sacco_id,
-            CirclePaymentDetailsChange.proposed_at > since,
+            SaccoPaymentDetailsChange.sacco_id == sacco_id,
+            SaccoPaymentDetailsChange.proposed_at > since,
         )
     ).scalar_one()
     return recent >= MAX_PROPOSALS_PER_HOUR
 
 
-def go_live(change: CirclePaymentDetailsChange) -> None:
-    """Copy an approved change onto the circle's live row (insert or replace)."""
+def go_live(change: SaccoPaymentDetailsChange) -> None:
+    """Copy an approved change onto the SACCO's live row (insert or replace)."""
     values = {field: getattr(change, field) for field in FIELDS}
     row = {
         "updated_by": change.proposed_by,
@@ -444,7 +444,7 @@ def go_live(change: CirclePaymentDetailsChange) -> None:
         **values,
     }
     db.session.execute(
-        pg_insert(CirclePaymentDetails)
+        pg_insert(SaccoPaymentDetails)
         .values(sacco_id=change.sacco_id, **row)
         .on_conflict_do_update(index_elements=["sacco_id"], set_=row)
     )

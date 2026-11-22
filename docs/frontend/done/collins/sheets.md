@@ -112,24 +112,24 @@ Also confirm the "no AI slop" rule by eye: no stray emoji, no placeholder text, 
 | Reset to default: Cream, Fraunces and Inter, Normal | |
 | Ink theme on 375 px: no light patches, popups (switcher, role menu, bell, search) are dark | |
 | Error pages in Ink and Saffron are readable and still have no logo | |
-### Sheet E: getting in (account, circle code, circle PIN)
+### Sheet E: getting in (account, SACCO code, SACCO PIN)
 
-Run with the mock role picker off: use the real sign-in flow in mock mode (mock circle PIN `1234`; join codes `123456` good, `000000` expired, `111111` used, `222222` burned).
+Run with the mock role picker off: use the real sign-in flow in mock mode (mock SACCO PIN `1234`; join codes `123456` good, `000000` expired, `111111` used, `222222` burned).
 
 | Check | Result |
 |---|---|
 | Landing: Sign in and Create an account both work; "Join with a code" is on the landing and the sign-in page | |
-| Create an account, check email page, verify page; a signed-in person with **no circle** sees "You are not in a circle yet" with Join with a code and Log out, and no logo | |
+| Create an account, check email page, verify page; a signed-in person with **no SACCO** sees "You are not in a SACCO yet" with Join with a code and Log out, and no logo | |
 | Join with `123456` and the right phone: step 2 asks for a 4-digit PIN twice; a different second PIN or fewer than 4 digits shows a message and sends nothing | |
 | Join with `000000`, `111111`, `222222`, a wrong code: each shows its own sentence (expired, used, locked, wrong) | |
 | Waiting more than 10 minutes on the PIN step shows "The setup took too long" and goes back to step 1 | |
-| After joining, the person is asked for the PIN (Enter your circle); `1234` opens the circle; a wrong PIN shows "That PIN is not right."; five wrong PINs show the 15-minute lock | |
-| Reload the tab inside a circle: the PIN is asked again. Sign out: the next person on the same computer sees nothing of the first | |
-| A person in two circles gets the chooser; the suspended one shows the Suspended chip and opens the 423 page; switching circle asks for that circle's PIN | |
+| After joining, the person is asked for the PIN (Enter your SACCO); `1234` opens the SACCO; a wrong PIN shows "That PIN is not right."; five wrong PINs show the 15-minute lock | |
+| Reload the tab inside a SACCO: the PIN is asked again. Sign out: the next person on the same computer sees nothing of the first | |
+| A person in two SACCOs gets the chooser; the suspended one shows the Suspended chip and opens the 423 page; switching SACCO asks for that SACCO's PIN | |
 | A platform owner signs in and goes straight to the Platform area with no PIN screen | |
-| A platform owner creates a circle: it appears Active with 0 members and offers "Add the first admin" | |
+| A platform owner creates a SACCO: it appears Active with 0 members and offers "Add the first admin" | |
 | The admin adds a phone and sees the code once with a 15-minute countdown; closing the card hides it; adding the same phone again makes a new code and the old one stops working | |
-| A deactivated member gets the 403 page at Enter your circle | |
+| A deactivated member gets the 403 page at Enter your SACCO | |
 | **Add a member** is its own item in the SACCO admin's menu (after Members) and the Members page has an "Add a member" button; no other role has either, and the API answers 403 | |
 | Add a member: a wrong phone shows the message; a good phone and a role make a 6-digit code, shown once with a countdown and a Copy button; the person then appears under "Invited, not joined yet" with a "Make a new code" button | |
 | Staff menus: loans officer, finance officer, secretary and admin show **no My savings, Deposit or Withdraw**, and the Overview has no "My account" switch | |

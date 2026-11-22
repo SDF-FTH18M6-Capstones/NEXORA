@@ -1,4 +1,4 @@
-"""Join, set PIN, circle login. Section 2."""
+"""Join, set PIN, SACCO login. Section 2."""
 
 import hmac
 from datetime import UTC, datetime
@@ -25,7 +25,7 @@ from app.models.audit import AuditLog
 from app.models.identity import JoinCode, UserPhone
 from app.models.membership import MembershipStatus, SaccoMembership
 from app.models.sacco import Sacco, SaccoStatus
-from app.saccos import rules as circle_rules
+from app.saccos import rules as sacco_rules
 from app.savings.validation import MAX_ID
 from app.security.tenant import AccessDenied, current_user
 
@@ -190,11 +190,11 @@ def join_pin():
         return error_response(
             401, "The setup token is invalid or expired. Join again with your code."
         )
-    rules = circle_rules.current_rules(membership.sacco_id)
-    if rules is not None and not circle_rules.has_accepted(membership.id, rules.id):
+    rules = sacco_rules.current_rules(membership.sacco_id)
+    if rules is not None and not sacco_rules.has_accepted(membership.id, rules.id):
         db.session.rollback()
         return interface_error(
-            RULES_NOT_ACCEPTED, "Read and accept the circle's rules before joining."
+            RULES_NOT_ACCEPTED, "Read and accept the SACCO's rules before joining."
         )
     try:
         set_pin(membership, str(body.get("pin", "")))
@@ -208,9 +208,9 @@ def join_pin():
 
 
 @auth_bp.post("/sacco-login")
-@auth_bp.post("/circle-login")
+@auth_bp.post("/sacco-login")
 @write_limit
-def circle_login():
+def sacco_login():
     if error := _signed_in():
         return error
     body = _body()
@@ -237,10 +237,10 @@ def circle_login():
         check_pin(membership, str(body.get("pin", "")))
     except PinError as exc:
         # Refused attempts are recorded too, with the reason.
-        _audit(membership, "member.circle_login", f"refused: {exc.name}")
+        _audit(membership, "member.sacco_login", f"refused: {exc.name}")
         db.session.commit()  # keep the wrong-attempt count
         return interface_error(exc.name, exc.message)
-    _audit(membership, "member.circle_login", "ok")
+    _audit(membership, "member.sacco_login", "ok")
     db.session.commit()
     return jsonify(ok=True, membership_id=membership.id, role=membership.role.value)
 
@@ -265,15 +265,15 @@ def _joining_membership(body):
 @auth_bp.post("/join/rules")
 @read_limit
 def join_rules():
-    """The rules of the circle being joined, for the screen before the PIN."""
+    """The rules of the SACCO being joined, for the screen before the PIN."""
     if error := _signed_in():
         return error
     membership, error = _joining_membership(_body())
     if error:
         return error
-    rules = circle_rules.current_rules(membership.sacco_id)
-    accepted = circle_rules.has_accepted(membership.id, rules.id) if rules else None
-    return jsonify(rules=circle_rules.rules_json(rules, accepted))
+    rules = sacco_rules.current_rules(membership.sacco_id)
+    accepted = sacco_rules.has_accepted(membership.id, rules.id) if rules else None
+    return jsonify(rules=sacco_rules.rules_json(rules, accepted))
 
 
 @auth_bp.post("/join/rules/accept")
@@ -285,13 +285,13 @@ def join_accept_rules():
     membership, error = _joining_membership(body)
     if error:
         return error
-    rules = circle_rules.current_rules(membership.sacco_id)
+    rules = sacco_rules.current_rules(membership.sacco_id)
     if rules is None:
-        return error_response(404, "This circle has no rules to accept.")
+        return error_response(404, "This SACCO has no rules to accept.")
     version = body.get("version")
     if type(version) is not int or version != rules.version:
         return error_response(409, "The rules changed. Read the current version first.")
-    circle_rules.accept(membership.id, rules.id)
+    sacco_rules.accept(membership.id, rules.id)
     _audit(membership, "rules.accept", f"rules:{rules.id} v{rules.version}")
     db.session.commit()
-    return jsonify(rules=circle_rules.rules_json(rules, True))
+    return jsonify(rules=sacco_rules.rules_json(rules, True))

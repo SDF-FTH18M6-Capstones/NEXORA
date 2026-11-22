@@ -319,7 +319,7 @@ def disburse_loan(user_id: int, loan_id: int, reference: str) -> LoanView:
             "That reference has already been used.", code=DUPLICATE_REFERENCE
         )
 
-    # Circle lock first, then the account (withdrawals take them in the same
+    # SACCO lock first, then the account (withdrawals take them in the same
     # order): a withdrawal or another payout cannot slip in between the checks
     # and the credit.
     lock_sacco(loan.sacco_id)

@@ -7,7 +7,7 @@ import { payIn as sample } from '../mocks/data.js';
 const MY_ID = 1;
 const mock = {
   details: {
-    mpesa_type: 'paybill', mpesa_number: sample.paybill, account_reference_hint: sample.account, display_name: 'Alpha circle',
+    mpesa_type: 'paybill', mpesa_number: sample.paybill, account_reference_hint: sample.account, display_name: 'Alpha SACCO',
     bank_name: sample.bank, bank_account_name: sample.bankAccountName, bank_account_number: sample.bankAccount, bank_branch: null,
     bank_uses_shared_paybill: false, bank_paybill_number: null, bank_manual_confirm_only: false, updated_at: '2026-11-10T09:00:00+03:00',
   },

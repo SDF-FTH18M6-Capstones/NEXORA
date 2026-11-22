@@ -71,7 +71,7 @@ Error statuses: 400, 409, 429
 
 **Who:** a signed-in user holding a join code.
 
-The code is six digits, valid for the SACCO's `join_code_ttl_minutes` (15 by default) and usable once. Five wrong entries burn it. Only a membership that is currently `invited` can be joined; a cancelled invite answers like a wrong code. A phone may be invited to several SACCOs: the code decides which one is joined, and a wrong code counts against every live code for that phone. On success the phone is linked to the user and a setup token (valid 10 minutes, tied to this code) is returned for setting the circle PIN; a re-invite makes older setup tokens invalid.
+The code is six digits, valid for the SACCO's `join_code_ttl_minutes` (15 by default) and usable once. Five wrong entries burn it. Only a membership that is currently `invited` can be joined; a cancelled invite answers like a wrong code. A phone may be invited to several SACCOs: the code decides which one is joined, and a wrong code counts against every live code for that phone. On success the phone is linked to the user and a setup token (valid 10 minutes, tied to this code) is returned for setting the SACCO PIN; a re-invite makes older setup tokens invalid.
 
 Request body:
 
@@ -95,7 +95,7 @@ Error statuses: 400, 401, 409, 410, 429
 
 ## POST /api/v1/auth/join/pin
 
-**Set the circle PIN and activate the membership**
+**Set the SACCO PIN and activate the membership**
 
 **Who:** the signed-in user who just joined.
 
@@ -123,11 +123,11 @@ Error statuses: 400, 401, 403, 409, 429
 
 ## POST /api/v1/auth/join/rules
 
-**The circle's rules, before the PIN step**
+**The SACCO's rules, before the PIN step**
 
 **Who:** the signed-in user who just joined (send the `setup_token` from `/auth/join`).
 
-Returns every rule of the circle being joined, so the member can read them before accepting.
+Returns every rule of the SACCO being joined, so the member can read them before accepting.
 
 Request body:
 
@@ -137,7 +137,7 @@ Request body:
 }
 ```
 
-Response **200**: The current rules and whether this member accepted them (`rules` is null if the circle has none).
+Response **200**: The current rules and whether this member accepted them (`rules` is null if the SACCO has none).
 
 ```json
 {
@@ -149,7 +149,7 @@ Error statuses: 401, 403
 
 ## POST /api/v1/auth/join/rules/accept
 
-**Accept the circle's rules before joining**
+**Accept the SACCO's rules before joining**
 
 **Who:** the signed-in user who just joined.
 
@@ -176,19 +176,7 @@ Error statuses: 401, 403, 404, 409
 
 ## POST /api/v1/auth/sacco-login
 
-**Enter your circle with its PIN (the new name)**
-
-The same endpoint as `/auth/circle-login`, kept under both names for one release so older clients keep working.
-
-**Rate limit:** 30 per minute.
-
-Response **200**: `{ok, membership_id, role}`; no new tokens are issued.
-
-Error statuses: 401, 423
-
-## POST /api/v1/auth/circle-login
-
-**Check the circle PIN**
+**Check the SACCO PIN**
 
 **Who:** a signed-in user with an active membership in the SACCO.
 
@@ -807,7 +795,7 @@ Error statuses: 401, 403, 404, 423, 429
 
 **Rate limit:** 30 per minute.
 
-Send `role` and/or `status`. Writes an audit row. An active member never goes back to `invited`; an inactive phone member can be invited again (`status: invited`), which answers with a fresh `join_code` and kills the old ones. An invited or PIN-less phone member becomes active only by joining with their code (409). Setting `inactive` kills unused join codes. Making or removing an admin moves the `circle_admin` title with the role.
+Send `role` and/or `status`. Writes an audit row. An active member never goes back to `invited`; an inactive phone member can be invited again (`status: invited`), which answers with a fresh `join_code` and kills the old ones. An invited or PIN-less phone member becomes active only by joining with their code (409). Setting `inactive` kills unused join codes. Making or removing an admin moves the `sacco_admin` title with the role.
 
 Parameters: `sacco_id` (path, integer), `membership_id` (path, integer)
 
@@ -980,7 +968,7 @@ Error statuses: 400, 401, 403, 404, 409, 423, 429
 
 **Rate limit:** 20 per minute.
 
-Insufficient funds is 409 `Insufficient funds.`. `reference` is required. A new entry answers **201**; repeating the same reference with the same request answers **200** with `replayed: true`; the same reference with a different request is 409. Holders of `savings.post` (admin, finance officer) post money, others cannot (403), and nobody may post on their own account (403). A withdrawal that would leave the savings below the loan cap of an open loan is 409 `LOAN_OVER_CAP` (circles with published rules). Amounts are integers in minor units.
+Insufficient funds is 409 `Insufficient funds.`. `reference` is required. A new entry answers **201**; repeating the same reference with the same request answers **200** with `replayed: true`; the same reference with a different request is 409. Holders of `savings.post` (admin, finance officer) post money, others cannot (403), and nobody may post on their own account (403). A withdrawal that would leave the savings below the loan cap of an open loan is 409 `LOAN_OVER_CAP` (SACCOs with published rules). Amounts are integers in minor units.
 
 Parameters: `account_id` (path, integer)
 
@@ -1378,7 +1366,7 @@ Response **200**: The titles held.
 {
   "membership_id": 1,
   "roles": [
-    "circle_admin"
+    "sacco_admin"
   ]
 }
 ```
@@ -1389,7 +1377,7 @@ Error statuses: 401, 403, 404, 423
 
 **Set a member's job titles**
 
-**Who:** holders of `member.manage` (the SACCO admin), or the platform owner. Replaces the whole list. Only the platform owner edits an admin's titles; nobody changes their own titles; the membership must be active (409). `circle_admin` follows the SACCO admin role: keep it on an admin and leave it off everyone else (409), and make or remove admins with PATCH /saccos/{sacco_id}/members/{membership_id}, which moves the title with the role.
+**Who:** holders of `member.manage` (the SACCO admin), or the platform owner. Replaces the whole list. Only the platform owner edits an admin's titles; nobody changes their own titles; the membership must be active (409). `sacco_admin` follows the SACCO admin role: keep it on an admin and leave it off everyone else (409), and make or remove admins with PATCH /saccos/{sacco_id}/members/{membership_id}, which moves the title with the role.
 
 Parameters: `sacco_id` (path, integer), `membership_id` (path, integer)
 
@@ -1409,7 +1397,7 @@ Response **200**: The titles now held.
 {
   "membership_id": 1,
   "roles": [
-    "circle_admin"
+    "sacco_admin"
   ]
 }
 ```
@@ -1418,9 +1406,9 @@ Error statuses: 400, 401, 403, 404, 409, 423
 
 ## GET /api/v1/saccos/{sacco_id}/rules
 
-**The circle's rules**
+**The SACCO's rules**
 
-**Who:** any active member (`sacco.view`), or the platform owner. `rules` is null until a circle has published rules. `accepted` says whether the caller accepted the current version (null for a platform owner). The rules are locked while `locked` is true.
+**Who:** any active member (`sacco.view`), or the platform owner. `rules` is null until a SACCO has published rules. `accepted` says whether the caller accepted the current version (null for a platform owner). The rules are locked while `locked` is true.
 
 Parameters: `sacco_id` (path, integer)
 
@@ -1436,9 +1424,9 @@ Error statuses: 401, 403, 404
 
 ## POST /api/v1/saccos/{sacco_id}/rules
 
-**Publish the circle's first rules**
+**Publish the SACCO's first rules**
 
-**Who:** the circle admin (`sacco.update`) or the platform owner.
+**Who:** the SACCO admin (`sacco.update`) or the platform owner.
 
 Only the first version. After that the rules are locked until the cycle ends (409 `RULES_LOCKED`) and change only by member vote. Amounts are whole cents. `interest_percent` has no default and must be sent. `loan_cap_multiple` defaults to 3 and `cycle_months` to 12. Every 400 carries `error.fields`, a plain-words reason for each bad field.
 
@@ -1503,7 +1491,7 @@ Error statuses: 401, 403, 404, 409
 
 **Where members pay in**
 
-**Who:** any active member of the circle (`sacco.view`), or the platform owner. Returns `details` (the live values, or `null` when the circle has not set any) and `pending` (the change waiting for a second officer, or `null`). `pending` is only filled for holders of `payin.manage`; a member never sees a change before it is live. `scheduled` is the approved change still waiting for its go-live time (24 hours after approval): holders of `payin.manage` get the change with its values, everyone else only `{go_live_at}`, never the numbers. `updated_at` is when the live values went live (approval plus 24 hours). Reading applies a change whose time has come. `bank_manual_confirm_only` is true when the bank uses a shared paybill.
+**Who:** any active member of the SACCO (`sacco.view`), or the platform owner. Returns `details` (the live values, or `null` when the SACCO has not set any) and `pending` (the change waiting for a second officer, or `null`). `pending` is only filled for holders of `payin.manage`; a member never sees a change before it is live. `scheduled` is the approved change still waiting for its go-live time (24 hours after approval): holders of `payin.manage` get the change with its values, everyone else only `{go_live_at}`, never the numbers. `updated_at` is when the live values went live (approval plus 24 hours). Reading applies a change whose time has come. `bank_manual_confirm_only` is true when the bank uses a shared paybill.
 
 **Rate limit:** 120 per minute.
 
@@ -1517,7 +1505,7 @@ Error statuses: 401, 403, 404, 423, 429
 
 **Propose new pay-in details**
 
-**Who:** holders of `payin.manage` (the circle admin and the finance officer). Changes nothing members see: the change waits until a different officer approves it. A newer proposal replaces the one waiting. Give M-Pesa details, bank details or both. M-Pesa: `mpesa_type` (`paybill` or `till`), `mpesa_number` (5 to 7 digits), `display_name`, optional `account_reference_hint` (paybill only). Bank: `bank_name`, `bank_account_name`, `bank_account_number` (6 to 20 digits), optional `bank_branch`. Shared bank paybill: `bank_uses_shared_paybill` true with `bank_paybill_number` (5 to 7 digits). Every proposal is audited (`payin.propose`, `payin.supersede`) and every officer is emailed. Text fields take Latin letters, ASCII digits and ordinary punctuation on one line (invisible, look-alike and non-Latin letters are refused). A circle may send 10 proposals an hour (429).
+**Who:** holders of `payin.manage` (the SACCO admin and the finance officer). Changes nothing members see: the change waits until a different officer approves it. A newer proposal replaces the one waiting. Give M-Pesa details, bank details or both. M-Pesa: `mpesa_type` (`paybill` or `till`), `mpesa_number` (5 to 7 digits), `display_name`, optional `account_reference_hint` (paybill only). Bank: `bank_name`, `bank_account_name`, `bank_account_number` (6 to 20 digits), optional `bank_branch`. Shared bank paybill: `bank_uses_shared_paybill` true with `bank_paybill_number` (5 to 7 digits). Every proposal is audited (`payin.propose`, `payin.supersede`) and every officer is emailed. Text fields take Latin letters, ASCII digits and ordinary punctuation on one line (invisible, look-alike and non-Latin letters are refused). A SACCO may send 10 proposals an hour (429).
 
 **Rate limit:** 30 per minute.
 
@@ -1596,7 +1584,7 @@ Error statuses: 401, 403, 404
 
 **Propose a rule change**
 
-**Who:** the circle admin or the platform owner, only after the cycle has ended (409 `RULES_LOCKED` before). Send the full set of rules. One open proposal at a time.
+**Who:** the SACCO admin or the platform owner, only after the cycle has ended (409 `RULES_LOCKED` before). Send the full set of rules. One open proposal at a time.
 
 Parameters: `sacco_id` (path, integer)
 
@@ -1859,7 +1847,7 @@ Error statuses: 400, 401, 403, 404, 409, 423
 
 **Pay out an approved loan**
 
-**Who:** finance officer (`loan.disburse`) who approved no step (`LOAN_SAME_OFFICER`). Credits the principal to the borrower's savings account. The ledger row cannot be reversed. In a circle with published rules the cap and the pool are checked again at payout under the circle lock (409 `LOAN_OVER_CAP`, `LOAN_POOL_SHORT`).
+**Who:** finance officer (`loan.disburse`) who approved no step (`LOAN_SAME_OFFICER`). Credits the principal to the borrower's savings account. The ledger row cannot be reversed. In a SACCO with published rules the cap and the pool are checked again at payout under the SACCO lock (409 `LOAN_OVER_CAP`, `LOAN_POOL_SHORT`).
 
 Parameters: `loan_id` (path, integer)
 

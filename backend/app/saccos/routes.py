@@ -100,10 +100,10 @@ def create_sacco():
 
     rule_values = None
     if "rules" in data:
-        from app.saccos import rules as circle_rules
+        from app.saccos import rules as sacco_rules
         from app.saccos.rules_routes import invalid
 
-        rule_values, rule_errors = circle_rules.validate_rules(data["rules"])
+        rule_values, rule_errors = sacco_rules.validate_rules(data["rules"])
         if rule_errors:
             return invalid(rule_errors)
 
@@ -116,7 +116,7 @@ def create_sacco():
         return error_response(409, DUPLICATE_NAME)
     _audit(sacco, g.user.id, "sacco.create")
     if rule_values is not None:
-        row = circle_rules.publish_rules(sacco.id, rule_values, g.user.id)
+        row = sacco_rules.publish_rules(sacco.id, rule_values, g.user.id)
         _audit(sacco, g.user.id, "rules.publish", f"rules:{row.id} v{row.version}")
     db.session.commit()
     return jsonify(_sacco_json(sacco)), 201

@@ -255,8 +255,8 @@ Take a screenshot of each state (see "Photos" below) and put them in your hand-i
 | Route | Page | Who may open (permission) | Owner |
 |---|---|---|---|
 | `login`, `register`, `verify`, `forgot`, `reset` | public pages (entry 1: the account) | everyone, signed out | Ryan |
-| `join` | Join a circle with a phone number and a 6-digit code, then set the 4-digit circle PIN (entry 2) | a signed-in person | Ryan |
-| `enter` | Enter your circle: type the circle PIN (entry 3). Also the "not in a circle yet" page | a signed-in person, before any circle page | Ryan |
+| `join` | Join a SACCO with a phone number and a 6-digit code, then set the 4-digit SACCO PIN (entry 2) | a signed-in person | Ryan |
+| `enter` | Enter your SACCO: type the SACCO PIN (entry 3). Also the "not in a SACCO yet" page | a signed-in person, before any SACCO page | Ryan |
 | `account` | Account settings (photo, email, password, sessions) | any signed-in user | Ryan |
 | `my-settings` | My settings: the Appearance card (colour theme, font, text size). Last item in every role's menu | any signed-in user | Ryan |
 | `overview` | Overview (SACCO or member) | `dashboard.view` | Sam |

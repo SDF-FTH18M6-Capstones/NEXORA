@@ -7,7 +7,7 @@
  *     as {"theme":"ocean","font":"nunito","size":"large"}. Two people on the same computer each keep their own look.
  *   - When someone signs in, call syncAppearance(user.id): their look is applied. When they sign out, call syncAppearance(null):
  *     the neutral default (Cream) shows on the public pages. Signing in as someone else loads THAT person's look.
- *   - Switching circle (SACCO) does not change the look: it is the person's, not the circle's.
+ *   - Switching SACCO does not change the look: it is the person's, not the SACCO's.
  *   - It is applied as attributes on <html>:  data-theme, data-font, data-size and data-mode ("light" or "dark").
  *   - The Appearance section at the bottom of styles/nexora-2.css turns data-theme into CSS variables on :root (--cream, --ink, --teal, --blob-1,
  *     --disc-a, --cur-1 ...) and data-mode="dark" switches the dark-theme rules (light text, dark glass).

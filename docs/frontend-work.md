@@ -84,7 +84,7 @@ Notes:
 
 This is the test specification. Collins runs it screen by screen. A cell says what the user **sees**. "Own" means only their own records.
 
-Job titles are the backend's (see `docs/roles-permissions.md` section 5): SACCO admin = `circle_admin`, secretary = `secretary`, finance officer = `finance_officer`, loans officer = `loans_officer`, member = `member`. A platform owner has no membership.
+Job titles are the backend's (see `docs/roles-permissions.md` section 5): SACCO admin = `sacco_admin`, secretary = `secretary`, finance officer = `finance_officer`, loans officer = `loans_officer`, member = `member`. A platform owner has no membership.
 
 | Screen / action | Permission | SACCO admin | Secretary | Finance officer | Loans officer | Member | Platform owner |
 |---|---|---|---|---|---|---|---|
@@ -160,7 +160,7 @@ The visual reference is the animated prototype, NEXORA Savings Studio (private a
 - **Background:** cream field with three drifting colour fields (teal, terracotta, saffron), a soft cursor spotlight and light grain. No plain white page.
 - **Surfaces:** frosted glass cards (blur, 1px light edge, soft shadow). 3D tilt only on small cards, never on chart cards.
 - **No muddy gradients:** buttons and numbers are solid teal or ink. Colour mixing lives in the background and in chart accents.
-- **Wording:** the product word is **SACCO**. Never "Circle" in any label, tab, title or tagline. The member count is labelled "Members".
+- **Wording:** the product word is **SACCO**. Never "SACCO" in any label, tab, title or tagline. The member count is labelled "Members".
 - **Logo slot:** one `BRAND` constant renders the wordmark everywhere. When Collins supplies the logo, swap that one constant (image or inline SVG). No other file changes.
 
 ## 11. Navigation shell
@@ -258,7 +258,7 @@ Rules:
 **Gap found: members cannot deposit in release 1.** Deposits, withdrawals, interest and fees all need `savings.post`, and the backend refuses posting on your own account (403). No endpoint lets a member ask for a deposit or withdrawal. The prototype shows a "Proposed" form that sends a deposit notice or withdrawal request which stays Pending until an officer confirms it. Decision for Collins and Neo: add a small `deposit-requests` endpoint in release 1 (a member creates a request; a finance officer confirms, which posts the real entry), or keep deposits officer-only and show instructions instead. Recommendation: add the endpoint, since a member page with no way to add money will feel broken in the demo.
 
 **Other**
-- The login API route is still named `circle-login`; the planned rename to `sacco-login` must land before the sign-in screen is wired.
+- The login API route is still named `sacco-login`; the planned rename to `sacco-login` must land before the sign-in screen is wired.
 - The wireframe canvas needs boards for My savings and Accounts and the photo viewer (not yet drawn).
 
 ---

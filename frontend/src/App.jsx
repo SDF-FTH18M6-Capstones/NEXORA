@@ -202,7 +202,7 @@ function SessionProvider({ children }) {
       replace: true,
       state: {
         from: returnTo,
-        chooseCircle: destination.view === 'chooser',
+        chooseSacco: destination.view === 'chooser',
         enterSelected: destination.view === 'enter',
       },
     });
@@ -232,14 +232,14 @@ function SessionProvider({ children }) {
     navigate('/enter', {
       replace: true,
       state: {
-        chooseCircle: false,
+        chooseSacco: false,
         enterSelected: true,
         from: returnTo || '/overview',
       },
     });
   }, [session, location.state, navigate]);
 
-  const enterCircle = useCallback(async (saccoId, pin) => {
+  const enterSacco = useCallback(async (saccoId, pin) => {
     const nextSession = await enterSaccoSession(session, saccoId, pin);
     setSession(nextSession);
     setEnteredSaccoId(nextSession.saccoId);
@@ -359,7 +359,7 @@ function SessionProvider({ children }) {
     sacco: session ? session.sacco : null,
     saccos: session ? session.saccos : [],
     enteredSaccoId,
-    enterCircle,
+    enterSacco,
     completeJoin,
     panelRequest,
     clearPanelRequest,
@@ -374,7 +374,7 @@ function SessionProvider({ children }) {
     logout,
     sessionEnded,
     clearSessionEnded,
-  }), [session, can, navigate, switchSacco, enterCircle, completeJoin, takeOpen, toast, login, logout, sessionEnded, clearSessionEnded, panelRequest, clearPanelRequest, pageKey, retryPage, onErrorAction, enteredSaccoId]);
+  }), [session, can, navigate, switchSacco, enterSacco, completeJoin, takeOpen, toast, login, logout, sessionEnded, clearSessionEnded, panelRequest, clearPanelRequest, pageKey, retryPage, onErrorAction, enteredSaccoId]);
 
   return (
     <SessionContext.Provider value={value}>
@@ -411,7 +411,7 @@ function AppRouter() {
     // reads g.user), so this page needs a session: RequireAuth sends a visitor
     // to sign in and the login route brings them back here afterwards.
     { path: 'join', title: 'Join a SACCO', checkPermission: false },
-    { path: 'enter', title: 'Enter your circle', checkPermission: false },
+    { path: 'enter', title: 'Enter your SACCO', checkPermission: false },
     { path: 'account', title: 'Account settings', checkPermission: true },
     'styleguide',
   ];

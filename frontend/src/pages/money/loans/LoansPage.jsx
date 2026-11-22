@@ -28,7 +28,7 @@ export default function LoansPage() {
       {banner && <ErrorBanner kind={banner.kind}>{banner.text}</ErrorBanner>}
       <section className="glass sam-stack" aria-labelledby="loans-title">
         <div className="sam-head">
-          <div><div className="eyebrow">{own ? 'My loans' : 'Loans'}</div><h2 id="loans-title" className="font-serif text-2xl">{own ? 'My loans' : "The circle's loans"}</h2></div>
+          <div><div className="eyebrow">{own ? 'My loans' : 'Loans'}</div><h2 id="loans-title" className="font-serif text-2xl">{own ? 'My loans' : "The SACCO's loans"}</h2></div>
           {can('loan.request') && <button type="button" className="btn" onClick={() => { setBanner(null); setView({ name: 'request' }); }}>Request a loan</button>}
         </div>
         <div className="sam-row-gap" role="group" aria-label="Filter by status">

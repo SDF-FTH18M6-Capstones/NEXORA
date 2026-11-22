@@ -61,7 +61,7 @@ def test_every_seeded_user_can_log_in(schema_app):
         assert resp.status_code == 200, row["email"]
 
 
-def test_every_seeded_member_can_enter_their_circle_with_the_dev_pin(schema_app):
+def test_every_seeded_member_can_enter_their_sacco_with_the_dev_pin(schema_app):
     seeded = seed_script.seed(schema_app, require_dev=False)
     client = schema_app.test_client()
     row = next(r for r in seeded if r["email"] == "alpha-m1@example.com")
@@ -71,7 +71,7 @@ def test_every_seeded_member_can_enter_their_circle_with_the_dev_pin(schema_app)
     ).get_json()
     sacco_id = db.session.scalar(select(Sacco.id).where(Sacco.name == row["sacco"]))
     resp = client.post(
-        "/api/v1/auth/circle-login",
+        "/api/v1/auth/sacco-login",
         json={"sacco_id": sacco_id, "pin": seed_script.DEV_PIN},
         headers={"Authorization": f"Bearer {login['access_token']}"},
     )
@@ -97,7 +97,7 @@ def test_every_seeded_membership_holds_its_job_title(schema_app):
     ).all()
 
     expected = {
-        "sacco_admin": {"circle_admin"},
+        "sacco_admin": {"sacco_admin"},
         "staff": {"secretary", "loans_officer", "finance_officer"},
         "member": {"member"},
     }

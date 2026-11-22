@@ -9,7 +9,7 @@ const Row = ({ label, children }) => (
   </div>
 );
 
-/* Every rule of a circle in plain words. The money block comes first so nobody
+/* Every rule of a SACCO in plain words. The money block comes first so nobody
  * meets a fee they were not shown. */
 export default function RulesView({ rules }) {
   const r = rules;

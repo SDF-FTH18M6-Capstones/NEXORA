@@ -166,31 +166,31 @@ Also confirm the "no AI slop" rule by eye: no stray emoji, no placeholder text, 
 | Reset to default: Cream, Fraunces and Inter, Normal | |
 | Ink theme on 375 px: no light patches, popups (switcher, role menu, bell, search) are dark | |
 | Error pages in Ink and Saffron are readable and still have no logo | |
-### Sheet E: getting in (account, circle code, circle PIN)
+### Sheet E: getting in (account, SACCO code, SACCO PIN)
 
-Run with the mock role picker off: use the real sign-in flow in mock mode (mock circle PIN `1234`; join codes `123456` good, `000000` expired, `111111` used, `222222` burned).
+Run with the mock role picker off: use the real sign-in flow in mock mode (mock SACCO PIN `1234`; join codes `123456` good, `000000` expired, `111111` used, `222222` burned).
 
 | Check | Result |
 |---|---|
 | Landing: Sign in and Create an account both work; "Join with a code" is on the landing and the sign-in page | |
-| Create an account, check email page, verify page; a signed-in person with **no circle** sees "You are not in a circle yet" with Join with a code and Log out, and no logo | |
+| Create an account, check email page, verify page; a signed-in person with **no SACCO** sees "You are not in a SACCO yet" with Join with a code and Log out, and no logo | |
 | Join with `123456` and the right phone: step 2 asks for a 4-digit PIN twice; a different second PIN or fewer than 4 digits shows a message and sends nothing | |
 | Join with `000000`, `111111`, `222222`, a wrong code: each shows its own sentence (expired, used, locked, wrong) | |
 | Waiting more than 10 minutes on the PIN step shows "The setup took too long" and goes back to step 1 | |
-| After joining, the person is asked for the PIN (Enter your circle); `1234` opens the circle; a wrong PIN shows "That PIN is not right."; five wrong PINs show the 15-minute lock | |
-| Reload the tab inside a circle: the PIN is asked again. Sign out: the next person on the same computer sees nothing of the first | |
-| A person in two circles gets the chooser; the suspended one shows the Suspended chip and opens the 423 page; switching circle asks for that circle's PIN | |
+| After joining, the person is asked for the PIN (Enter your SACCO); `1234` opens the SACCO; a wrong PIN shows "That PIN is not right."; five wrong PINs show the 15-minute lock | |
+| Reload the tab inside a SACCO: the PIN is asked again. Sign out: the next person on the same computer sees nothing of the first | |
+| A person in two SACCOs gets the chooser; the suspended one shows the Suspended chip and opens the 423 page; switching SACCO asks for that SACCO's PIN | |
 | A platform owner signs in and goes straight to the Platform area with no PIN screen | |
-| A platform owner creates a circle: it appears Active with 0 members and offers "Add the first admin" | |
+| A platform owner creates a SACCO: it appears Active with 0 members and offers "Add the first admin" | |
 | The admin adds a phone and sees the code once with a 15-minute countdown; closing the card hides it; adding the same phone again makes a new code and the old one stops working | |
-| A deactivated member gets the 403 page at Enter your circle | |
+| A deactivated member gets the 403 page at Enter your SACCO | |
 | **Add a member** is its own item in the SACCO admin's menu (after Members) and the Members page has an "Add a member" button; no other role has either, and the API answers 403 | |
 | Add a member: a wrong phone shows the message; a good phone and a role make a 6-digit code, shown once with a countdown and a Copy button; the person then appears under "Invited, not joined yet" with a "Make a new code" button | |
 | Staff menus: loans officer, finance officer, secretary and admin show **no My savings, Deposit or Withdraw**, and the Overview has no "My account" switch | |
 
 ## 5. The 6-minute demo script (`demo.md`)
 
-1. (0:00) Open the landing page. Scroll once. Point out the 3D layers and the phone version. Explain the two doors in one sentence: an account is free and open to anyone, a circle needs a join code and PIN from its admin. Show Create an account, then Join with a code.
+1. (0:00) Open the landing page. Scroll once. Point out the 3D layers and the phone version. Explain the two doors in one sentence: an account is free and open to anyone, a SACCO needs a join code and PIN from its admin. Show Create an account, then Join with a code.
 2. (0:45) Click Sign in. The intro writes "Nexora" with the green wave. Sign in as **SACCO admin**. Stay on the Overview: the numbers count up, the charts draw, click a "Waiting for you" row and it opens the loan.
 3. (1:45) Go to **Post money**: submit empty to show the field error; post a deposit; press the button twice fast to show it posts once. Open **Accounts**, a ledger (Back button), reverse a transaction, reverse it again to show the friendly 409.
 4. (3:00) **Loans**: switch to **Loans officer**, approve a loan with a reason. Switch to **Finance officer**, disburse it.
@@ -224,7 +224,7 @@ The filled `sheets.md` (sheets A to E), `demo.md`, `fixes.md`, and one screensho
 - [ ] Sheet B fully ticked (all errors look right)
 - [ ] Sheet C fully ticked (375, 768, 1280)
 - [ ] Sheet D fully ticked (member requests, officer queue, appearance for all six roles)
-- [ ] Sheet E fully ticked (account, circle code, circle PIN, circles created by the platform owner)
+- [ ] Sheet E fully ticked (account, SACCO code, SACCO PIN, SACCOs created by the platform owner)
 - [ ] Demo ran clean once start to finish
 - [ ] Fix list is empty or every remaining row is accepted as a Known gap in the Master file
 - [ ] `frontend` merged into `main` by me only; tag `frontend-v1` pushed

@@ -2,7 +2,7 @@ import Field from './Field.jsx';
 
 const Hint = ({ children }) => <p className="muted text-sm">{children}</p>;
 
-/* The circle pay-in form. `value` is the object from emptyPayIn(); `errors` holds a plain-words
+/* The SACCO pay-in form. `value` is the object from emptyPayIn(); `errors` holds a plain-words
  * reason per API field name. Every field says its format and an example. */
 export default function PayInForm({ value, onChange, errors = {}, disabled = false }) {
   const set = key => event => onChange({ ...value, [key]: event.target.value });
@@ -10,7 +10,7 @@ export default function PayInForm({ value, onChange, errors = {}, disabled = fal
   return (
     <div className="neo-stack">
       <b>M-Pesa</b>
-      <p className="muted text-sm">Leave the number empty if the circle takes no M-Pesa payments.</p>
+      <p className="muted text-sm">Leave the number empty if the SACCO takes no M-Pesa payments.</p>
       <Field id="payin-type" label="M-Pesa type" error={errors.mpesa_type}>
         <select {...input('mpesaType')}>
           <option value="paybill">Paybill</option>
@@ -22,7 +22,7 @@ export default function PayInForm({ value, onChange, errors = {}, disabled = fal
       </Field>
       <Hint>5 to 7 digits, no spaces or letters. Example: 400200.</Hint>
       <Field id="payin-name" label="Name members will see" error={errors.display_name}>
-        <input {...input('displayName', { maxLength: 60, placeholder: 'Umoja Circle Savings' })} />
+        <input {...input('displayName', { maxLength: 60, placeholder: 'Umoja SACCO Savings' })} />
       </Field>
       <Hint>Required with M-Pesa. The business name M-Pesa shows, so members can check it before paying. Up to 60 characters.</Hint>
       {value.mpesaType === 'paybill' && (
@@ -35,12 +35,12 @@ export default function PayInForm({ value, onChange, errors = {}, disabled = fal
       )}
 
       <b>Bank</b>
-      <p className="muted text-sm">Leave all bank fields empty if the circle takes no bank payments.</p>
+      <p className="muted text-sm">Leave all bank fields empty if the SACCO takes no bank payments.</p>
       <Field id="payin-bank" label="Bank name" error={errors.bank_name}>
         <input {...input('bankName', { maxLength: 60, placeholder: 'Equity Bank' })} />
       </Field>
       <Field id="payin-bank-account-name" label="Name on the account" error={errors.bank_account_name}>
-        <input {...input('bankAccountName', { maxLength: 80, placeholder: 'Umoja Circle' })} />
+        <input {...input('bankAccountName', { maxLength: 80, placeholder: 'Umoja SACCO' })} />
       </Field>
       <Field id="payin-bank-account" label="Account number" error={errors.bank_account_number}>
         <input {...input('bankAccountNumber', { inputMode: 'numeric', placeholder: '0123456789', maxLength: 20 })} />
@@ -58,7 +58,7 @@ export default function PayInForm({ value, onChange, errors = {}, disabled = fal
         <span>The bank takes payments through its shared paybill</span>
       </label>
       {errors.bank_uses_shared_paybill && <div className="field-msg" role="alert">{errors.bank_uses_shared_paybill}</div>}
-      <Hint>Tick this if members pay the bank by paybill. Those payments do not name the circle, so an officer must confirm each one by hand against the bank statement.</Hint>
+      <Hint>Tick this if members pay the bank by paybill. Those payments do not name the SACCO, so an officer must confirm each one by hand against the bank statement.</Hint>
       {value.sharedPaybill && (
         <>
           <Field id="payin-bank-paybill" label="Bank's shared paybill number" error={errors.bank_paybill_number}>

@@ -33,46 +33,46 @@ The only files two people could both want to edit are the shared ones (`lib/`, `
 
 ---
 
-## What belongs to a person and what belongs to the circle
+## What belongs to a person and what belongs to the SACCO
 
 NEXORA has two kinds of things. Keeping them apart avoids a whole family of mistakes.
 
-| | Belongs to ONE PERSON (only they see or change it) | Belongs to the CIRCLE (the SACCO) (changed only by the people allowed to) |
+| | Belongs to ONE PERSON (only they see or change it) | Belongs to the SACCO (changed only by the people allowed to) |
 |---|---|---|
-| Examples | the look: colour theme, font, text size (My settings); the photo, email and password (Account settings); the circle PIN; their own savings page, Deposit and Withdraw requests and loan requests (members) | members and their roles; every account and the ledger; loans and their decisions; the circle's name and loan rules; the audit log |
+| Examples | the look: colour theme, font, text size (My settings); the photo, email and password (Account settings); the SACCO PIN; their own savings page, Deposit and Withdraw requests and loan requests (members) | members and their roles; every account and the ledger; loans and their decisions; the SACCO's name and loan rules; the audit log |
 | Who may change it | the person, nobody else, not even the SACCO admin or a platform owner | the admin and staff, by permission (`member.manage`, `savings.post`, `loan.approve` and so on) |
-| Where it is saved | on this device under the person's user id (the look) or in their own records on the server | on the server, in the circle's records |
-| What happens when someone else signs in on the same computer | they see **their own** look and their own things; nothing of the first person remains | they see the circle's data their role allows |
+| Where it is saved | on this device under the person's user id (the look) or in their own records on the server | on the server, in the SACCO's records |
+| What happens when someone else signs in on the same computer | they see **their own** look and their own things; nothing of the first person remains | they see the SACCO's data their role allows |
 | What the menu says | "My settings", "My savings", "Deposit", "Withdraw" (personal pages) | "Overview", "Accounts", "Members", "Loans", "Reports" (circle pages) |
 
-Two consequences you must keep in code: (1) never store a person's look, draft or setting under a key that is the same for everyone (always include the user id); (2) a staff page never shows a person's own data as if it were the circle's, which is why staff have no "My savings" and no "My account" tab on the Overview.
+Two consequences you must keep in code: (1) never store a person's look, draft or setting under a key that is the same for everyone (always include the user id); (2) a staff page never shows a person's own data as if it were the SACCO's, which is why staff have no "My savings" and no "My account" tab on the Overview.
 
-## How people get in: accounts, circles, join codes and PINs (the full story)
+## How people get in: accounts, SACCOs, join codes and PINs (the full story)
 
-A **circle** is what the screens and the backend also call a **SACCO**: one savings group with its own members, money and loans. Two different things are needed to use NEXORA, and people mix them up, so this section explains both.
+A **SACCO** is what the screens and the backend also call a **SACCO**: one savings group with its own members, money and loans. Two different things are needed to use NEXORA, and people mix them up, so this section explains both.
 
-1. **An account** (who you are). Anyone can create one. It is free and open to everyone. It gives **no access to any circle**.
-2. **Membership of a circle** (what you may see). You cannot give it to yourself. It comes only from a person who runs the circle, and it is proven with a **join code** and then a **PIN**.
+1. **An account** (who you are). Anyone can create one. It is free and open to everyone. It gives **no access to any SACCO**.
+2. **Membership of a SACCO** (what you may see). You cannot give it to yourself. It comes only from a person who runs the SACCO, and it is proven with a **join code** and then a **PIN**.
 
 ### The two doors
 
-| | Door 1: the account | Door 2: the circle |
+| | Door 1: the account | Door 2: the SACCO |
 |---|---|---|
-| Who opens it | the person, alone, from the landing page | the circle's admin gives the person a join code |
-| Pages | Landing, Sign in, Create an account, Verify email, Forgot password | Join with a code, Set your PIN, Enter your circle (PIN) |
-| What you type | email and password | your phone number and a 6-digit code (once), then a 4-digit PIN you choose (every time you enter the circle) |
-| What it gives | you are signed in, with no circle | you are inside one circle and see only what your role allows |
-| Backend | `POST /auth/register`, `/auth/verify-email`, `/auth/login` | `POST /auth/join`, `/auth/join/pin`, `/auth/circle-login` (renamed `/auth/sacco-login`) |
+| Who opens it | the person, alone, from the landing page | the SACCO's admin gives the person a join code |
+| Pages | Landing, Sign in, Create an account, Verify email, Forgot password | Join with a code, Set your PIN, Enter your SACCO (PIN) |
+| What you type | email and password | your phone number and a 6-digit code (once), then a 4-digit PIN you choose (every time you enter the SACCO) |
+| What it gives | you are signed in, with no SACCO | you are inside one SACCO and see only what your role allows |
+| Backend | `POST /auth/register`, `/auth/verify-email`, `/auth/login` | `POST /auth/join`, `/auth/join/pin`, `/auth/sacco-login` (renamed `/auth/sacco-login`) |
 
 ### The whole journey, in order
 
-1. **The platform owners create the circle.** Only a platform owner can (Platform area, SACCOs, Create SACCO: a name and a currency, `POST /saccos`). A new circle has no members yet. The platform owner then adds its first **SACCO admin** (only the platform owner may make or remove an admin: permission `admin.manage`). The admin gets a join code like everyone else. The platform owner never reads the circle's money. We, the team, only create circles; we never join them as staff. Note on the picture: the prototype's Create SACCO form shows **Name** and **First admin's email**. The real API takes a name and a currency (`POST /saccos`) and has no admin field, so build the form with **Name** and **Currency** (KES by default) and put the first admin in the second step below, by phone number and join code. The email box in the picture is replaced by that second step. Pictures: ![](images/platform-02-saccos.png) ![](images/platform-03-sacco-detail.png)
-2. **A person creates an account** on the landing page: Sign in, or Create an account. They type an email and password, open the link sent to their email (Verify email), then sign in. They are now **signed in but in no circle**. Pictures: ![](images/public-01-landing-top.png) ![](images/public-07-login.png) ![](images/public-11-register.png) ![](images/public-13-register-check-email.png) ![](images/public-14-verify.png)
-3. **The circle admin (or the staff member who is allowed to add members) adds the person's phone number** on the **Add a member** page, which is a section of its own in the admin's menu (next to Members). NEXORA makes a **6-digit join code** that works **once** and lasts **15 minutes**, and shows it once, big, with a Copy button. The admin passes it to the person by whatever way they trust (in person, a call, a message). We do not send it for them. Pictures: ![](images/add-member-01-page.png) ![](images/add-member-02-code-made.png)
+1. **The platform owners create the SACCO.** Only a platform owner can (Platform area, SACCOs, Create SACCO: a name and a currency, `POST /saccos`). A new SACCO has no members yet. The platform owner then adds its first **SACCO admin** (only the platform owner may make or remove an admin: permission `admin.manage`). The admin gets a join code like everyone else. The platform owner never reads the SACCO's money. We, the team, only create SACCOs; we never join them as staff. Note on the picture: the prototype's Create SACCO form shows **Name** and **First admin's email**. The real API takes a name and a currency (`POST /saccos`) and has no admin field, so build the form with **Name** and **Currency** (KES by default) and put the first admin in the second step below, by phone number and join code. The email box in the picture is replaced by that second step. Pictures: ![](images/platform-02-saccos.png) ![](images/platform-03-sacco-detail.png)
+2. **A person creates an account** on the landing page: Sign in, or Create an account. They type an email and password, open the link sent to their email (Verify email), then sign in. They are now **signed in but in no SACCO**. Pictures: ![](images/public-01-landing-top.png) ![](images/public-07-login.png) ![](images/public-11-register.png) ![](images/public-13-register-check-email.png) ![](images/public-14-verify.png)
+3. **The SACCO admin (or the staff member who is allowed to add members) adds the person's phone number** on the **Add a member** page, which is a section of its own in the admin's menu (next to Members). NEXORA makes a **6-digit join code** that works **once** and lasts **15 minutes**, and shows it once, big, with a Copy button. The admin passes it to the person by whatever way they trust (in person, a call, a message). We do not send it for them. Pictures: ![](images/add-member-01-page.png) ![](images/add-member-02-code-made.png)
 4. **The person opens Join with a code** (from the landing page or the sign-in page), types the **same phone number** the admin used and the 6 digits. Pictures: ![](images/public-08-join-code.png) ![](images/public-09-join-code-error.png)
-5. **The person chooses a 4-digit PIN** (twice). This PIN belongs to **this circle**, not to the account. When it is saved, the person is a member of the circle. Picture: ![](images/public-10-join-pin.png)
-6. **Entering the circle.** Whenever the person signs in, or switches to another circle in the switcher, they **type that circle's PIN** (the "Enter your circle" screen). Only after the PIN is accepted do they see the circle's pages. If they belong to more than one circle, they choose which one first. Picture of the switcher: ![](images/shell-04-sacco-switcher.png)
-7. **Inside the circle** the menu depends on the role the admin gave (member, loans officer, finance officer, secretary, SACCO admin). Pictures of every menu are in the next section.
+5. **The person chooses a 4-digit PIN** (twice). This PIN belongs to **this SACCO**, not to the account. When it is saved, the person is a member of the SACCO. Picture: ![](images/public-10-join-pin.png)
+6. **Entering the SACCO.** Whenever the person signs in, or switches to another SACCO in the switcher, they **type that SACCO's PIN** (the "Enter your SACCO" screen). Only after the PIN is accepted do they see the SACCO's pages. If they belong to more than one SACCO, they choose which one first. Picture of the switcher: ![](images/shell-04-sacco-switcher.png)
+7. **Inside the SACCO** the menu depends on the role the admin gave (member, loans officer, finance officer, secretary, SACCO admin). Pictures of every menu are in the next section.
 
 ```
 landing page
@@ -80,10 +80,10 @@ landing page
    |-- Create an account --> verify email -> sign in
    |-- Join with a code (needs to be signed in; if not, sign in first, then continue)
 signed in
-   |-- platform owner -------------------------------> Platform area (no circle PIN, no balances)
-   |-- 0 circles --> "You are not in a circle yet. Ask your SACCO admin for a join code." + [Join with a code]
-   |-- 1 circle  --> Enter your circle (PIN) --> the circle's Overview
-   |-- 2+ circles -> choose a circle --> Enter your circle (PIN) --> the circle's Overview
+   |-- platform owner -------------------------------> Platform area (no SACCO PIN, no balances)
+   |-- 0 SACCOs --> "You are not in a SACCO yet. Ask your SACCO admin for a join code." + [Join with a code]
+   |-- 1 SACCO  --> Enter your SACCO (PIN) --> the SACCO's Overview
+   |-- 2+ SACCOs -> choose a SACCO --> Enter your SACCO (PIN) --> the SACCO's Overview
 ```
 
 ### What the person sees on each screen, and what can go wrong (every case has a sentence and a next step)
@@ -99,19 +99,19 @@ signed in
 | Join | code already used | "This code was already used. Sign in instead, or ask your admin for a new code." | `CODE_USED` 409 |
 | Join | code burned by too many wrong tries | "This code is locked after too many wrong tries. Ask your admin to add you again." | named code from the server |
 | Join | phone belongs to another account | "That phone belongs to another account." | 409 sentence |
-| Join | already a member of this circle | "You are already a member of this circle." | 409 sentence |
-| Join | circle is suspended | the suspended page (423): "This SACCO is suspended" | 423 page |
+| Join | already a member of this SACCO | "You are already a member of this SACCO." | 409 sentence |
+| Join | SACCO is suspended | the suspended page (423): "This SACCO is suspended" | 423 page |
 | Join, PIN step | more than 10 minutes between the code and the PIN | "The setup took too long. Join again with your code." and the page goes back to step 1 | 401 from `/auth/join/pin` |
 | Join, PIN step | the two PINs differ, or not exactly 4 digits | message under the field, nothing is sent | frontend check, then server 400 sentence |
-| Enter your circle | wrong PIN | "That PIN is not right." and how many tries are left if the server says | `PIN_WRONG` 401 |
-| Enter your circle | 5 wrong PINs | "Too many wrong PINs. Try again in 15 minutes, or ask your admin to reset it." | `PIN_LOCKED` 423 |
-| Enter your circle | membership deactivated by the admin | 403 page: "You do not have access to this page" with the button "Go to my start page" | `/auth/circle-login` answers 403 |
-| Anywhere | the person has an account but **no circle** | the "not in a circle yet" page (see below) with a Join with a code button | `GET /members/me/saccos` returns an empty list |
-| Anywhere | the circle is suspended while the person is inside | every circle page except Account settings and My settings shows the 423 page; the switcher still lets them choose another circle | 423 on the next request |
+| Enter your SACCO | wrong PIN | "That PIN is not right." and how many tries are left if the server says | `PIN_WRONG` 401 |
+| Enter your SACCO | 5 wrong PINs | "Too many wrong PINs. Try again in 15 minutes, or ask your admin to reset it." | `PIN_LOCKED` 423 |
+| Enter your SACCO | membership deactivated by the admin | 403 page: "You do not have access to this page" with the button "Go to my start page" | `/auth/sacco-login` answers 403 |
+| Anywhere | the person has an account but **no SACCO** | the "not in a SACCO yet" page (see below) with a Join with a code button | `GET /members/me/saccos` returns an empty list |
+| Anywhere | the SACCO is suspended while the person is inside | every SACCO page except Account settings and My settings shows the 423 page; the switcher still lets them choose another SACCO | 423 on the next request |
 
-**The "not in a circle yet" page.** A person who has an account but no circle must never land on a blank or broken screen. Show a calm full-page message inside a plain shell (no sidebar items except My settings): title "You are not in a circle yet", one sentence "Ask your SACCO admin or a staff member for a join code, then use it here.", and two buttons: **Join with a code** and **Log out**. (Same plain look as an error page: no logo, no decoration.)
+**The "not in a SACCO yet" page.** A person who has an account but no SACCO must never land on a blank or broken screen. Show a calm full-page message inside a plain shell (no sidebar items except My settings): title "You are not in a SACCO yet", one sentence "Ask your SACCO admin or a staff member for a join code, then use it here.", and two buttons: **Join with a code** and **Log out**. (Same plain look as an error page: no logo, no decoration.)
 
-**The "Enter your circle" screen (Ryan builds it).** It uses the same card as the Join PIN step (picture ![](images/public-10-join-pin.png)): title "Enter your circle", the circle's name, four PIN boxes (numeric, hidden, the keyboard opens in numbers on a phone), a **Continue** button and a link "Not your circle? Choose another". The backend answer is only `{ok, membership_id, role}`; it does **not** hand back a new token, so the app keeps "I have entered circle X" **in memory for this tab** (not in `localStorage`): reloading the tab asks for the PIN again, signing out forgets it, switching circle asks for the new circle's PIN. In the prototype this screen is described but not drawn: the "view as" menu skips it, which is why you will not see it in the clickable prototype.
+**The "Enter your SACCO" screen (Ryan builds it).** It uses the same card as the Join PIN step (picture ![](images/public-10-join-pin.png)): title "Enter your SACCO", the SACCO's name, four PIN boxes (numeric, hidden, the keyboard opens in numbers on a phone), a **Continue** button and a link "Not your SACCO? Choose another". The backend answer is only `{ok, membership_id, role}`; it does **not** hand back a new token, so the app keeps "I have entered SACCO X" **in memory for this tab** (not in `localStorage`): reloading the tab asks for the PIN again, signing out forgets it, switching SACCO asks for the new SACCO's PIN. In the prototype this screen is described but not drawn: the "view as" menu skips it, which is why you will not see it in the clickable prototype.
 
 **Who may issue join codes.** Whoever holds the permission `member.manage`. Today that is the **SACCO admin** only (see `backend/app/security/permissions.py`). If the team decides staff members (for example the secretary) may also add members, Neo adds `member.manage` to that role in the same place and in a migration; the **Add a member** menu item and the Add button on Members already show only when `can('member.manage')`, so nothing else changes.
 
@@ -137,7 +137,7 @@ This is already coded in `lib/perms.js`. Use it to test with the harness role pi
 | Platform owner | Platform overview, SACCOs, Owners, Access to SACCOs, Platform audit, **My settings** |
 | Everyone | **My settings** (its own sidebar item: colour theme, font, text size, for their own view only) and Account settings (from the profile at the bottom of the sidebar) |
 
-**Staff pages are the circle's pages, not personal ones.** The loans officer, finance officer, secretary and SACCO admin run the circle, so their menus hold no "My savings", no Deposit and no Withdraw, and their Overview shows the circle only (there is no "My account" switch). The circle's savings are under **Accounts**. Only a **member** has My savings, Deposit and Withdraw (permission `savings.request`). Officers do not deposit or withdraw for themselves: they confirm members' requests on **Requests** (permission `savings.post`).
+**Staff pages are the SACCO's pages, not personal ones.** The loans officer, finance officer, secretary and SACCO admin run the SACCO, so their menus hold no "My savings", no Deposit and no Withdraw, and their Overview shows the SACCO only (there is no "My account" switch). The SACCO's savings are under **Accounts**. Only a **member** has My savings, Deposit and Withdraw (permission `savings.request`). Officers do not deposit or withdraw for themselves: they confirm members' requests on **Requests** (permission `savings.post`).
 
 | Role | Picture of its menu |
 |---|---|
@@ -270,7 +270,7 @@ Times are a guide. The order inside each person's own file is the real order. An
 5. Phone, tablet, desktop checked for every screen (no sideways scroll, nothing clipped).
 6. A member can send a deposit request and a withdrawal request (M-Pesa and Bank), and an officer can confirm or reject it on Requests.
 7. Every person, members and staff alike, has **My settings** in the sidebar and can change their own colour theme (ten to choose from), font (six) and text size there. The coin and the route-change wave change colour with the theme. The choice is **theirs alone**: changing it as the member does not change the admin's screen, and it survives a reload and signing out and in. Every text and button stays readable in every theme.
-7b. Staff menus hold circle pages only (no My savings, Deposit or Withdraw); the SACCO admin has **Add a member** as its own page.
+7b. Staff menus hold SACCO pages only (no My savings, Deposit or Withdraw); the SACCO admin has **Add a member** as its own page.
 8. The 6-minute demo in Collins's file runs from sign-in to log-out without a glitch.
 9. Signing out, then back in, works; staying signed in across a reload works.
 
@@ -285,8 +285,8 @@ Every row says what can go wrong, what the person must see, and what your code m
 | Access token expires while the person is typing | nothing, the call just works | `lib/http.js` refreshes once and repeats the call; only if the refresh fails does the 401 page show |
 | Refresh token expired or revoked (password changed elsewhere, "log out everywhere") | the 401 page: "Your session ended" and a Sign in button | `onSessionEnded`; the form text is not saved, say so on the page |
 | The person's role changes while they are signed in | on their next page change the menu matches the new role; a page they lost shows 403 | reload permissions on every route change and after any 403; never cache `can()` across routes |
-| The person is deactivated | 403 page, and "Enter your circle" refuses them | the circle login answers 403; send them to the "not in a circle yet" page if they have no other circle |
-| The circle is suspended mid-session | 423 page on circle pages | 423 handling is global in `lib/http.js`; Account settings and My settings stay open |
+| The person is deactivated | 403 page, and "Enter your SACCO" refuses them | the SACCO login answers 403; send them to the "not in a SACCO yet" page if they have no other SACCO |
+| The SACCO is suspended mid-session | 423 page on SACCO pages | 423 handling is global in `lib/http.js`; Account settings and My settings stay open |
 | Two officers press Confirm on the same request at the same moment | the second one sees "Someone already decided this request." and the list reloads | `409 REQUEST_ALREADY_DECIDED`; backend locks the row |
 | An officer tries to decide their own request or post to their own account | "You cannot decide your own request." (no buttons shown) | hide the buttons when the requester is the signed-in member; the server answers 403 `OWN_REQUEST` anyway |
 | A withdrawal is larger than the balance | field message under Amount before sending; a banner if the server still refuses | check against the shown balance, handle `409 INSUFFICIENT_FUNDS` |
@@ -302,27 +302,27 @@ Every row says what can go wrong, what the person must see, and what your code m
 | Too many requests | the 429 page with a countdown, or a banner "Wait N seconds" | read `Retry-After` (Neo exposes it in CORS) |
 | One person changes their colours, and another person's screen changes too | must never happen | the key is `nexora.appearance:<userId>`; `syncAppearance(userId)` runs on every sign-in, sign-out and role switch; test: set Ink as the member, sign in as the admin, the admin is still Cream |
 | A theme makes a word, icon or button hard to see | must never happen | every theme was checked for 4.5 to 1 text contrast (3 to 1 for large text) on every page for every role; keep text colours on tokens, test new screens with each of the ten themes |
-| A staff member looks for "My savings" | there is none: the circle's savings are under Accounts | staff menus are circle pages only (`savings.request` is held by members) |
+| A staff member looks for "My savings" | there is none: the SACCO's savings are under Accounts | staff menus are SACCO pages only (`savings.request` is held by members) |
 | The admin forgets where to add a member | Add a member is its own menu item, and the Members page has an "Add a member" button | route `add-member`, permission `member.manage` || A person on a shared computer signs out and someone else signs in | the second person sees their own look; the public pages show the default Cream | `syncAppearance(null)` at sign-out, `syncAppearance(user.id)` at sign-in; keys include the user id |
 | The same person has two tabs open and changes their look in one | the other tab follows within a moment | `watchAppearance` (the browser `storage` event) |
 | Text size is set to Large on a small phone | nothing is cut off or overlaps | sizes are rem; test every page at 375 px with Large |
-| A person invited to two circles with the same phone number | each circle has its own code, its own PIN and its own role; the code itself says which circle is joined | `/auth/join` finds the circle from the code; keep the two memberships apart in the chooser |
+| A person invited to two SACCOs with the same phone number | each SACCO has its own code, its own PIN and its own role; the code itself says which SACCO is joined | `/auth/join` finds the SACCO from the code; keep the two memberships apart in the chooser |
 | The join code is shared with the wrong person | the real member's join fails with "already used" | the admin adds the phone again to make a new code; the old one stops working |
-| The member forgets the circle PIN | after 5 wrong tries the PIN is locked 15 minutes | the admin resets it by adding the member again (new code, new PIN); self-service reset is not in release 1 (see Known gaps) |
+| The member forgets the SACCO PIN | after 5 wrong tries the PIN is locked 15 minutes | the admin resets it by adding the member again (new code, new PIN); self-service reset is not in release 1 (see Known gaps) |
 
 ## Known gaps (decided, written down, not forgotten)
 
 | Gap | Decision for release 1 |
 |---|---|
-| **One role per circle for each person.** A staff member cannot also hold a member's personal savings in the same circle. | Staff accounts run the circle; if a staff person also saves, the team decides separately (for example a second account). Not part of release 1. |
-| **The circle PIN has no self-service reset.** | A member who forgets it asks the circle admin, who adds the member again (a new join code, a new PIN). |
+| **One role per SACCO for each person.** A staff member cannot also hold a member's personal savings in the same SACCO. | Staff accounts run the SACCO; if a staff person also saves, the team decides separately (for example a second account). Not part of release 1. |
+| **The SACCO PIN has no self-service reset.** | A member who forgets it asks the SACCO admin, who adds the member again (a new join code, a new PIN). |
 | **Join codes are issued only by the SACCO admin** (`member.manage`), not by other staff. | Documented in "How people get in". Giving another role `member.manage` is a one-line permission change plus a migration (Neo), if the team decides so. |
-| **The "Enter your circle" PIN screen is specified but not drawn in the clickable prototype.** | Ryan builds it from the Join PIN card (see "How people get in"). The backend returns only `{ok, membership_id, role}`, so "entered circle X" is kept in memory for the tab. |
+| **The "Enter your SACCO" PIN screen is specified but not drawn in the clickable prototype.** | Ryan builds it from the Join PIN card (see "How people get in"). The backend returns only `{ok, membership_id, role}`, so "entered SACCO X" is kept in memory for the tab. |
 | **Pay-in details** (the M-Pesa paybill and the bank account members pay into) are not stored anywhere in the backend. | The Deposit page shows fixed sample values from `mocks/data.js` (`payIn`), labelled as sample. Collins asks the SACCO for the real ones before the demo and Sam changes the one constant. A SACCO setting for them is not part of release 1. |
 | A confirmed request posts the real ledger entry, but **no M-Pesa or bank API is called**. Nobody's money moves by itself. | An officer checks the payment outside the app, then confirms. This is stated on the page. |
 | **Platform owner cannot read SACCO money.** | This is correct and stays: the platform pages show counts and statuses only, never balances. |
 | Only a **SACCO admin** may revoke support access. | The owner has no Revoke button (matches the API). |
-| Member items in the API carry **email only**, no name. | Show the email where the prototype shows a name; the initials circle uses the first letter of the email. |
+| Member items in the API carry **email only**, no name. | Show the email where the prototype shows a name; the initials SACCO uses the first letter of the email. |
 | Loan statuses in the API are `requested`, `approved`, `rejected`, `disbursed`, `repaid`. | The UI words them: Waiting, Approved, Rejected, Disbursed, Repaid (see `StatusChip.jsx`). |
 | Profile photo upload needs an avatar endpoint that does not exist. | Photo viewer and upload dialog are built; upload is kept on the device only and labelled "saved on this device". |
 | The look (colours, font, text size) is saved **per person on this device**, not on the server (no backend field yet). | The key contains the user id (`nexora.appearance:<userId>`), so two people on one computer keep separate looks and nobody changes anybody else's. The same person on another device starts with the default. Saving it on the server is not part of release 1. |
@@ -351,7 +351,7 @@ Base URL: `http://localhost:5000/api/v1` (set once in `lib/http.js`). All bodies
 | Reset | `POST /auth/reset-password` | `token`, `new_password` | `{message}` then go to sign in | 400 expired |
 | Join with code | `POST /auth/join` | `code`, optional `phone` | `{setup_token, ...}` | CODE_WRONG 400, CODE_EXPIRED 410, CODE_USED 409 |
 | Choose PIN | `POST /auth/join/pin` | `setup_token`, `pin` | signed in (tokens) | 400 |
-| Sign in with PIN | `POST /auth/circle-login` (Neo renames it `sacco-login`; accept both until then) | `sacco_id`, `pin` (+ identity) | tokens | PIN_WRONG 401, PIN_LOCKED 423 |
+| Sign in with PIN | `POST /auth/sacco-login` (Neo renames it `sacco-login`; accept both until then) | `sacco_id`, `pin` (+ identity) | tokens | PIN_WRONG 401, PIN_LOCKED 423 |
 | Refresh | `POST /auth/refresh` | `refresh_token` | new tokens | 401 means session ended |
 | Sign out | `POST /auth/logout` (`/auth/logout-all` for everywhere) | `refresh_token` | `{message}` | ignore failures, clear tokens anyway |
 | Change password | `POST /auth/change-password` | `current_password`, `new_password` | `{message}` and every session ends: go to sign in | 400 wrong current |
@@ -485,7 +485,7 @@ List endpoints accept `?limit=` and `?cursor=` (or `?page=` where the route says
 2. `roles: [...]` on each item of `GET /saccos/<id>/members`.
 3. `?status=` filter on `GET /loans/saccos/<id>`.
 4. Add `Retry-After` to the CORS exposed headers so the browser can read it on a 429.
-5. Rename `/auth/circle-login` to `/auth/sacco-login`; keep the old path working for one release.
+5. Rename `/auth/sacco-login` to `/auth/sacco-login`; keep the old path working for one release.
 6. **Member deposit and withdrawal requests**: the `savings.request` permission, the `payment_requests` table and the five endpoints in section 3b, with tests.
 
 Nobody waits for these: the frontend has a mock and a fallback for each (see each personal file).

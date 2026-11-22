@@ -1,4 +1,4 @@
-"""Section 2: invite, join and circle PIN (the five done-when cases)."""
+"""Section 2: invite, join and SACCO PIN (the five done-when cases)."""
 
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
@@ -93,9 +93,9 @@ def set_pin(client, user, token, pin=PIN):
     )
 
 
-def circle(client, user, world, pin):
+def sacco_login(client, user, world, pin):
     return client.post(
-        "/api/v1/auth/circle-login",
+        "/api/v1/auth/sacco-login",
         json={"sacco_id": world.sacco.id, "pin": pin},
         headers=auth(user),
     )
@@ -145,7 +145,7 @@ def test_invited_goes_to_active(client, world):
     membership = row_of(body["id"])
     assert membership.status is MembershipStatus.ACTIVE
     assert membership.pin_hash and membership.pin_hash != PIN
-    assert circle(client, world.joiner, world, PIN).status_code == 200
+    assert sacco_login(client, world.joiner, world, PIN).status_code == 200
 
 
 def test_a_used_code_fails(client, world):
@@ -190,19 +190,19 @@ def test_five_wrong_codes_burn_the_code(client, world):
 def test_five_wrong_pins_lock_the_pin(client, world):
     activate(client, world)
     for _ in range(4):
-        resp = circle(client, world.joiner, world, BAD_PIN)
+        resp = sacco_login(client, world.joiner, world, BAD_PIN)
         assert resp.status_code == 401
         assert "PIN_WRONG" in resp.get_data(as_text=True)
-    resp = circle(client, world.joiner, world, BAD_PIN)
+    resp = sacco_login(client, world.joiner, world, BAD_PIN)
     assert resp.status_code == 423
     assert "PIN_LOCKED" in resp.get_data(as_text=True)
     # Locked: even the right PIN is refused.
-    resp = circle(client, world.joiner, world, PIN)
+    resp = sacco_login(client, world.joiner, world, PIN)
     assert resp.status_code == 423
     assert "PIN_LOCKED" in resp.get_data(as_text=True)
 
 
-def test_circle_login_is_refused_while_still_invited(client, world):
+def test_sacco_login_is_refused_while_still_invited(client, world):
     body = invite(client, world)
     assert join(client, world.joiner, body["join_code"]).status_code == 200
-    assert circle(client, world.joiner, world, PIN).status_code == 403
+    assert sacco_login(client, world.joiner, world, PIN).status_code == 403

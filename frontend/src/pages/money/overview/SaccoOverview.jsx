@@ -70,7 +70,7 @@ function Ready({ summary, loans, requests, can, navigate }) {
 
       <div className="sam-grid">
         <section className="glass sam-stack sam-s8" aria-labelledby="sv-title">
-          <div><div className="eyebrow">Savings</div><h3 id="sv-title" className="font-serif text-xl">The circle's savings over 12 months</h3></div>
+          <div><div className="eyebrow">Savings</div><h3 id="sv-title" className="font-serif text-xl">The SACCO's savings over 12 months</h3></div>
           {h ? <ChartBox label="SACCO savings over 12 months" draw={(el, still) => renderLine(el, { values: h.savings, labels: h.labels, color: '#0F4C47', fmtAxis: fAx('M'), fmtTip: fTipM }, still)} deps={[h]} />
             : <Empty title="No history yet." hint="The chart appears when the system keeps monthly totals." />}
         </section>

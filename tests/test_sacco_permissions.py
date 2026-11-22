@@ -61,7 +61,7 @@ def test_only_the_admin_title_manages_members_and_titles(schema_app):  # noqa: F
     )
 
 
-def test_circle_login_writes_an_audit_row_ok_or_refused(schema_app):  # noqa: F811
+def test_sacco_login_writes_an_audit_row_ok_or_refused(schema_app):  # noqa: F811
     s = Setup()
     client = schema_app.test_client()
     person = make_user()
@@ -81,8 +81,8 @@ def test_circle_login_writes_an_audit_row_ok_or_refused(schema_app):  # noqa: F8
         json={"setup_token": joined.json["setup_token"], "pin": "4826"},
         headers=auth(person),
     )
-    before = audit_count("member.circle_login")
-    url = "/api/v1/auth/circle-login"
+    before = audit_count("member.sacco_login")
+    url = "/api/v1/auth/sacco-login"
     good, wrong = (
         {"sacco_id": s.sacco.id, "pin": "4826"},
         {"sacco_id": s.sacco.id, "pin": "0000"},
@@ -90,7 +90,7 @@ def test_circle_login_writes_an_audit_row_ok_or_refused(schema_app):  # noqa: F8
     ok = client.post(url, json=good, headers=auth(person))
     bad = client.post(url, json=wrong, headers=auth(person))
     assert ok.status_code == 200 and bad.status_code == 401
-    assert audit_count("member.circle_login") == before + 2
+    assert audit_count("member.sacco_login") == before + 2
 
 
 WRITES = [
