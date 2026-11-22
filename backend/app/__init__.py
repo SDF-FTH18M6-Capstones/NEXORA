@@ -132,6 +132,7 @@ def create_app(config_class=Config):
         ledger,
         loan,
         membership,
+        payment_details,
         payment_request,
         refresh_token,
         rules,
@@ -141,6 +142,7 @@ def create_app(config_class=Config):
         user,
     )
     from app.saccos import access_routes as saccos_access_routes  # noqa: F401
+    from app.saccos import payment_details_routes  # noqa: F401
     from app.saccos import routes as saccos_routes  # noqa: F401
     from app.saccos import rules_routes as saccos_rules_routes  # noqa: F401
     from app.savings import accounts as savings_accounts  # noqa: F401

@@ -2,7 +2,6 @@
  * One function per endpoint, each with a mock twin. Pages never call fetch. Items always have amount_minor. */
 import { http, MOCK, mockDelay, ApiError } from '../lib/http.js';
 import { toMinor } from '../lib/format.js';
-import { payIn } from '../mocks/data.js';
 import { store, accountOf, ledgerOf, MY_ACCOUNT_ID, MY_EMAIL, lostReply, noAccount, logRef } from '../mocks/sam.js';
 
 const LIMIT = 10;
@@ -86,10 +85,4 @@ export async function rejectRequest(id, reason) {
 export async function accountBalanceOf(membershipId) {
   if (MOCK) { await mockDelay(60); const a = accountOf(membershipId); return a ? a.balance : null; }
   return null;   /* the real API has no read for another member's balance on this page: the server's own sentence is shown instead */
-}
-
-/* Where members pay in. SAMPLE values until the SACCO can set its own (no endpoint yet), so both modes answer the sample. */
-export async function getPayIn() {
-  if (MOCK) await mockDelay(80);
-  return { ...payIn, sample: true };
 }

@@ -29,6 +29,7 @@ export const PAGE_IMPORTS = {
   access: modules['../pages/people/AccessPage.jsx'],
   settings: modules['../pages/people/SettingsPage.jsx'],
   rules: modules['../pages/people/RulesPage.jsx'],
+  payin: modules['../pages/people/PayInPage.jsx'],
   'pf-overview': modules['../pages/platform/PfOverview.jsx'],
   'pf-saccos': modules['../pages/platform/PfSaccos.jsx'],
   'pf-owners': modules['../pages/platform/PfOwners.jsx'],

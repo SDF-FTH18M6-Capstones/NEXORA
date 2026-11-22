@@ -4,11 +4,13 @@ import { useRef, useState } from 'react';
 import { useSession } from '../../../lib/session.jsx';
 import { useAsync } from '../../../lib/useAsync.js';
 import { parseAmount, kes, kesFromMinor, fromMinor, newReference } from '../../../lib/format.js';
-import { createRequest, getPayIn } from '../../../api/requests.js';
+import { createRequest } from '../../../api/requests.js';
+import { getPayIn } from '../../../api/payin.js';
 import { getMyAccount } from '../../../api/money.js';
 import Field from '../../../components/Field.jsx';
 import ErrorBanner from '../../../components/ErrorBanner.jsx';
 import ErrorPage from '../../../components/ErrorPage.jsx';
+import PayInView from '../../../components/PayInView.jsx';
 import { Loading } from '../../../components/States.jsx';
 import MethodSwitch from './MethodSwitch.jsx';
 import RequestHistory from './RequestHistory.jsx';
@@ -28,37 +30,40 @@ const COPY = {
   }
 };
 
-function HowToPay({ kind, method }) {
-  const pay = useAsync(() => getPayIn(), [], { isEmpty: () => false });
-  if (kind === 'withdrawal') {
-    return (
-      <ol className="sam-steps">
-        <li>Enter the amount and where the money should go.</li>
-        <li>An officer checks your balance and sends the money.</li>
-        <li>The status below changes to Confirmed or Rejected. A rejection always shows a reason.</li>
-      </ol>
-    );
-  }
+/* What the circle's officers set under Pay-in details. Nothing here is a sample: with no details set the page says so. */
+/* A withdrawal sends money out of the circle, so it needs no pay-in details and is never blocked by them. */
+function WhatHappensNext() {
+  return (
+    <ol className="sam-steps">
+      <li>Enter the amount and where the money should go.</li>
+      <li>An officer checks your balance and sends the money.</li>
+      <li>The status below changes to Confirmed or Rejected. A rejection always shows a reason.</li>
+    </ol>
+  );
+}
+
+function HowToPay({ method, pay }) {
   if (pay.status === 'loading') return <Loading lines={3} />;
   if (pay.status === 'error') return <ErrorBanner onRetry={pay.reload}>We could not load the pay-in details. Try again.</ErrorBanner>;
-  const p = pay.data;
+  const details = pay.data.details;
+  if (!details) return <ErrorBanner kind="warn">Pay-in details not set. Ask an officer of your circle to set them. You cannot send a request until they are.</ErrorBanner>;
+  const till = details.mpesa_type === 'till';
   return (
     <>
       {method === 'mpesa' ? (
         <ol className="sam-steps">
-          <li>Open M-Pesa on your phone and choose Lipa na M-Pesa, then Pay Bill.</li>
-          <li>Business number <b>{p.paybill}</b>, account number <b>{p.account}</b>.</li>
-          <li>Enter the amount and your M-Pesa PIN.</li>
+          <li>Open M-Pesa on your phone and choose Lipa na M-Pesa, then {till ? 'Buy Goods and Services' : 'Pay Bill'}.</li>
+          <li>Enter the {till ? 'till' : 'business'} number{till ? '' : ' and the account number'} shown below, then the amount and your M-Pesa PIN.</li>
+          <li>Check the name M-Pesa shows. If it is not the name below, stop and ask an officer.</li>
           <li>Come back here, enter the same amount and the phone number you paid from, then send the request.</li>
         </ol>
       ) : (
         <ol className="sam-steps">
-          <li>Pay into <b>{p.bank}</b>, account name <b>{p.bankAccountName}</b>, account number <b>{p.bankAccount}</b>.</li>
-          <li>Use <b>{p.account}</b> as the payment reference.</li>
+          <li>Pay into the bank account shown below.</li>
           <li>Come back here, enter the amount, the bank you paid from and the reference on your receipt, then send the request.</li>
         </ol>
       )}
-      <p className="sam-note">Pay-in details shown here are sample values until the SACCO sets its own.</p>
+      <PayInView details={details} />
     </>
   );
 }
@@ -76,6 +81,12 @@ export default function RequestPage({ kind }) {
   const [reference, setReference] = useState(newReference);   // one per form open, kept on every retry, replaced only after a success
   const [sentCount, setSentCount] = useState(0);
   const busy = useRef(false);
+
+  const pay = useAsync(() => (withdrawing ? Promise.resolve('skip') : getPayIn(saccoId)), [saccoId, kind], { isEmpty: () => false });
+  const details = !withdrawing && pay.status === 'ready' ? pay.data.details : null;
+  const notSet = !withdrawing && pay.status === 'ready' && !details;
+  /* a deposit by a method the circle does not offer cannot be paid anywhere */
+  const methodOff = !withdrawing && !!details && (method === 'mpesa' ? !details.mpesa_number : !details.bank_name);
 
   const account = useAsync(() => (withdrawing ? getMyAccount(saccoId) : Promise.resolve('skip')), [saccoId, kind], { isEmpty: () => false });
   const balance = withdrawing && account.status === 'ready' ? (account.data ? account.data.balance : 0) : null;
@@ -100,7 +111,7 @@ export default function RequestPage({ kind }) {
 
   async function submit(ev) {
     ev.preventDefault();
-    if (busy.current || noBalance) return;
+    if (busy.current || noBalance || notSet || methodOff) return;
     const e = validate();
     setErrors(e);
     const first = ['amount', 'phone', 'bank', 'ref'].find(k => e[k]);
@@ -160,13 +171,15 @@ export default function RequestPage({ kind }) {
           )}
 
           {banner && banner.kind !== 'ok' && <ErrorBanner kind={banner.kind}>{banner.text}</ErrorBanner>}
-          <button type="submit" className="btn" disabled={sending || noBalance}>{sending ? 'Sending...' : t.button}</button>
+          {notSet && <ErrorBanner kind="warn">Pay-in details not set. Ask an officer of your circle to set them.</ErrorBanner>}
+          {methodOff && <ErrorBanner kind="warn">This circle does not take {method === 'mpesa' ? 'M-Pesa' : 'bank'} payments. Choose the other way to pay.</ErrorBanner>}
+          <button type="submit" className="btn" disabled={sending || noBalance || notSet || methodOff}>{sending ? 'Sending...' : t.button}</button>
           <p className="sam-note">This sends a request only. Your balance changes after an officer confirms it. Each request has its own reference, so a retry never sends it twice.</p>
         </form>
 
         <aside className="glass sam-stack sam-s5" aria-label={withdrawing ? 'What happens next' : 'How to pay'}>
           <div><div className="eyebrow">{withdrawing ? 'Next' : 'Pay in'}</div><h3 className="font-serif text-xl">{withdrawing ? 'What happens next' : 'How to pay'}</h3></div>
-          <HowToPay kind={kind} method={method} />
+          {withdrawing ? <WhatHappensNext /> : <HowToPay method={method} pay={pay} />}
         </aside>
 
         <div className="sam-s12"><RequestHistory kind={kind} reloadKey={sentCount} /></div>

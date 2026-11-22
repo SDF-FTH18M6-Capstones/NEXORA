@@ -3236,6 +3236,82 @@ paths:
     post:
       summary: Accept the current rules
       description: '**Who:** an active member. Send the `version` you read. Idempotent.'
+  /api/v1/saccos/{sacco_id}/payment-details:
+    parameters:
+    - $ref: '#/components/parameters/sacco_id'
+    get:
+      summary: Where members pay in
+      description: '**Who:** any active member of the circle (`sacco.view`), or the platform owner. Returns
+        `details` (the live values, or `null` when the circle has not set any) and `pending` (the change
+        waiting for a second officer, or `null`). `pending` is only filled for holders of `payin.manage`;
+        a member never sees a change before it is approved. `updated_at` is when a second officer
+        approved the live values. `bank_manual_confirm_only` is true when the bank uses a shared paybill.
+
+
+        **Rate limit:** 120 per minute.'
+      responses:
+        '200':
+          description: '`{details, pending}`. Never a pending change for a member.'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '423':
+          $ref: '#/components/responses/Locked'
+        '429':
+          description: Rate limit exceeded (`rate_limited`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      security:
+      - bearerAuth: []
+  /api/v1/saccos/{sacco_id}/payment-details/changes:
+    parameters:
+    - $ref: '#/components/parameters/sacco_id'
+    post:
+      summary: Propose new pay-in details
+      description: '**Who:** holders of `payin.manage` (the circle admin and the finance officer). Changes
+        nothing members see: the change waits until a different officer approves it. A newer proposal replaces
+        the one waiting. Give M-Pesa details, bank details or both. M-Pesa: `mpesa_type` (`paybill` or `till`),
+        `mpesa_number` (5 to 7 digits), `display_name`, optional `account_reference_hint` (paybill only). Bank:
+        `bank_name`, `bank_account_name`, `bank_account_number` (6 to 20 digits), optional `bank_branch`. Shared
+        bank paybill: `bank_uses_shared_paybill` true with `bank_paybill_number` (5 to 7 digits). Every proposal
+        is audited (`payin.propose`, `payin.supersede`) and every officer is emailed.
+
+
+        **Rate limit:** 30 per minute.'
+      responses:
+        '201':
+          description: '`{change}` with `status: pending`.'
+        '400':
+          description: A field is not valid. `error.fields` names each one with its format, an example and the reason.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: These are the details members already see (`conflict`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '423':
+          $ref: '#/components/responses/Locked'
+        '429':
+          description: Rate limit exceeded (`rate_limited`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
       security:
       - bearerAuth: []
       requestBody:
@@ -3339,6 +3415,74 @@ paths:
         '403': {description: "Only members vote.", content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
         '404': {description: "Not found.", content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
         '409': {description: "Voting has closed.", content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
+                mpesa_type:
+                  type: string
+                  enum:
+                  - paybill
+                  - till
+                mpesa_number:
+                  type: string
+                display_name:
+                  type: string
+                account_reference_hint:
+                  type: string
+                bank_name:
+                  type: string
+                bank_account_name:
+                  type: string
+                bank_account_number:
+                  type: string
+                bank_branch:
+                  type: string
+                bank_uses_shared_paybill:
+                  type: boolean
+                bank_paybill_number:
+                  type: string
+  /api/v1/saccos/{sacco_id}/payment-details/changes/{change_id}/approve:
+    parameters:
+    - $ref: '#/components/parameters/sacco_id'
+    - name: change_id
+      in: path
+      required: true
+      schema:
+        type: integer
+    post:
+      summary: Approve a waiting change so it goes live
+      description: '**Who:** holders of `payin.manage`, never the officer who proposed the change
+        (403 `PAYIN_SAME_OFFICER`). The change is named by id, so nobody approves values that changed
+        after they read them. Audited as `payin.approve`; every officer is emailed.
+
+
+        **Rate limit:** 30 per minute.'
+      responses:
+        '200':
+          description: '`{details}`: the values now live, with `updated_at` set to the approval time.'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Not allowed, or you proposed this change (`PAYIN_SAME_OFFICER`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: The change was already approved or replaced by a newer one (`conflict`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '423':
+          $ref: '#/components/responses/Locked'
+        '429':
+          description: Rate limit exceeded (`rate_limited`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      security:
+      - bearerAuth: []
   /api/v1/saccos/{sacco_id}/settings:
     parameters:
     - $ref: '#/components/parameters/sacco_id'

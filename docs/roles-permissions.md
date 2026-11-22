@@ -96,12 +96,17 @@ staff: secretary, member: member).
 | sacco.view (SACCO name, status, settings) | yes | yes | yes | yes | yes |
 | sacco.update (rename the SACCO) | yes | | | | |
 | support.approve (approve, deny or revoke a platform owner's support access) | yes | | | | |
+| payin.manage (propose or approve the circle's pay-in details; a different officer must approve) | yes | | yes | | |
 | audit.view (SACCO audit log) | **never** | yes | | | |
 | loan.view (every loan) | yes | yes | yes | yes | own only |
 | loan.approve | **never** | | | yes | |
 | loan.disburse | **never** | | yes | | |
 | loan.request | | | | | yes |
 | loan.repay | | | yes | | own loan |
+
+`payin.manage` is held by no platform role: the platform owner can read a circle's live pay-in
+details (`sacco.view`) but never proposes or approves them. A circle needs two people holding it
+(the admin plus a finance officer) before its first details can go live.
 
 The platform owner holds every permission, needs no membership, and is the only
 one who creates SACCOs, changes loan settings, makes or removes SACCO admins

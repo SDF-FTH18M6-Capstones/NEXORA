@@ -61,6 +61,9 @@ PERMISSIONS: dict[str, str] = {
     # The SACCO's consent to a platform owner reading its records: its admin
     # approves, denies or revokes a support-access request.
     "support.approve": "Approve or revoke a platform owner's support access",
+    # Where members pay in. Never held by the platform owner: a second officer of
+    # the circle must approve every change.
+    "payin.manage": "Set or approve where members pay in",
 }
 
 # The five job titles, each with the permissions it holds (docs/roles-permissions.md):
@@ -80,6 +83,7 @@ ROLE_PERMISSIONS: dict[str, frozenset[str]] = {
             "savings.view_all",
             "sacco.update",
             "support.approve",
+            "payin.manage",
             "dashboard.view",
         }
     ),
@@ -106,6 +110,7 @@ ROLE_PERMISSIONS: dict[str, frozenset[str]] = {
             "loan.repay",
             "report.view",
             "savings.view_all",
+            "payin.manage",
             "dashboard.view",
         }
     ),
@@ -304,6 +309,49 @@ def _membership_permissions(user, sacco_id: int) -> frozenset[str]:
         # audit log, whatever other titles the membership holds.
         held -= ADMIN_NEVER
     return held
+
+
+def holders(sacco_id: int, permission: str) -> list[int]:
+    """User ids of the active members of one SACCO who hold `permission`.
+
+    Decided the way `_membership_permissions` decides, in three queries instead
+    of three per member: title rows first, the legacy role column only for a
+    membership with no title rows. Platform owners are not members, so they are
+    never listed. Used to tell every officer about a change.
+    """
+    codes_with = set(
+        db.session.execute(
+            select(Role.code)
+            .join(RolePermission, RolePermission.role_id == Role.id)
+            .join(Permission, Permission.id == RolePermission.permission_id)
+            .where(Permission.code == permission)
+        ).scalars()
+    )
+    members = db.session.execute(
+        select(SaccoMembership.id, SaccoMembership.user_id, SaccoMembership.role).where(
+            SaccoMembership.sacco_id == sacco_id,
+            SaccoMembership.status == MembershipStatus.ACTIVE,
+        )
+    ).all()
+    titles: dict[int, set[str]] = {}
+    for membership_id, code in db.session.execute(
+        select(MembershipRoleLink.membership_id, Role.code)
+        .join(Role, Role.id == MembershipRoleLink.role_id)
+        .where(MembershipRoleLink.membership_id.in_([m.id for m in members]))
+    ):
+        titles.setdefault(membership_id, set()).add(code)
+
+    found = []
+    for membership_id, user_id, role in members:
+        codes = titles.get(membership_id)
+        if not codes:
+            legacy = LEGACY_ROLE_CODES.get(role)
+            codes = {legacy} if legacy else set()
+        if role is MembershipRole.SACCO_ADMIN and permission in ADMIN_NEVER:
+            continue
+        if codes & codes_with:
+            found.append(user_id)
+    return found
 
 
 def permissions_for(user, sacco) -> frozenset[str]:

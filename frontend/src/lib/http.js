@@ -23,7 +23,7 @@ export const MOCK = !!(import.meta.env && import.meta.env.VITE_MOCK === '1') || 
 export const mockDelay = (ms = 450 + Math.random() * 450) => new Promise(r => setTimeout(r, ms));
 
 export class ApiError extends Error {
-  constructor(status, code, message, retryAfter = 0) { super(message); this.name = 'ApiError'; this.status = status; this.code = code; this.retryAfter = retryAfter; }
+  constructor(status, code, message, retryAfter = 0, fields = null) { super(message); this.name = 'ApiError'; this.status = status; this.code = code; this.retryAfter = retryAfter; this.fields = fields; }
 }
 
 /* ---------- tokens: browser storage for release 1 (decision recorded in docs/frontend-work.md section 13) ---------- */
@@ -74,7 +74,7 @@ async function send(method, path, { body, params, auth = true, token } = {}) {
   let json = null; try { json = await res.json(); } catch { /* no body */ }
   if (res.ok) return json;
   const err = (json && json.error) || {};
-  throw new ApiError(res.status, err.code || 'error', err.message || 'Something went wrong.', Number(res.headers.get('Retry-After')) || 0);
+  throw new ApiError(res.status, err.code || 'error', err.message || 'Something went wrong.', Number(res.headers.get('Retry-After')) || 0, err.fields || null);
 }
 
 async function request(method, path, opts = {}) {
