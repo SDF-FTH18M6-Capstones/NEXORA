@@ -56,7 +56,7 @@ export default function PayInPage() {
       </div>
       {notice && <ErrorBanner>{notice}</ErrorBanner>}
       <Body status={payIn.status} error={payIn.error} reload={payIn.reload}>
-        {live ? <PayInView details={live} /> : <ErrorBanner kind="info">Pay-in details not set. Members cannot send deposit requests until two officers set them. Withdrawals are never blocked.</ErrorBanner>}
+        {live ? <PayInView details={live} /> : <ErrorBanner kind="info">Pay-in details not set. Members cannot send deposit requests until two officers set them.</ErrorBanner>}
 
         {pending && (
           <div className="neo-stack">
