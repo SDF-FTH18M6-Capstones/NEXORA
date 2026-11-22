@@ -15,8 +15,8 @@ branch merges second must re-point `down_revision` so the history has one head.
 import sqlalchemy as sa
 from alembic import op
 
-revision = "0027"
-down_revision = "0025"
+revision = "0028"
+down_revision = "0027"
 branch_labels = None
 depends_on = None
 
