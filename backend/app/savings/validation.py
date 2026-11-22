@@ -48,9 +48,12 @@ def parse_override_reason(value, low: int = 10, high: int = 140) -> str | None:
     """Optional. A reason is a plain sentence the audit trail will keep."""
     if value is None:
         return None
-    # Control characters (NUL, newlines) would break or forge the audit text.
+    # Control characters, line separators and odd spaces would break or forge
+    # the audit text: one line of ordinary characters only.
     plain = isinstance(value, str) and not any(
-        unicodedata.category(ch).startswith("C") for ch in value.strip()
+        unicodedata.category(ch).startswith(("C", "Zl", "Zp"))
+        or (unicodedata.category(ch) == "Zs" and ch != " ")
+        for ch in value.strip()
     )
     if not plain or not low <= len(value.strip()) <= high:
         raise InvalidRequest(

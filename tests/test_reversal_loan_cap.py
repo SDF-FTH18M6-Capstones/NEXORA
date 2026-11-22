@@ -152,7 +152,15 @@ def test_the_endpoint_answers_409_then_201_with_a_reason_and_400_for_a_bad_one(
 
 
 @pytest.mark.parametrize(
-    "bad", ["ok reason\x00 here", "line one\nline two here", "ok\u202ereason here"]
+    "bad",
+    [
+        "ok reason\x00 here",
+        "line one\nline two here",
+        "ok\u202ereason here",
+        "line\u2028two here",
+        "para\u2029two here",
+        "no\u00a0break here",
+    ],
 )
 def test_an_override_reason_with_control_or_hidden_characters_is_400(schema_app, bad):
     s, deposit, _ = _loan_setup()

@@ -327,3 +327,52 @@ def test_the_row_is_saved_before_daraja_is_called(client, on):
     daraja._call = peek
     push(client, P(make_sacco(), MEMBER))
     assert seen == [1]
+
+
+def test_a_connection_reset_while_reading_daraja_is_a_clean_502(client, on):
+    def reset(path, payload=None, headers=None):
+        if "oauth" in path:
+            return {"access_token": "t"}
+        raise ConnectionResetError("reset by peer")
+
+    daraja._call = reset
+    assert push(client, P(make_sacco(), MEMBER)).status_code == 502
+    assert db.session.query(StkPush).one().status == "failed"
+
+
+def test_real_read_failures_become_a_daraja_error(monkeypatch):
+    import http.client
+    import urllib.request
+
+    for boom in (ConnectionResetError(), http.client.IncompleteRead(b"")):
+
+        def fail(*a, _boom=boom, **k):
+            raise _boom
+
+        monkeypatch.setattr(urllib.request, "urlopen", fail)
+        with pytest.raises(daraja.DarajaError):
+            _real_call("/x")
+
+
+@pytest.mark.parametrize(
+    "token", ["x", "short-token", "a" * 31, "a" * 31 + "!", "é" * 40]
+)
+def test_a_weak_callback_token_is_refused_at_startup(app, token):
+    from app import _check_daraja_settings
+
+    old = {k: app.config.get(k) for k in ("DARAJA_CALLBACK_TOKEN",)}
+    app.config.update(
+        DARAJA_CONSUMER_KEY="k",
+        DARAJA_CONSUMER_SECRET="s",
+        DARAJA_PASSKEY="p",
+        DARAJA_SHORTCODE="1",
+        DARAJA_CALLBACK_URL="https://x",
+        DARAJA_CALLBACK_TOKEN=token,
+    )
+    try:
+        with pytest.raises(RuntimeError, match="32 or more"):
+            _check_daraja_settings(app, "development")
+        app.config["DARAJA_CALLBACK_TOKEN"] = "a" * 32
+        _check_daraja_settings(app, "development")  # a good one passes
+    finally:
+        app.config.update(old)

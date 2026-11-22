@@ -1,5 +1,6 @@
 """NEXORA application factory."""
 import os
+import re
 
 import psycopg
 from flask import Blueprint, Flask, current_app, jsonify, request
@@ -243,6 +244,11 @@ def _check_daraja_settings(app, app_env):
     missing = [k for k in DARAJA_SETTINGS if not app.config.get(k)]
     if missing:
         raise RuntimeError(f"DARAJA_ENABLED needs: {', '.join(missing)}.")
+    # The path token is the only thing that proves a callback came from Safaricom.
+    if not re.fullmatch(r"[A-Za-z0-9_-]{32,}", app.config["DARAJA_CALLBACK_TOKEN"]):
+        raise RuntimeError(
+            "DARAJA_CALLBACK_TOKEN must be 32 or more letters, digits, - or _."
+        )
 
 
 def _check_production_settings(app):

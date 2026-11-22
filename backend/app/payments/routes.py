@@ -22,6 +22,7 @@ from app.auth.limits import money_limit, read_limit
 from app.auth.routes import _body
 from app.errors import error_response
 from app.extensions import db
+from app.models.membership import SaccoMembership
 from app.models.stk_push import StkPush
 from app.payments import daraja
 from app.security.permissions import can
@@ -78,6 +79,10 @@ def start_stk_push(sacco_id):
         )
     if phone is None:
         return error_response(400, "Send a Safaricom number like 0712345678.")
+    # One request at a time per member, so the count below cannot be raced past.
+    db.session.execute(
+        select(SaccoMembership.id).where(SaccoMembership.id == me.id).with_for_update()
+    )
     recent = db.session.scalar(
         select(func.count()).where(
             StkPush.membership_id == me.id,
@@ -97,17 +102,22 @@ def start_stk_push(sacco_id):
         result_desc="Check your phone and enter your M-Pesa PIN.",
     )
     db.session.add(row)
-    # Saved before the network call, so no transaction is held open while
-    # Safaricom answers and an early callback finds its row.
+    # Saved before the network call: no transaction or lock is held open while
+    # Safaricom answers, and a failed call is still on record.
     db.session.commit()
     try:
         row.checkout_request_id = daraja.stk_push(phone, amount // 100, f"NX{row.id}")[
             "CheckoutRequestID"
         ]
-    except daraja.DarajaError as exc:
-        row.status, row.result_desc = "failed", str(exc)
+    except Exception as exc:  # whatever went wrong, the row must not stay pending
+        said = (
+            str(exc)
+            if isinstance(exc, daraja.DarajaError)
+            else "M-Pesa could not start the payment."
+        )
+        row.status, row.result_desc = "failed", said
         db.session.commit()
-        return error_response(502, str(exc))
+        return error_response(502, said)
     db.session.commit()
     return jsonify(_json(row)), 201
 

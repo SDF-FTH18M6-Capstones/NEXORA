@@ -7,10 +7,10 @@ the answer; it never credits savings. An officer still confirms the deposit.
 """
 
 import base64
+import http.client
 import json
 import re
 import time
-import urllib.error
 import urllib.request
 from datetime import UTC, datetime
 
@@ -47,7 +47,7 @@ def _call(path: str, payload=None, headers=None) -> dict:
     try:
         with urllib.request.urlopen(request, timeout=10) as reply:
             body = json.load(reply)
-    except (urllib.error.URLError, TimeoutError, ValueError) as exc:
+    except (OSError, http.client.HTTPException, ValueError) as exc:
         raise DarajaError("M-Pesa did not answer. Try again in a moment.") from exc
     if not isinstance(body, dict):
         raise DarajaError("M-Pesa sent an answer Nexora cannot read.")
