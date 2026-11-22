@@ -35,12 +35,14 @@ export default function RequestsPage() {
   const refs = useRef({});                           // one reference per confirm, reused when the same press is retried
 
   const pending = usePaged(cursor => listSaccoRequests(saccoId, 'pending', cursor), [saccoId]);
-  const decided = usePaged(cursor => decidedPage(saccoId, cursor), [saccoId]);
-  const list = tab === 'pending' ? pending : decided;
+  /* the Decided list is read only once somebody opens that tab (it can take several calls); after that it stays fresh */
+  const [decidedWanted, setDecidedWanted] = useState(false);
+  const decided = usePaged(cursor => (decidedWanted ? decidedPage(saccoId, cursor) : Promise.resolve({ items: [], next: null })), [saccoId, decidedWanted]);
+  const list = tab === 'pending' ? pending : (decided.status === 'empty' && !decidedWanted ? { ...decided, status: 'loading' } : decided);
   const count = `${pending.items.length}${pending.next != null ? '+' : ''}`;
 
   const mine = r => Boolean(user && user.email && r.email === user.email);
-  const refreshBoth = () => { pending.refresh(); decided.refresh(); };
+  const refreshBoth = () => { pending.refresh(); if (decidedWanted) decided.refresh(); };
 
   function fail(err, r, verb) {
     const d = describe(err, { mode: 'page' });
@@ -93,7 +95,7 @@ export default function RequestsPage() {
           <div><div className="eyebrow">savings.post</div><h2 id="requests-title" className="font-serif text-2xl">Member deposit and withdrawal requests</h2></div>
           <div className="seg" role="tablist" aria-label="Which requests">
             <button type="button" role="tab" aria-selected={tab === 'pending'} onClick={() => setTab('pending')}>Pending ({count})</button>
-            <button type="button" role="tab" aria-selected={tab === 'decided'} onClick={() => setTab('decided')}>Decided</button>
+            <button type="button" role="tab" aria-selected={tab === 'decided'} onClick={() => { setDecidedWanted(true); setTab('decided'); }}>Decided</button>
           </div>
         </div>
 

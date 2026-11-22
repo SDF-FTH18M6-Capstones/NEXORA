@@ -81,11 +81,18 @@ function attachMembershipStatus(saccos, memberships) {
   });
 }
 
-async function loadPermissions(saccoId, roleKeys) {
+/* `ahead` is a permissions request that was already started for this SACCO (or an answer we already hold),
+ * so sign-in does not wait for the SACCO list before asking. */
+function askPermissions(saccoId) {
+  return http.get('/members/me/permissions', {
+    params: saccoId == null ? undefined : { sacco_id: saccoId },
+  });
+}
+
+async function loadPermissions(saccoId, roleKeys, ahead = null) {
   try {
-    const response = await http.get('/members/me/permissions', {
-      params: saccoId == null ? undefined : { sacco_id: saccoId },
-    });
+    const usable = ahead && saccoId != null && String(ahead.saccoId) === String(saccoId);
+    const response = await (usable ? ahead.request : askPermissions(saccoId));
     if (!response || !Array.isArray(response.permissions)) {
       throw new Error('The permissions response did not contain a permissions list.');
     }
@@ -98,7 +105,7 @@ async function loadPermissions(saccoId, roleKeys) {
   }
 }
 
-async function buildSession(user, saccos, selectedSaccoId = null) {
+async function buildSession(user, saccos, selectedSaccoId = null, ahead = null) {
   const saccoList = Array.isArray(saccos) ? saccos : [];
   const memberships = withJobTitles(Array.isArray(user.memberships) ? user.memberships : [], saccoList);
   const accountSaccos = attachMembershipStatus(saccoList, memberships);
@@ -136,15 +143,11 @@ async function buildSession(user, saccos, selectedSaccoId = null) {
     ? null
     : accountSaccos.find(item => String(item.id) === String(saccoId)) || null;
   const fallbackRoles = isPlatform ? ['platform'] : membership ? roleKeys : [];
-  const loadedPerms = MOCK || isSuspended(sacco)
+  const perms = MOCK || isSuspended(sacco)
     ? permissionsForRoles(fallbackRoles)
     : fallbackRoles.length
-      ? await loadPermissions(saccoId, fallbackRoles)
+      ? await loadPermissions(saccoId, fallbackRoles, ahead)
       : [];
-  // The API names no "platform" permission; the menu and route guards key on it.
-  const perms = isPlatform && !loadedPerms.includes('platform')
-    ? [...loadedPerms, 'platform']
-    : loadedPerms;
 
   return {
     user: toSessionUser(user),
@@ -159,30 +162,22 @@ async function buildSession(user, saccos, selectedSaccoId = null) {
   };
 }
 
-// GET /members/me hides is_platform_owner on purpose. Without sacco_id the
-// permissions endpoint answers 200 only to a platform owner and 400 to everyone else.
-async function probePlatformOwner() {
-  try {
-    await http.get('/members/me/permissions');
-    return true;
-  } catch (error) {
-    if (error instanceof ApiError && error.status === 400) return false;
-    throw error;
-  }
-}
-
 async function loadCurrentSession(user = null) {
-  let currentUser = user;
-  if (!currentUser) {
-    currentUser = await http.get('/members/me');
-    // Only an account with no membership can be a bare platform owner; probing
-    // everyone else would be a failing request on every page load.
-    if (!currentUser.memberships?.length && await probePlatformOwner()) {
-      currentUser = { ...currentUser, is_platform_owner: true };
-    }
+  const userRequest = user ? Promise.resolve(user) : http.get('/members/me');
+  const saccosRequest = http.get('/members/me/saccos');
+  const currentUser = await userRequest;
+  // The permissions of the SACCO the person lands in need only its id, and the account already lists it,
+  // so ask for them now, side by side with the SACCO list, not after it.
+  const landing = currentUser.is_platform_owner
+    ? null
+    : (Array.isArray(currentUser.memberships) ? currentUser.memberships : []).find(item => item.status === 'active');
+  let ahead = null;
+  if (landing) {
+    ahead = { saccoId: landing.sacco_id, request: askPermissions(landing.sacco_id) };
+    ahead.request.catch(() => {});   // if it is not used, a failure here is not an unhandled error
   }
-  const saccosResponse = await http.get('/members/me/saccos');
-  return buildSession(currentUser, listFromResponse(saccosResponse, 'saccos'));
+  const saccosResponse = await saccosRequest;
+  return buildSession(currentUser, listFromResponse(saccosResponse, 'saccos'), null, ahead);
 }
 
 export function afterSignIn(saccos, user = null, perms = []) {
@@ -251,7 +246,11 @@ export async function enterSacco(session, saccoId, pin) {
       : item
   ));
   const sourceUser = { ...session.sourceUser, memberships };
-  return buildSession(sourceUser, session.saccos, saccoId);
+  // The PIN does not change what the role may do, so reuse the permissions already loaded for this SACCO.
+  const ahead = session.perms && session.perms.length && String(session.saccoId) === String(saccoId)
+    ? { saccoId, request: Promise.resolve({ permissions: session.perms }) }
+    : null;
+  return buildSession(sourceUser, session.saccos, saccoId, ahead);
 }
 
 export async function completeJoin(session, joinResult) {
