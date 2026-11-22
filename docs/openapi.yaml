@@ -3236,6 +3236,30 @@ paths:
     post:
       summary: Accept the current rules
       description: '**Who:** an active member. Send the `version` you read. Idempotent.'
+      security:
+      - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                version: {type: integer, example: 1}
+              required: [version]
+      responses:
+        '200':
+          description: Accepted.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  rules: {$ref: '#/components/schemas/CircleRules'}
+        '401': {description: "Unauthorized.", content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
+        '403': {description: "Only members accept rules.", content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
+        '404': {description: "Not found, or no rules yet.", content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
+        '409': {description: "The rules changed; read the current version.", content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
   /api/v1/saccos/{sacco_id}/payment-details:
     parameters:
     - $ref: '#/components/parameters/sacco_id'
@@ -3323,21 +3347,79 @@ paths:
             schema:
               type: object
               properties:
-                version: {type: integer, example: 1}
-              required: [version]
+                mpesa_type:
+                  type: string
+                  enum:
+                  - paybill
+                  - till
+                mpesa_number:
+                  type: string
+                display_name:
+                  type: string
+                account_reference_hint:
+                  type: string
+                bank_name:
+                  type: string
+                bank_account_name:
+                  type: string
+                bank_account_number:
+                  type: string
+                bank_branch:
+                  type: string
+                bank_uses_shared_paybill:
+                  type: boolean
+                bank_paybill_number:
+                  type: string
+  /api/v1/saccos/{sacco_id}/payment-details/changes/{change_id}/approve:
+    parameters:
+    - $ref: '#/components/parameters/sacco_id'
+    - name: change_id
+      in: path
+      required: true
+      schema:
+        type: integer
+    post:
+      summary: Approve a waiting change so it goes live
+      description: '**Who:** holders of `payin.manage`, never the officer who proposed the change
+        (403 `PAYIN_SAME_OFFICER`). The change is named by id, so nobody approves values that changed
+        after they read them. The approver must have become an officer before the change was proposed
+        (403 `PAYIN_NEW_OFFICER`), and the proposer must still be an officer (409). Officer since is the
+        earliest `granted_at` of a title that carries `payin.manage` (editing other titles keeps it);
+        an admin with no title rows counts from when the membership was created. Audited as
+        `payin.approve`; every officer is emailed. Everyone is also emailed when someone gains
+        `payin.manage` (member add, role or title change).
+
+
+        **Rate limit:** 30 per minute.'
       responses:
         '200':
-          description: Accepted.
+          description: '`{details}`: the values now live, with `updated_at` set to the approval time.'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Not allowed, you proposed this change (`PAYIN_SAME_OFFICER`), or you became an officer after it was proposed (`PAYIN_NEW_OFFICER`).
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  rules: {$ref: '#/components/schemas/CircleRules'}
-        '401': {description: "Unauthorized.", content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
-        '403': {description: "Only members accept rules.", content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
-        '404': {description: "Not found, or no rules yet.", content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
-        '409': {description: "The rules changed; read the current version.", content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
+                $ref: '#/components/schemas/Error'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: The change was already approved or replaced, or its proposer is no longer an officer (`conflict`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '423':
+          $ref: '#/components/responses/Locked'
+        '429':
+          description: Rate limit exceeded (`rate_limited`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      security:
+      - bearerAuth: []
   /api/v1/saccos/{sacco_id}/rules/proposals:
     parameters:
     - $ref: '#/components/parameters/sacco_id'
@@ -3417,79 +3499,6 @@ paths:
         '403': {description: "Only members vote.", content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
         '404': {description: "Not found.", content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
         '409': {description: "Voting has closed.", content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
-                mpesa_type:
-                  type: string
-                  enum:
-                  - paybill
-                  - till
-                mpesa_number:
-                  type: string
-                display_name:
-                  type: string
-                account_reference_hint:
-                  type: string
-                bank_name:
-                  type: string
-                bank_account_name:
-                  type: string
-                bank_account_number:
-                  type: string
-                bank_branch:
-                  type: string
-                bank_uses_shared_paybill:
-                  type: boolean
-                bank_paybill_number:
-                  type: string
-  /api/v1/saccos/{sacco_id}/payment-details/changes/{change_id}/approve:
-    parameters:
-    - $ref: '#/components/parameters/sacco_id'
-    - name: change_id
-      in: path
-      required: true
-      schema:
-        type: integer
-    post:
-      summary: Approve a waiting change so it goes live
-      description: '**Who:** holders of `payin.manage`, never the officer who proposed the change
-        (403 `PAYIN_SAME_OFFICER`). The change is named by id, so nobody approves values that changed
-        after they read them. The approver must have become an officer before the change was proposed
-        (403 `PAYIN_NEW_OFFICER`), and the proposer must still be an officer (409). Officer since is the
-        earliest `granted_at` of a title that carries `payin.manage` (editing other titles keeps it);
-        an admin with no title rows counts from when the membership was created. Audited as
-        `payin.approve`; every officer is emailed. Everyone is also emailed when someone gains
-        `payin.manage` (member add, role or title change).
-
-
-        **Rate limit:** 30 per minute.'
-      responses:
-        '200':
-          description: '`{details}`: the values now live, with `updated_at` set to the approval time.'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          description: Not allowed, you proposed this change (`PAYIN_SAME_OFFICER`), or you became an officer after it was proposed (`PAYIN_NEW_OFFICER`).
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '409':
-          description: The change was already approved or replaced, or its proposer is no longer an officer (`conflict`).
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-        '423':
-          $ref: '#/components/responses/Locked'
-        '429':
-          description: Rate limit exceeded (`rate_limited`).
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-      security:
-      - bearerAuth: []
   /api/v1/saccos/{sacco_id}/settings:
     parameters:
     - $ref: '#/components/parameters/sacco_id'

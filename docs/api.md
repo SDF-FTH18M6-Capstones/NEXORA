@@ -1497,6 +1497,65 @@ Response **200**: Accepted.
 
 Error statuses: 401, 403, 404, 409
 
+## GET /api/v1/saccos/{sacco_id}/payment-details
+
+**Where members pay in**
+
+**Who:** any active member of the circle (`sacco.view`), or the platform owner. Returns `details` (the live values, or `null` when the circle has not set any) and `pending` (the change waiting for a second officer, or `null`). `pending` is only filled for holders of `payin.manage`; a member never sees a change before it is approved. `updated_at` is when a second officer approved the live values. `bank_manual_confirm_only` is true when the bank uses a shared paybill.
+
+**Rate limit:** 120 per minute.
+
+Parameters: `sacco_id` (path, integer)
+
+Response **200**: `{details, pending}`. Never a pending change for a member.
+
+Error statuses: 401, 403, 404, 423, 429
+
+## POST /api/v1/saccos/{sacco_id}/payment-details/changes
+
+**Propose new pay-in details**
+
+**Who:** holders of `payin.manage` (the circle admin and the finance officer). Changes nothing members see: the change waits until a different officer approves it. A newer proposal replaces the one waiting. Give M-Pesa details, bank details or both. M-Pesa: `mpesa_type` (`paybill` or `till`), `mpesa_number` (5 to 7 digits), `display_name`, optional `account_reference_hint` (paybill only). Bank: `bank_name`, `bank_account_name`, `bank_account_number` (6 to 20 digits), optional `bank_branch`. Shared bank paybill: `bank_uses_shared_paybill` true with `bank_paybill_number` (5 to 7 digits). Every proposal is audited (`payin.propose`, `payin.supersede`) and every officer is emailed. Text fields take Latin letters, ASCII digits and ordinary punctuation on one line (invisible, look-alike and non-Latin letters are refused). A circle may send 10 proposals an hour (429).
+
+**Rate limit:** 30 per minute.
+
+Parameters: `sacco_id` (path, integer)
+
+Request body:
+
+```json
+{
+  "mpesa_type": "paybill",
+  "mpesa_number": "mpesa_number",
+  "display_name": "display_name",
+  "account_reference_hint": "account_reference_hint",
+  "bank_name": "bank_name",
+  "bank_account_name": "bank_account_name",
+  "bank_account_number": "bank_account_number",
+  "bank_branch": "bank_branch",
+  "bank_uses_shared_paybill": true,
+  "bank_paybill_number": "bank_paybill_number"
+}
+```
+
+Response **201**: `{change}` with `status: pending`.
+
+Error statuses: 400, 401, 403, 404, 409, 423, 429
+
+## POST /api/v1/saccos/{sacco_id}/payment-details/changes/{change_id}/approve
+
+**Approve a waiting change so it goes live**
+
+**Who:** holders of `payin.manage`, never the officer who proposed the change (403 `PAYIN_SAME_OFFICER`). The change is named by id, so nobody approves values that changed after they read them. The approver must have become an officer before the change was proposed (403 `PAYIN_NEW_OFFICER`), and the proposer must still be an officer (409). Officer since is the earliest `granted_at` of a title that carries `payin.manage` (editing other titles keeps it); an admin with no title rows counts from when the membership was created. Audited as `payin.approve`; every officer is emailed. Everyone is also emailed when someone gains `payin.manage` (member add, role or title change).
+
+**Rate limit:** 30 per minute.
+
+Parameters: `sacco_id` (path, integer), `change_id` (path, integer)
+
+Response **200**: `{details}`: the values now live, with `updated_at` set to the approval time.
+
+Error statuses: 401, 403, 404, 409, 423, 429
+
 ## GET /api/v1/saccos/{sacco_id}/rules/proposals
 
 **Proposed rule changes**
