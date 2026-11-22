@@ -1,4 +1,5 @@
 import re
+import unicodedata
 
 # Per-transaction ceiling, in minor units: 1,000,000.00 in a 2-decimal currency.
 MAX_TRANSACTION_AMOUNT = 100_000_000
@@ -47,9 +48,14 @@ def parse_override_reason(value, low: int = 10, high: int = 140) -> str | None:
     """Optional. A reason is a plain sentence the audit trail will keep."""
     if value is None:
         return None
-    if not isinstance(value, str) or not low <= len(value.strip()) <= high:
+    # Control characters (NUL, newlines) would break or forge the audit text.
+    plain = isinstance(value, str) and not any(
+        unicodedata.category(ch).startswith("C") for ch in value.strip()
+    )
+    if not plain or not low <= len(value.strip()) <= high:
         raise InvalidRequest(
-            f"override_reason must be {low} to {high} characters saying why."
+            f"override_reason must be {low} to {high} characters saying why, "
+            "on one line."
         )
     return value.strip()
 

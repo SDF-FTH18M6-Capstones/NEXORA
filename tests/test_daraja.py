@@ -279,3 +279,51 @@ def test_only_the_owner_or_a_manager_reads_a_push(client, on):
     assert client.get(url, headers=me.headers).status_code == 200
     assert client.get(url, headers=admin.headers).status_code == 200
     assert client.get(url, headers=other.headers).status_code == 404
+
+
+def test_odd_callbacks_are_never_a_500(client, on):
+    assert client.post("/api/v1/daraja/callback/t%C3%A9st", json={}).status_code == 404
+    for body in (
+        [1],
+        "x",
+        5,
+        {"Body": []},
+        {"Body": {"stkCallback": []}},
+        {"Body": {"stkCallback": {"CallbackMetadata": {"Item": "x"}}}},
+    ):
+        assert client.post(CALLBACK, json=body).status_code == 200
+
+
+def test_a_reply_that_is_not_a_json_object_is_a_clean_502(client, on, monkeypatch):
+    import io
+    import urllib.request
+
+    daraja._call = _real_call  # exercise the real parsing, with a fake wire
+    monkeypatch.setattr(
+        urllib.request, "urlopen", lambda *a, **k: io.BytesIO(b"[1, 2]")
+    )
+    done = push(client, P(make_sacco(), MEMBER))
+    assert done.status_code == 502
+    assert db.session.query(StkPush).one().status == "failed"
+
+
+def test_a_member_cannot_stack_prompts_on_phones(client, on):
+    p = P(make_sacco(), MEMBER)
+    assert [push(client, p).status_code for _ in range(3)] == [201, 201, 201]
+    assert push(client, p).status_code == 429
+    assert len(on) == 3  # the fourth never reached M-Pesa
+
+
+def test_the_row_is_saved_before_daraja_is_called(client, on):
+    seen = []
+    real = daraja._call
+
+    def peek(path, payload=None, headers=None):
+        if "processrequest" in path:
+            db.session.rollback()
+            seen.append(db.session.query(StkPush).count())
+        return real(path, payload, headers)
+
+    daraja._call = peek
+    push(client, P(make_sacco(), MEMBER))
+    assert seen == [1]

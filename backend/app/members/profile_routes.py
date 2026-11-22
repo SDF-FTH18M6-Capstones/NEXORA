@@ -4,7 +4,7 @@ GET   /saccos/<id>/members/me/data-consent           the wording, and my consent
 POST  /saccos/<id>/members/me/data-consent           I agree (send the version I read)
 POST  /saccos/<id>/members/me/data-consent/withdraw  I withdraw: my details are erased
 GET   /saccos/<id>/members/<mid>/profile             the member, or `member.manage`
-PATCH /saccos/<id>/members/<mid>/profile             same; share capital: managers
+PATCH /saccos/<id>/members/<mid>/profile             same; managers set ID, capital
 
 Personal details need the member's own active consent (only they can give it).
 Audit rows name the fields, never the values.
@@ -24,7 +24,7 @@ from app.members import profile
 from app.models.consent import MemberDataConsent
 from app.models.membership import MembershipStatus, SaccoMembership
 from app.security.permissions import can
-from app.security.tenant import permission_scoped
+from app.security.tenant import AccessDenied, current_user, permission_scoped
 
 NEEDS_CONSENT = (
     "This member has not agreed to NEXORA keeping their personal details. They "
@@ -104,12 +104,21 @@ def give_consent(sacco_id):
 
 @saccos_bp.post("/<int:sacco_id>/members/me/data-consent/withdraw")
 @write_limit
-@permission_scoped("sacco.view")
 def withdraw_consent(sacco_id):
-    me = _my_membership()
-    if me is None:
-        return error_response(403, "Only members of this SACCO give consent.")
-    locked = _locked(sacco_id, me.id)
+    # Not permission_scoped: erasure must work after the member was deactivated
+    # or the SACCO was suspended, so it needs only their own membership.
+    try:
+        user = current_user()
+    except AccessDenied as exc:
+        return error_response(exc.status, exc.message)
+    mine = db.session.execute(
+        select(SaccoMembership.id).where(
+            SaccoMembership.user_id == user.id, SaccoMembership.sacco_id == sacco_id
+        )
+    ).scalar_one_or_none()
+    if mine is None:
+        return error_response(404, "Not found.")
+    locked = _locked(sacco_id, mine)
     consent = profile.active_consent(locked.id)
     if consent is None:
         db.session.rollback()
@@ -119,7 +128,7 @@ def withdraw_consent(sacco_id):
     erased = profile.withdraw(locked, consent)
     audit_log.record(
         sacco_id,
-        g.access.user.id,
+        user.id,
         "consent.withdraw",
         f"membership:{locked.id} erased:{','.join(erased) or 'none'}",
     )
@@ -173,9 +182,14 @@ def update_profile(sacco_id, membership_id):
             ),
             400,
         )
-    if "share_capital" in values and not manager:
+    if not manager and {"share_capital", "national_id"} & values.keys():
+        # A member editing their own national ID could probe which numbers other
+        # members hold (409 against 200), so an officer records it, and share
+        # capital.
         return error_response(
-            403, "Only an officer who manages members records share capital."
+            403,
+            "Only an officer who manages members records national IDs and "
+            "share capital.",
         )
 
     membership = _locked(sacco_id, membership_id)

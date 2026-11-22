@@ -9,11 +9,11 @@ confirms the deposit through the payment requests.
 """
 
 import hmac
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from functools import wraps
 
 from flask import current_app, g, jsonify, request
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 from sqlalchemy.exc import IntegrityError
 
 from app import daraja_bp, saccos_bp
@@ -27,6 +27,7 @@ from app.payments import daraja
 from app.security.permissions import can
 from app.security.tenant import permission_scoped
 
+MAX_PENDING = 3  # prompts a member may have waiting at once
 MAX_MINOR = 15_000_000  # KES 150,000, under M-Pesa's per-transaction limit
 ACK = {"ResultCode": 0, "ResultDesc": "Accepted"}
 
@@ -41,6 +42,10 @@ def _feature(view):
         return view(*args, **kwargs)
 
     return wrapper
+
+
+def _dict(value) -> dict:
+    return value if isinstance(value, dict) else {}
 
 
 def _json(row: StkPush) -> dict:
@@ -73,6 +78,17 @@ def start_stk_push(sacco_id):
         )
     if phone is None:
         return error_response(400, "Send a Safaricom number like 0712345678.")
+    recent = db.session.scalar(
+        select(func.count()).where(
+            StkPush.membership_id == me.id,
+            StkPush.status == "pending",
+            StkPush.created_at > datetime.now(UTC) - timedelta(minutes=15),
+        )
+    )
+    if recent >= MAX_PENDING:
+        return error_response(
+            429, "You have payment prompts waiting. Answer or wait for them first."
+        )
     row = StkPush(
         sacco_id=sacco_id,
         membership_id=me.id,
@@ -81,10 +97,13 @@ def start_stk_push(sacco_id):
         result_desc="Check your phone and enter your M-Pesa PIN.",
     )
     db.session.add(row)
-    db.session.flush()
+    # Saved before the network call, so no transaction is held open while
+    # Safaricom answers and an early callback finds its row.
+    db.session.commit()
     try:
-        reply = daraja.stk_push(phone, amount // 100, f"NX{row.id}")
-        row.checkout_request_id = reply["CheckoutRequestID"]
+        row.checkout_request_id = daraja.stk_push(phone, amount // 100, f"NX{row.id}")[
+            "CheckoutRequestID"
+        ]
     except daraja.DarajaError as exc:
         row.status, row.result_desc = "failed", str(exc)
         db.session.commit()
@@ -114,9 +133,12 @@ def get_stk_push(sacco_id, push_id):
 @daraja_bp.post("/callback/<token>")
 @_feature
 def stk_callback(token):
-    if not hmac.compare_digest(token, current_app.config["DARAJA_CALLBACK_TOKEN"]):
+    expected = current_app.config["DARAJA_CALLBACK_TOKEN"]
+    if not hmac.compare_digest(token.encode(), expected.encode()):
         return error_response(404, "Not found.")
-    data = (request.get_json(silent=True) or {}).get("Body", {}).get("stkCallback", {})
+    data = _dict(
+        _dict(_dict(request.get_json(silent=True)).get("Body")).get("stkCallback")
+    )
     row = db.session.execute(
         select(StkPush)
         .where(StkPush.checkout_request_id == str(data.get("CheckoutRequestID")))
@@ -125,9 +147,10 @@ def stk_callback(token):
     if row is None or row.status != "pending":
         db.session.rollback()
         return jsonify(ACK)  # unknown or already answered: nothing to change
+    meta = _dict(data.get("CallbackMetadata")).get("Item")
     items = {
         i.get("Name"): i.get("Value")
-        for i in (data.get("CallbackMetadata") or {}).get("Item", [])
+        for i in (meta if isinstance(meta, list) else [])
         if isinstance(i, dict)
     }
     paid = data.get("ResultCode") == 0

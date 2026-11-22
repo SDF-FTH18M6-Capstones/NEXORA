@@ -46,9 +46,12 @@ def _call(path: str, payload=None, headers=None) -> dict:
     )
     try:
         with urllib.request.urlopen(request, timeout=10) as reply:
-            return json.load(reply)
+            body = json.load(reply)
     except (urllib.error.URLError, TimeoutError, ValueError) as exc:
         raise DarajaError("M-Pesa did not answer. Try again in a moment.") from exc
+    if not isinstance(body, dict):
+        raise DarajaError("M-Pesa sent an answer Nexora cannot read.")
+    return body
 
 
 def _bearer() -> dict:

@@ -71,6 +71,13 @@ def get(client, actor, target):
     return client.get(base(actor, f"/{target.mid}/profile"), headers=actor.headers)
 
 
+def fill(client, admin, me):
+    """Everything in FULL: the member's own details, then the ID an officer records."""
+    own = {k: v for k, v in FULL.items() if k != "national_id"}
+    assert patch(client, me, me, own).status_code == 200
+    return patch(client, admin, me, {"national_id": ID})
+
+
 def audit(action):
     db.session.expire_all()
     return db.session.query(AuditLog).filter_by(action=action).all()
@@ -136,7 +143,7 @@ def test_only_a_member_can_give_consent_and_only_for_themselves(client, world):
 def test_withdrawing_erases_the_four_details_and_keeps_the_rest(client, world):
     _, admin, me, _ = world
     consent(client, me)
-    assert patch(client, me, me, FULL).status_code == 200
+    assert fill(client, admin, me).status_code == 200
     assert patch(client, admin, me, {"share_capital": 500000}).status_code == 200
 
     done = client.post(base(me, "/me/data-consent/withdraw"), headers=me.headers)
@@ -169,7 +176,9 @@ def test_withdrawing_erases_the_four_details_and_keeps_the_rest(client, world):
 
 def test_personal_details_need_the_members_consent_first(client, world):
     _, admin, me, _ = world
-    blocked = patch(client, me, me, FULL)
+    blocked = patch(
+        client, me, me, {k: v for k, v in FULL.items() if k != "national_id"}
+    )
     assert blocked.status_code == 409
     assert blocked.json["error"]["code"] == "CONSENT_REQUIRED"
     assert patch(client, admin, me, FULL).status_code == 409  # an admin cannot stand in
@@ -183,16 +192,15 @@ def test_personal_details_need_the_members_consent_first(client, world):
 def test_the_member_and_their_admin_can_read_and_write_with_consent(client, world):
     _, admin, me, _ = world
     consent(client, me)
-    done = patch(client, me, me, FULL)
+    done = fill(client, admin, me)
     assert done.status_code == 200, done.json
-    assert {k: done.json[k] for k in FULL} == FULL
     assert done.json["consent"]["notice_version"] == 1
     assert {k: get(client, admin, me).json[k] for k in FULL} == FULL
     fix = patch(client, admin, me, {"full_name": "Wanjiru W. Mwangi"})
     assert fix.status_code == 200 and fix.json["full_name"] == "Wanjiru W. Mwangi"
 
     rows = audit("member.profile_update")
-    assert len(rows) == 2
+    assert len(rows) == 3  # member, officer (ID), officer (name fix)
     everything = " ".join(r.target for r in rows)
     assert "national_id" in everything
     for secret in (ID, "Mwangi", "1990-06-15"):
@@ -204,7 +212,7 @@ def test_other_members_cannot_read_or_write_it_and_cannot_set_share_capital(
 ):
     sacco_id, admin, me, other = world
     consent(client, me)
-    patch(client, me, me, FULL)
+    fill(client, admin, me)
     assert get(client, other, me).status_code == 403
     assert patch(client, other, me, {"full_name": "Eve Hacker"}).status_code == 403
     secretary = P(sacco_id, STAFF)  # a staff title that only views members
@@ -215,9 +223,9 @@ def test_other_members_cannot_read_or_write_it_and_cannot_set_share_capital(
 
 
 def test_the_platform_owner_does_not_read_personal_details(client, world):
-    sacco_id, _, me, _ = world
+    sacco_id, admin, me, _ = world
     consent(client, me)
-    patch(client, me, me, FULL)
+    fill(client, admin, me)
     owner = P(make_sacco(), ADMIN, owner=True)
     resp = client.get(base(me, f"/{me.mid}/profile"), headers=owner.headers)
     assert resp.status_code in (403, 404)
@@ -273,7 +281,8 @@ def test_a_membership_id_from_another_sacco_is_404_not_data(client, world):
 def test_a_bad_value_is_400_with_the_field_named(client, world, field, value):
     _, admin, me, _ = world
     consent(client, me)
-    resp = patch(client, admin if field == "share_capital" else me, me, {field: value})
+    actor = admin if field in ("share_capital", "national_id") else me
+    resp = patch(client, actor, me, {field: value})
     assert resp.status_code == 400
     assert field in resp.json["error"]["fields"]
     assert audit("member.profile_update") == []
@@ -289,32 +298,65 @@ def test_unknown_or_empty_bodies_are_400(client, world):
 
 
 def test_a_national_id_belongs_to_one_member_of_a_sacco(client, world):
-    sacco_id, _, me, other = world
+    _, admin, me, other = world
     consent(client, me)
     consent(client, other)
-    patch(client, me, me, {"national_id": ID})
-    clash = patch(client, other, other, {"national_id": ID})
-    assert clash.status_code == 409
-    assert get(client, other, other).json["national_id"] is None
+    assert patch(client, admin, me, {"national_id": ID}).status_code == 200
+    assert patch(client, admin, other, {"national_id": ID}).status_code == 409
+    assert get(client, admin, other).json["national_id"] is None
     # The same number in a different SACCO is a different record.
-    away = P(make_sacco(), MEMBER)
+    elsewhere = make_sacco()
+    away_admin, away = P(elsewhere, ADMIN), P(elsewhere, MEMBER)
     consent(client, away)
-    assert patch(client, away, away, {"national_id": ID}).status_code == 200
+    assert patch(client, away_admin, away, {"national_id": ID}).status_code == 200
+
+
+def test_a_member_cannot_set_a_national_id_so_cannot_probe_for_taken_ones(
+    client, world
+):
+    _, admin, me, other = world
+    consent(client, me)
+    consent(client, other)
+    patch(client, admin, other, {"national_id": ID})
+    for value in (ID, "87654321"):  # taken and free answer the same way
+        assert patch(client, me, me, {"national_id": value}).status_code == 403
+
+
+def test_a_deactivated_member_can_still_withdraw_and_erase(client, world):
+    _, admin, me, _ = world
+    consent(client, me)
+    fill(client, admin, me)
+    row = db.session.get(SaccoMembership, me.mid)
+    row.status = MembershipStatus.INACTIVE
+    db.session.commit()
+    done = client.post(base(me, "/me/data-consent/withdraw"), headers=me.headers)
+    assert done.status_code == 200, done.json
+    db.session.expire_all()
+    assert db.session.get(SaccoMembership, me.mid).national_id is None
+
+
+def test_withdrawing_needs_a_login_and_a_membership_of_that_sacco(client, world):
+    _, _, me, _ = world
+    url = base(me, "/me/data-consent/withdraw")
+    assert client.post(url).status_code == 401
+    stranger = P(make_sacco(), MEMBER)
+    assert client.post(url, headers=stranger.headers).status_code == 404
 
 
 def test_saving_the_same_values_again_writes_no_audit_row(client, world):
-    _, _, me, _ = world
+    _, admin, me, _ = world
     consent(client, me)
-    patch(client, me, me, FULL)
+    admin_fill = patch(client, admin, me, {"share_capital": 5})
+    assert admin_fill.status_code == 200
     before = len(audit("member.profile_update"))
-    assert patch(client, me, me, FULL).status_code == 200
+    assert patch(client, admin, me, {"share_capital": 5}).status_code == 200
     assert len(audit("member.profile_update")) == before
 
 
 def test_the_member_list_never_carries_personal_details(client, world):
     sacco_id, admin, me, _ = world
     consent(client, me)
-    patch(client, me, me, FULL)
+    fill(client, admin, me)
     patch(client, admin, me, {"share_capital": 100})
     listing = client.get(base(admin, ""), headers=admin.headers).get_data(as_text=True)
     one = client.get(base(admin, f"/{me.mid}"), headers=admin.headers).get_data(

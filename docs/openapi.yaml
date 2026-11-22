@@ -2645,7 +2645,7 @@ paths:
         **Loan cap:** reversing a deposit (or interest) takes money off the account. If that would leave the
         member''s savings below what their open loan needs under the SACCO''s cap multiple, it is refused
         (409 `LOAN_OVER_CAP`). A SACCO admin (`savings.reverse_override`) may force it by sending
-        `override_reason` (10 to 140 characters); the reversal is then audited as
+        `override_reason` (10 to 140 characters, one line, no control characters); the reversal is then audited as
         `savings.reverse_override` with the reason. Anyone else who sends a reason for a blocked reversal
         gets 403. A reason sent when nothing blocks the reversal is ignored.'
       requestBody:
@@ -3669,7 +3669,7 @@ paths:
     - $ref: '#/components/parameters/sacco_id'
     post:
       summary: Withdraw consent; my personal details are erased
-      description: '**Who:** the member. Ends the consent and erases full name, national ID, gender and date of
+      description: '**Who:** the member. Works for the member's own membership whatever its status, even after deactivation or suspension. Ends the consent and erases full name, national ID, gender and date of
         birth at once. Savings, loans, share capital and the audit trail stay. Audited as
         `consent.withdraw` with the names of the erased fields, never the values.
 
@@ -3724,8 +3724,9 @@ paths:
       - bearerAuth: []
     patch:
       summary: Set a member's personal details or share capital
-      description: '**Who:** the member themself or a holder of `member.manage`; `share_capital` only by a
-        holder of `member.manage` (403 otherwise). Send any of `full_name` (2 to 120 letters, spaces, `''`
+      description: '**Who:** the member themself or a holder of `member.manage`; `national_id` and
+        `share_capital` only by a holder of `member.manage` (403 otherwise: a member who could set their own
+        ID could probe which numbers other members hold). Send any of `full_name` (2 to 120 letters, spaces, `''`
         `.` `-`), `national_id` (7 or 8 digits, unique within the SACCO), `gender` (`female`, `male`,
         `other`), `date_of_birth` (`YYYY-MM-DD`, 1900 to today), `share_capital` (whole minor units, zero
         or more). `null` or an empty string clears a field. Every field is optional. Setting a personal
@@ -3779,7 +3780,7 @@ paths:
       description: '**Who:** an active member (`savings.request`). **Sandbox only and off by default:** with
         `DARAJA_ENABLED` unset this route answers 404 as if it did not exist, and the app refuses to start
         with it on in production. Send `amount` (minor units, whole shillings, KES 1 to KES 150,000) and
-        `phone` (07.., 01.. or 254..). The member then enters their M-Pesa PIN on the phone. Nexora holds no
+        `phone` (07.., 01.. or 254..). At most 3 prompts may wait per member (429). The member then enters their M-Pesa PIN on the phone. Nexora holds no
         funds and credits nothing: an officer still confirms the deposit through the payment requests.
 
 

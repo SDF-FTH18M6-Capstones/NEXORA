@@ -108,9 +108,7 @@ def test_a_reversal_that_keeps_savings_above_the_cap_needs_no_override(schema_ap
     assert done.balance == 4_000
     # An override reason nobody needed is not an override: nothing is audited.
     again = service.deposit(s.admin.id, s.account.id, 500, "cap-d3")
-    reversals.reverse_transaction(
-        s.admin.id, again.id, _ref(), override_reason=REASON
-    )
+    reversals.reverse_transaction(s.admin.id, again.id, _ref(), override_reason=REASON)
     assert "savings.reverse_override" not in _actions(s.sacco.id)
 
 
@@ -151,3 +149,17 @@ def test_the_endpoint_answers_409_then_201_with_a_reason_and_400_for_a_bad_one(
         headers=_headers(s.admin),
     )
     assert done.status_code == 201, done.json
+
+
+@pytest.mark.parametrize(
+    "bad", ["ok reason\x00 here", "line one\nline two here", "ok\u202ereason here"]
+)
+def test_an_override_reason_with_control_or_hidden_characters_is_400(schema_app, bad):
+    s, deposit, _ = _loan_setup()
+    done = schema_app.test_client().post(
+        _url(deposit.id),
+        json={"reference": _ref(), "override_reason": bad},
+        headers=_headers(s.admin),
+    )
+    assert done.status_code == 400
+    assert "savings.reverse_override" not in _actions(s.sacco.id)
