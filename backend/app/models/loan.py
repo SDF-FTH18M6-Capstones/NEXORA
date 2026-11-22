@@ -27,6 +27,7 @@ from sqlalchemy import (
     ForeignKeyConstraint,
     Index,
     Integer,
+    String,
     Text,
     UniqueConstraint,
     func,
@@ -117,6 +118,11 @@ class Loan(db.Model):
             "term_months IS NULL OR term_months > 0",
             name="ck_loans_term_months_positive",
         ),
+        CheckConstraint(
+            "sector IN ('agriculture', 'trade', 'manufacturing', 'transport', "
+            "'housing', 'education', 'health', 'other')",
+            name="ck_loans_sector",
+        ),
         # One open loan per member (agreed schema rule).
         Index(
             "uq_loans_one_open_per_member",
@@ -162,6 +168,13 @@ class Loan(db.Model):
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    # What the loan is for, for the SACCO's reporting. Optional for now.
+    sector: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    # When the borrower confirmed they were shown the cost of this loan (interest,
+    # fines, term) before asking. Recorded only; optional for now.
+    disclosure_acknowledged_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
     )
 
 

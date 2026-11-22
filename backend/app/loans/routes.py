@@ -16,9 +16,11 @@ from app.savings.routes import _body, signed_in
 from app.savings.validation import (
     InvalidRequest,
     parse_amount,
+    parse_flag,
     parse_id,
     parse_money,
     parse_reference,
+    parse_sector,
 )
 from app.security.permissions import can
 from app.security.tenant import AccessDenied, current_user, sacco_access
@@ -41,7 +43,11 @@ def create_loan(user_id: int, sacco_id: int):
     term = body.get("term_months")
     if isinstance(term, bool) or not isinstance(term, int) or not 1 <= term <= 360:
         raise InvalidRequest("term_months must be a whole number from 1 to 360.")
-    view = service.request_loan(user_id, sacco_id, principal, term)
+    sector = parse_sector(body.get("sector"))
+    disclosure = parse_flag(
+        body.get("disclosure_acknowledged"), "disclosure_acknowledged"
+    )
+    view = service.request_loan(user_id, sacco_id, principal, term, sector, disclosure)
     return jsonify(_serialize(view)), 201
 
 
@@ -73,9 +79,7 @@ def list_loans(sacco_id: int):
         stmt = stmt.where(Loan.membership_id == access.membership.id)
     loans = (
         db.session.execute(
-            stmt.order_by(Loan.id.desc())
-            .limit(per_page)
-            .offset((page - 1) * per_page)
+            stmt.order_by(Loan.id.desc()).limit(per_page).offset((page - 1) * per_page)
         )
         .scalars()
         .all()

@@ -1,7 +1,7 @@
 """Loan lifecycle service: request, multi-step approval, disbursement, repayment."""
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
@@ -58,6 +58,8 @@ class LoanView:
     disbursed_at: datetime | None
     disbursement_transaction_id: int | None
     created_at: datetime
+    sector: str | None = None
+    disclosure_acknowledged_at: datetime | None = None
 
 
 @dataclass(frozen=True)
@@ -131,12 +133,19 @@ def _loan_view(loan: Loan) -> LoanView:
         disbursed_at=loan.disbursed_at,
         disbursement_transaction_id=loan.disbursement_transaction_id,
         created_at=loan.created_at,
+        sector=loan.sector,
+        disclosure_acknowledged_at=loan.disclosure_acknowledged_at,
     )
 
 
 @_atomic
 def request_loan(
-    user_id: int, sacco_id: int, principal: int, term_months: int | None = None
+    user_id: int,
+    sacco_id: int,
+    principal: int,
+    term_months: int | None = None,
+    sector: str | None = None,
+    disclosure_acknowledged: bool = False,
 ) -> LoanView:
     user = db.session.get(User, user_id)
     actor = _membership(user_id, sacco_id)
@@ -180,6 +189,10 @@ def request_loan(
         required_approvals=required_approvals,
         status=LoanStatus.REQUESTED,
         requested_by_membership_id=actor.id,
+        sector=sector,
+        disclosure_acknowledged_at=datetime.now(UTC)
+        if disclosure_acknowledged
+        else None,
     )
     db.session.add(loan)
     try:

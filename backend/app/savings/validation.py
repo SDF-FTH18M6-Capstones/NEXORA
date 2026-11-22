@@ -1,5 +1,3 @@
-
-
 import re
 
 # Per-transaction ceiling, in minor units: 1,000,000.00 in a 2-decimal currency.
@@ -54,6 +52,36 @@ def parse_override_reason(value, low: int = 10, high: int = 140) -> str | None:
             f"override_reason must be {low} to {high} characters saying why."
         )
     return value.strip()
+
+
+LOAN_SECTORS = (
+    "agriculture",
+    "trade",
+    "manufacturing",
+    "transport",
+    "housing",
+    "education",
+    "health",
+    "other",
+)
+
+
+def parse_sector(value) -> str | None:
+    """Optional: what the loan is for. null or "" means not given."""
+    if value is None or value == "":
+        return None
+    if value not in LOAN_SECTORS:
+        raise InvalidRequest(f"sector must be one of: {', '.join(LOAN_SECTORS)}.")
+    return value
+
+
+def parse_flag(value, name: str) -> bool:
+    """Optional true/false, false when absent."""
+    if value is None:
+        return False
+    if type(value) is not bool:
+        raise InvalidRequest(f"{name} must be true or false.")
+    return value
 
 
 def parse_open_account(body: dict) -> int:

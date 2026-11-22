@@ -1834,7 +1834,9 @@ Response **200**: A page of loans.
       "disbursed_by_membership_id": 1,
       "disbursed_at": "2026-11-18T09:00:00Z",
       "disbursement_transaction_id": 1,
-      "created_at": "2026-11-18T09:00:00Z"
+      "created_at": "2026-11-18T09:00:00Z",
+      "sector": "agriculture",
+      "disclosure_acknowledged_at": "2026-11-18T09:00:00Z"
     }
   ],
   "page": 1,
@@ -1848,7 +1850,7 @@ Error statuses: 400, 401, 403, 404, 423
 
 **Request a loan**
 
-**Who:** an active member with a savings account (`loan.request`). One open loan per member (409). Within both the SACCO cap and the savings multiple the loan needs 1 approval; above either it needs the SACCO's `required_approvals` (a cap of 0 sends every loan there). The count is frozen on the loan.
+**Who:** an active member with a savings account (`loan.request`). One open loan per member (409). Within both the SACCO cap and the savings multiple the loan needs 1 approval; above either it needs the SACCO's `required_approvals` (a cap of 0 sends every loan there). The count is frozen on the loan. Optional `sector` (one of the Loan `sector` values; null or empty means not given) and `disclosure_acknowledged` (true records `disclosure_acknowledged_at`); anything else is 400. Neither is required.
 
 Parameters: `sacco_id` (path, integer)
 
@@ -1877,7 +1879,9 @@ Response **201**: The new loan, status `requested`.
   "disbursed_by_membership_id": 1,
   "disbursed_at": "2026-11-18T09:00:00Z",
   "disbursement_transaction_id": 1,
-  "created_at": "2026-11-18T09:00:00Z"
+  "created_at": "2026-11-18T09:00:00Z",
+  "sector": "agriculture",
+  "disclosure_acknowledged_at": "2026-11-18T09:00:00Z"
 }
 ```
 
@@ -1907,7 +1911,9 @@ Response **200**: The loan, plus a `decisions` list.
   "disbursed_by_membership_id": 1,
   "disbursed_at": "2026-11-18T09:00:00Z",
   "disbursement_transaction_id": 1,
-  "created_at": "2026-11-18T09:00:00Z"
+  "created_at": "2026-11-18T09:00:00Z",
+  "sector": "agriculture",
+  "disclosure_acknowledged_at": "2026-11-18T09:00:00Z"
 }
 ```
 
@@ -1947,7 +1953,9 @@ Response **201**: The loan after the decision.
   "disbursed_by_membership_id": 1,
   "disbursed_at": "2026-11-18T09:00:00Z",
   "disbursement_transaction_id": 1,
-  "created_at": "2026-11-18T09:00:00Z"
+  "created_at": "2026-11-18T09:00:00Z",
+  "sector": "agriculture",
+  "disclosure_acknowledged_at": "2026-11-18T09:00:00Z"
 }
 ```
 
@@ -1985,7 +1993,9 @@ Response **201**: The loan, status `disbursed`.
   "disbursed_by_membership_id": 1,
   "disbursed_at": "2026-11-18T09:00:00Z",
   "disbursement_transaction_id": 1,
-  "created_at": "2026-11-18T09:00:00Z"
+  "created_at": "2026-11-18T09:00:00Z",
+  "sector": "agriculture",
+  "disclosure_acknowledged_at": "2026-11-18T09:00:00Z"
 }
 ```
 

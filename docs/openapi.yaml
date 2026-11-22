@@ -414,6 +414,16 @@ components:
         created_at:
           type: string
           format: date-time
+        sector:
+          type: string
+          nullable: true
+          enum: [agriculture, trade, manufacturing, transport, housing, education, health, other]
+          description: What the loan is for. Optional; set when the loan is requested.
+        disclosure_acknowledged_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: When the borrower confirmed they were shown the cost of the loan. Optional; recorded only.
     SupportAccess:
       type: object
       properties:
@@ -3869,7 +3879,21 @@ paths:
       description: '**Who:** an active member with a savings account (`loan.request`). One open loan per
         member (409). Within both the SACCO cap and the savings multiple the loan needs 1 approval; above
         either it needs the SACCO''s `required_approvals` (a cap of 0 sends every loan there). The count is
-        frozen on the loan.'
+        frozen on the loan. Optional `sector` (one of the Loan `sector` values; null or empty means not
+        given) and `disclosure_acknowledged` (true records `disclosure_acknowledged_at`); anything else is
+        400. Neither is required.'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                principal: {type: integer, description: Minor units.}
+                term_months: {type: integer, minimum: 1, maximum: 360}
+                sector: {type: string, nullable: true}
+                disclosure_acknowledged: {type: boolean}
+              required: [principal, term_months]
       responses:
         '201':
           description: The new loan, status `requested`.
