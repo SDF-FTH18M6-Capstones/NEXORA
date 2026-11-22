@@ -111,7 +111,7 @@ servers:
       description: '**Who:** the member themselves. Newest first.
 
 
-        **Rate limit:** 30 per minute.'
+        **Rate limit:** 120 per minute.'
       parameters:
       - name: sacco_id
         in: query

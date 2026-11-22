@@ -3,7 +3,7 @@
 from flask import jsonify, request
 
 from app import savings_bp
-from app.auth.limits import money_limit, write_limit
+from app.auth.limits import money_limit, read_limit, write_limit
 from app.savings import request_service
 from app.savings.request_validation import KINDS, parse_request
 from app.savings.routes import _body, signed_in
@@ -54,7 +54,7 @@ def create_request(user_id: int):
 
 
 @savings_bp.get("/requests/me")
-@write_limit
+@read_limit
 @signed_in
 def my_requests(user_id: int):
     sacco_id = _query_id("sacco_id")
