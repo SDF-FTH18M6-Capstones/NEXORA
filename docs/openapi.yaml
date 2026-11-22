@@ -3303,7 +3303,7 @@ paths:
         '401': {description: "Unauthorized.", content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
         '403': {description: "Forbidden.", content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
         '404': {description: "Not found.", content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
-        '409': {description: "Still locked, nothing to change yet, or a proposal is already open.", content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
+        '409': {description: "Still locked, nothing to change yet, a proposal is already open, nobody has accepted the current rules, or fewer than half of all active members have (the change could not pass).", content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
   /api/v1/saccos/{sacco_id}/rules/proposals/{proposal_id}/votes:
     parameters:
     - $ref: '#/components/parameters/sacco_id'
@@ -3313,7 +3313,7 @@ paths:
       schema: {type: integer}
     post:
       summary: Vote on a proposed change
-      description: '**Who:** an active member. A strict majority of all active members adopts it as the next version and starts a new cycle; it is rejected once it can no longer win. A member may change their vote while it is open.'
+      description: '**Who:** an active member. More than half of ALL active members counted when it was proposed (not only those who accepted the rules) must approve; then it is adopted as the next version and starts a new cycle. Members who had accepted the previous version stay accepted. It is rejected once it can no longer win. A member may change their vote while it is open.'
       security:
       - bearerAuth: []
       requestBody:

@@ -135,6 +135,7 @@ def _proposal_json(proposal, membership):
             for k, v in proposal.fields.items()
         },
         "electorate_size": len(proposal.electorate),
+        "active_members": proposal.active_members,
         "approvals": yes,
         "rejections": no,
         "my_vote": None if mine is None else mine.approve,
@@ -187,11 +188,27 @@ def propose_rules(sacco_id):
     values, errors = logic.validate_rules(_body())
     if errors:
         return invalid(errors)
+    electorate = logic.electorate(sacco_id, current.id)
+    active = logic.active_member_count(sacco_id)
+    if not electorate:
+        return error_response(
+            409,
+            "Nobody has accepted the current rules yet, so nobody can vote on a "
+            "change. Ask the members to accept them first.",
+        )
+    if not logic.can_still_pass(len(electorate), 0, active):
+        return error_response(
+            409,
+            f"Only {len(electorate)} of {active} members have accepted the current "
+            "rules. A change needs more than half of all members to approve it, so "
+            "it cannot pass yet. Ask the others to accept the rules first.",
+        )
     proposal = RulesProposal(
         sacco_id=sacco_id,
         base_version=current.version,
         fields=_json_fields(values),
-        electorate=logic.electorate(sacco_id, current.id),
+        electorate=electorate,
+        active_members=active,
         proposed_by_user_id=g.access.user.id,
     )
     db.session.add(proposal)
@@ -250,9 +267,8 @@ def vote_on_proposal(sacco_id, proposal_id):
     else:
         vote.approve = approve
     db.session.flush()
-    members = len(proposal.electorate)
     yes, no = _tally(proposal)
-    if yes * 2 > members:  # a strict majority of the electorate frozen when it opened
+    if yes * 2 > proposal.active_members:  # more than half of ALL active members
         row = logic.publish_rules(
             sacco_id, _from_json(proposal.fields), proposal.proposed_by_user_id
         )
@@ -260,7 +276,9 @@ def vote_on_proposal(sacco_id, proposal_id):
         _audit(
             sacco_id, g.access.user.id, "rules.adopt", f"rules:{row.id} v{row.version}"
         )
-    elif no * 2 >= members:  # it can no longer win
+    elif not logic.can_still_pass(
+        len(proposal.electorate), no, proposal.active_members
+    ):  # it can no longer win
         proposal.status = "rejected"
         _audit(sacco_id, g.access.user.id, "rules.reject", f"proposal:{proposal.id}")
     db.session.commit()

@@ -1558,7 +1558,7 @@ Error statuses: 400, 401, 403, 404, 409
 
 **Vote on a proposed change**
 
-**Who:** an active member. A strict majority of all active members adopts it as the next version and starts a new cycle; it is rejected once it can no longer win. A member may change their vote while it is open.
+**Who:** an active member. More than half of ALL active members counted when it was proposed (not only those who accepted the rules) must approve; then it is adopted as the next version and starts a new cycle. Members who had accepted the previous version stay accepted. It is rejected once it can no longer win. A member may change their vote while it is open.
 
 Parameters: `sacco_id` (path, integer), `proposal_id` (path, integer)
 

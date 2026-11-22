@@ -7,7 +7,7 @@ import calendar
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal, InvalidOperation
 
-from sqlalchemy import func, select
+from sqlalchemy import func, literal, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from app.errors import (
@@ -231,6 +231,23 @@ def electorate(sacco_id: int, rules_id: int) -> list[int]:
     )
 
 
+def active_member_count(sacco_id: int) -> int:
+    return db.session.scalar(
+        select(func.count())
+        .select_from(SaccoMembership)
+        .where(
+            SaccoMembership.sacco_id == sacco_id,
+            SaccoMembership.status == MembershipStatus.ACTIVE,
+        )
+    )
+
+
+def can_still_pass(voters: int, rejections: int, active: int) -> bool:
+    """A change needs more than half of ALL active members at proposal time, so
+    members who did not accept the current rules count against it."""
+    return (voters - rejections) * 2 > active
+
+
 def current_rules(sacco_id: int) -> CircleRules | None:
     return db.session.execute(
         select(CircleRules)
@@ -264,6 +281,20 @@ def publish_rules(sacco_id: int, values: dict, user_id: int | None) -> CircleRul
     )
     db.session.add(row)
     db.session.flush()
+    if current is not None:
+        # Members who accepted the last version stay accepted, so adopting a new
+        # version does not stop every one of them from borrowing until they all
+        # open the app again. They can still read it and vote on the next change.
+        db.session.execute(
+            pg_insert(RulesAcceptance)
+            .from_select(
+                ["membership_id", "rules_id"],
+                select(RulesAcceptance.membership_id, literal(row.id)).where(
+                    RulesAcceptance.rules_id == current.id
+                ),
+            )
+            .on_conflict_do_nothing()
+        )
     # One source of truth: the loan service reads the multiple from the settings
     # row when a circle has none, so keep that row in step.
     settings = db.session.get(SaccoSettings, sacco_id)

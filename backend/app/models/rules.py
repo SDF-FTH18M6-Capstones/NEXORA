@@ -110,6 +110,7 @@ class RulesProposal(db.Model):
         CheckConstraint(
             "status IN ('open', 'adopted', 'rejected')", name="ck_rules_proposal_status"
         ),
+        CheckConstraint("active_members >= 0", name="ck_rules_proposal_active_members"),
         # One open vote per circle, enforced by the database.
         Index(
             "uq_rules_one_open_proposal",
@@ -127,6 +128,8 @@ class RulesProposal(db.Model):
     fields: Mapped[dict] = mapped_column(JSONB, nullable=False)
     # Membership ids that may vote, frozen when the proposal opens.
     electorate: Mapped[list] = mapped_column(JSONB, nullable=False)
+    # Every active member when it opened: a change needs more than half of these.
+    active_members: Mapped[int] = mapped_column(Integer, nullable=False)
     proposed_by_user_id: Mapped[int | None] = mapped_column(
         ForeignKey("users.id"), nullable=True
     )
