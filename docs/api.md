@@ -539,7 +539,10 @@ Response **200**: All SACCOs.
       "currency": "currency",
       "status": "active",
       "member_count": 1,
-      "created_at": "2026-11-18T09:00:00Z"
+      "created_at": "2026-11-18T09:00:00Z",
+      "registration_number": "registration_number",
+      "sasra_licence_number": "sasra_licence_number",
+      "registration_date": "2026-11-18"
     }
   ]
 }
@@ -555,7 +558,7 @@ Error statuses: 401, 403, 429
 
 **Rate limit:** 30 per minute.
 
-`currency` defaults to KES. The name is unique, up to 255 characters, with no control or zero-width characters.
+`currency` defaults to KES. The name is unique, up to 255 characters, with no control or zero-width characters. Optional: `registration_number`, `sasra_licence_number`, `registration_date` (see the Sacco schema); a bad value is 400 with the field named, a number already used by another SACCO is 409.
 
 Request body:
 
@@ -575,7 +578,10 @@ Response **201**: Created.
   "currency": "currency",
   "status": "active",
   "member_count": 1,
-  "created_at": "2026-11-18T09:00:00Z"
+  "created_at": "2026-11-18T09:00:00Z",
+  "registration_number": "registration_number",
+  "sasra_licence_number": "sasra_licence_number",
+  "registration_date": "2026-11-18"
 }
 ```
 
@@ -600,7 +606,10 @@ Response **200**: The SACCO.
   "currency": "currency",
   "status": "active",
   "member_count": 1,
-  "created_at": "2026-11-18T09:00:00Z"
+  "created_at": "2026-11-18T09:00:00Z",
+  "registration_number": "registration_number",
+  "sasra_licence_number": "sasra_licence_number",
+  "registration_date": "2026-11-18"
 }
 ```
 
@@ -608,13 +617,13 @@ Error statuses: 401, 403, 404, 423, 429
 
 ## PATCH /api/v1/saccos/{sacco_id}
 
-**Rename a SACCO**
+**Rename a SACCO or record its registration details**
 
 **Who:** holders of `sacco.update` (the SACCO admin), or the platform owner
 
 **Rate limit:** 30 per minute.
 
-Only `name` can be sent.
+Send any of `name`, `registration_number`, `sasra_licence_number`, `registration_date`; nothing else (400). `null` or an empty string clears a registration field. A bad value is 400 with `error.fields`; a number another SACCO already uses is 409. Audited as `sacco.rename` and `sacco.registration_update` (field names only, never the numbers).
 
 Parameters: `sacco_id` (path, integer)
 
@@ -635,7 +644,10 @@ Response **200**: Updated.
   "currency": "currency",
   "status": "active",
   "member_count": 1,
-  "created_at": "2026-11-18T09:00:00Z"
+  "created_at": "2026-11-18T09:00:00Z",
+  "registration_number": "registration_number",
+  "sasra_licence_number": "sasra_licence_number",
+  "registration_date": "2026-11-18"
 }
 ```
 
@@ -662,7 +674,10 @@ Response **200**: The SACCO, now active.
   "currency": "currency",
   "status": "active",
   "member_count": 1,
-  "created_at": "2026-11-18T09:00:00Z"
+  "created_at": "2026-11-18T09:00:00Z",
+  "registration_number": "registration_number",
+  "sasra_licence_number": "sasra_licence_number",
+  "registration_date": "2026-11-18"
 }
 ```
 
@@ -689,7 +704,10 @@ Response **200**: The SACCO, now suspended.
   "currency": "currency",
   "status": "active",
   "member_count": 1,
-  "created_at": "2026-11-18T09:00:00Z"
+  "created_at": "2026-11-18T09:00:00Z",
+  "registration_number": "registration_number",
+  "sasra_licence_number": "sasra_licence_number",
+  "registration_date": "2026-11-18"
 }
 ```
 

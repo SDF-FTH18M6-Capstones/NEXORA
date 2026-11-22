@@ -537,6 +537,21 @@ components:
         created_at:
           type: string
           format: date-time
+        registration_number:
+          type: string
+          nullable: true
+          example: CS/12345
+          description: Optional. 3 to 40 characters (letters, digits, space, `.` `/` `-`), unique among SACCOs in any case. Recorded as given, not checked with any register.
+        sasra_licence_number:
+          type: string
+          nullable: true
+          example: SASRA/DT/0042/2024
+          description: Optional. Same format and uniqueness as `registration_number`.
+        registration_date:
+          type: string
+          format: date
+          nullable: true
+          description: Optional, `YYYY-MM-DD`, from 1900-01-01 up to today.
     Member:
       type: object
       properties:
@@ -1625,7 +1640,8 @@ paths:
 
 
         `currency` defaults to KES. The name is unique, up to 255 characters, with no control or zero-width
-        characters.'
+        characters. Optional: `registration_number`, `sasra_licence_number`, `registration_date` (see the
+        Sacco schema); a bad value is 400 with the field named, a number already used by another SACCO is 409.'
       responses:
         '201':
           description: Created.
@@ -1732,14 +1748,17 @@ paths:
       security:
       - bearerAuth: []
     patch:
-      summary: Rename a SACCO
+      summary: Rename a SACCO or record its registration details
       description: '**Who:** holders of `sacco.update` (the SACCO admin), or the platform owner
 
 
         **Rate limit:** 30 per minute.
 
 
-        Only `name` can be sent.'
+        Send any of `name`, `registration_number`, `sasra_licence_number`, `registration_date`; nothing
+        else (400). `null` or an empty string clears a registration field. A bad value is 400 with
+        `error.fields`; a number another SACCO already uses is 409. Audited as `sacco.rename` and
+        `sacco.registration_update` (field names only, never the numbers).'
       responses:
         '200':
           description: Updated.
