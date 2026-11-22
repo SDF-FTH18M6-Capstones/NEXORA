@@ -40,7 +40,13 @@ export default function Sidebar({ path }) {
         ))}
       </nav>
 
-      <div className="profile glass">
+      <a
+        className="profile glass"
+        href="/account"
+        aria-label="Account settings"
+        aria-current={path === 'account' ? 'page' : undefined}
+        onClick={e => go(e, navigate, '/account')}
+      >
         <div className="profile-top">
           <span className="avatar" aria-hidden="true">{user.initials}</span>
           <div className="min-w-0">
@@ -48,7 +54,7 @@ export default function Sidebar({ path }) {
             <div className="profile-meta truncate">{(ROLES[role] && ROLES[role].label) || role}</div>
           </div>
         </div>
-      </div>
+      </a>
     </aside>
   );
 }

@@ -19,7 +19,7 @@ function statusLabel(item) {
 }
 
 export default function SaccoSwitcher({ open, onToggle, onClose, onSelect }) {
-  const { sacco, saccoId, saccos, toast } = useSession();
+  const { sacco, saccoId, saccos, toast, logout } = useSession();
   const enterableSaccos = saccos.filter(item => {
     const membershipStatus = String(item.membershipStatus || '').toLowerCase();
     const saccoStatus = String(item.status || '').toLowerCase();
@@ -58,6 +58,11 @@ export default function SaccoSwitcher({ open, onToggle, onClose, onSelect }) {
     } finally {
       setSwitching(false);
     }
+  }
+
+  function signOutNow() {
+    onClose();
+    void logout();
   }
 
   if (!sacco || !enterableSaccos.length) return null;
@@ -99,6 +104,10 @@ export default function SaccoSwitcher({ open, onToggle, onClose, onSelect }) {
               </span>
             </button>
           ))}
+          <div className="menu-sep" role="separator" />
+          <button type="button" role="menuitem" className="logout" onClick={signOutNow}>
+            <span>Log out</span>
+          </button>
         </div>
       )}
     </div>
