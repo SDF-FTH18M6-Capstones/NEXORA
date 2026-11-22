@@ -1,15 +1,14 @@
 """Circle pay-in details and the two-officer change: circle_payment_details
 
-Revision ID: 0027
-Revises: 0025
+Revision ID: 0028
+Revises: 0027
 
 The live table holds what members see on Deposit; the changes table holds each
 proposed change until a different officer approves it. Seeds `payin.manage`
 for the circle admin and the finance officer: two titles, so a circle always
 has someone who can second a change.
 
-Depends on 0025. The circle-rules migration (0026) is on another branch: whichever
-branch merges second must re-point `down_revision` so the history has one head.
+Depends on 0027 (rules vote denominator), which follows 0026 (circle rules).
 """
 
 import sqlalchemy as sa
