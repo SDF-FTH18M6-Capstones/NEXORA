@@ -9,12 +9,39 @@ class Config:
     SECRET_KEY = os.environ.get("SECRET_KEY", "")
     SQLALCHEMY_DATABASE_URI = os.environ.get("DATABASE_URL", "")
     SQLALCHEMY_TRACK_MODIFICATIONS = False
+    # Reverse proxies in front of the app (0 = none). Per-IP rate limits need the
+    # real client address, so set this to the proxy count when deployed behind one.
+    TRUSTED_PROXIES = os.environ.get("TRUSTED_PROXIES", "").strip() or "0"
+    # Rate-limit counters. Use redis://host:6379/0 in production so every worker
+    # shares them; memory:// is per-process and only fine for local development.
+    RATELIMIT_STORAGE_URI = os.environ.get("RATELIMIT_STORAGE_URI", "memory://")
+    RATELIMIT_IN_MEMORY_FALLBACK_ENABLED = True  # a Redis outage must not stop logins
+    # Fail fast when Redis is unreachable instead of waiting on the OS connect timeout.
+    RATELIMIT_STORAGE_OPTIONS = {"socket_connect_timeout": 1, "socket_timeout": 1}
+    MAX_CONTENT_LENGTH = 16 * 1024  # auth bodies are tiny; reject anything bigger
 
     # Auth values from the Day 4 plan. Refresh lifetime is a placeholder until Move 3.
     ACCESS_TOKEN_EXPIRES = timedelta(minutes=15)
     REFRESH_TOKEN_EXPIRES = timedelta(days=7)
     LOCKOUT_THRESHOLD = 5
     LOCKOUT_DURATION = timedelta(minutes=15)
+
+    # "development" or "production". Production refuses the unsafe settings that
+    # are harmless locally; see _check_required_settings in app/__init__.py.
+    APP_ENV = os.environ.get("APP_ENV", "development").strip().lower() or "development"
+    # Exact browser origins allowed to call the API, comma-separated
+    # (e.g. http://localhost:5173). Empty means no cross-origin access at all.
+    CORS_ORIGINS = os.environ.get("CORS_ORIGINS", "")
+
+    # Email. "log" prints the verification link to the log (development only);
+    # "smtp" sends it. FRONTEND_URL is where the link points.
+    MAIL_BACKEND = os.environ.get("MAIL_BACKEND", "log").strip().lower() or "log"
+    MAIL_FROM = os.environ.get("MAIL_FROM", "no-reply@nexora.local")
+    MAIL_SERVER = os.environ.get("MAIL_SERVER", "")
+    MAIL_PORT = int(os.environ.get("MAIL_PORT", "587"))
+    MAIL_USERNAME = os.environ.get("MAIL_USERNAME", "")
+    MAIL_PASSWORD = os.environ.get("MAIL_PASSWORD", "")
+    FRONTEND_URL = os.environ.get("FRONTEND_URL", "http://localhost:5173")
 
     TESTING = False
 
@@ -23,5 +50,10 @@ class TestConfig(Config):
     """Used by pytest. Points at a separate database so tests never touch development data."""
 
     TESTING = True
-    SECRET_KEY = "test-only-not-a-real-secret"
+    RATELIMIT_ENABLED = False  # tests make many logins from one address
+    SECRET_KEY = "test-only-not-a-real-secret-0123456789"
     SQLALCHEMY_DATABASE_URI = os.environ.get("TEST_DATABASE_URL", "")
+    # A test that waits on a database lock for more than 15s fails with an error
+    # instead of hanging forever (e.g. a stale connection left on the test database).
+    SQLALCHEMY_ENGINE_OPTIONS = {"connect_args": {"options": "-c lock_timeout=15000"}}
+

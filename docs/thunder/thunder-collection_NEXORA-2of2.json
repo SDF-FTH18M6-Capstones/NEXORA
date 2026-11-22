@@ -1,0 +1,1642 @@
+{
+  "client": "Thunder Client",
+  "clientName": "Thunder Client",
+  "collectionName": "NEXORA API demo (2 of 2)",
+  "collectionId": "b11c1b98-f22e-535e-aff3-5718134a1ed0",
+  "dateExported": "2026-11-17T20:00:00.000Z",
+  "version": "1.2",
+  "folders": [
+    {
+      "_id": "970660f1-5d41-5b1c-97e3-55e95b1d5add",
+      "name": "5. Loan: two approvals, disburse, repay",
+      "containerId": "",
+      "created": "2026-11-17T20:00:00.000Z",
+      "sortNum": 50000
+    },
+    {
+      "_id": "e0cf126a-f4e0-5436-ae95-5594536c4243",
+      "name": "6. Loan: one approval, and a rejection",
+      "containerId": "",
+      "created": "2026-11-17T20:00:00.000Z",
+      "sortNum": 60000
+    },
+    {
+      "_id": "e0e7adea-b5e5-5952-b50c-16411b116441",
+      "name": "7. Isolation, reports and audit",
+      "containerId": "",
+      "created": "2026-11-17T20:00:00.000Z",
+      "sortNum": 70000
+    },
+    {
+      "_id": "b966fea3-d857-5fbb-aaf8-8b6a63c51e14",
+      "name": "8. Support access: the SACCO consents, the owner reads",
+      "containerId": "",
+      "created": "2026-11-17T20:00:00.000Z",
+      "sortNum": 80000
+    },
+    {
+      "_id": "3a328034-37cc-5f2e-92e9-22708dea1ecd",
+      "name": "9. Platform owners",
+      "containerId": "",
+      "created": "2026-11-17T20:00:00.000Z",
+      "sortNum": 90000
+    },
+    {
+      "_id": "b8eb125c-f267-5e5a-af55-d716b00a6a58",
+      "name": "10. Join a SACCO by phone (once per database)",
+      "containerId": "",
+      "created": "2026-11-17T20:00:00.000Z",
+      "sortNum": 100000
+    }
+  ],
+  "requests": [
+    {
+      "_id": "42874933-a083-5969-8b48-91abe32d7ccc",
+      "colId": "b11c1b98-f22e-535e-aff3-5718134a1ed0",
+      "containerId": "970660f1-5d41-5b1c-97e3-55e95b1d5add",
+      "name": "01 Login: Alpha loans officer 2",
+      "url": "{{baseUrl}}/api/v1/auth/login",
+      "method": "POST",
+      "sortNum": 10000,
+      "created": "2026-11-17T20:00:00.000Z",
+      "modified": "2026-11-17T20:00:00.000Z",
+      "headers": [
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        }
+      ],
+      "params": [],
+      "tests": [
+        {
+          "type": "res-code",
+          "custom": "",
+          "action": "equal",
+          "value": "200"
+        },
+        {
+          "type": "set-env-var",
+          "custom": "json.access_token",
+          "action": "setto",
+          "value": "{{loans2Token}}"
+        }
+      ],
+      "body": {
+        "type": "json",
+        "raw": "{\"email\": \"alpha-loans2@example.com\", \"password\": \"{{password}}\"}",
+        "form": []
+      }
+    },
+    {
+      "_id": "d8897792-91fc-51bb-b260-1a9f8b5de600",
+      "colId": "b11c1b98-f22e-535e-aff3-5718134a1ed0",
+      "containerId": "970660f1-5d41-5b1c-97e3-55e95b1d5add",
+      "name": "02 Member: request a 100.00 loan (above the cap: 2 approvals)",
+      "url": "{{baseUrl}}/api/v1/loans/saccos/{{saccoId}}",
+      "method": "POST",
+      "sortNum": 20000,
+      "created": "2026-11-17T20:00:00.000Z",
+      "modified": "2026-11-17T20:00:00.000Z",
+      "headers": [
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        }
+      ],
+      "params": [],
+      "tests": [
+        {
+          "type": "res-code",
+          "custom": "",
+          "action": "equal",
+          "value": "201"
+        },
+        {
+          "type": "json-query",
+          "custom": "json.status",
+          "action": "equal",
+          "value": "requested"
+        },
+        {
+          "type": "json-query",
+          "custom": "json.required_approvals",
+          "action": "equal",
+          "value": "2"
+        },
+        {
+          "type": "set-env-var",
+          "custom": "json.id",
+          "action": "setto",
+          "value": "{{loanId}}"
+        }
+      ],
+      "body": {
+        "type": "json",
+        "raw": "{\"principal\": 10000, \"term_months\": 6}",
+        "form": []
+      },
+      "auth": {
+        "type": "bearer",
+        "bearer": "{{memberToken}}"
+      }
+    },
+    {
+      "_id": "058d46e2-d51a-5a09-b65f-4499cb975340",
+      "colId": "b11c1b98-f22e-535e-aff3-5718134a1ed0",
+      "containerId": "970660f1-5d41-5b1c-97e3-55e95b1d5add",
+      "name": "03 Member: a second open loan is refused (409)",
+      "url": "{{baseUrl}}/api/v1/loans/saccos/{{saccoId}}",
+      "method": "POST",
+      "sortNum": 30000,
+      "created": "2026-11-17T20:00:00.000Z",
+      "modified": "2026-11-17T20:00:00.000Z",
+      "headers": [
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        }
+      ],
+      "params": [],
+      "tests": [
+        {
+          "type": "res-code",
+          "custom": "",
+          "action": "equal",
+          "value": "409"
+        }
+      ],
+      "body": {
+        "type": "json",
+        "raw": "{\"principal\": 1000, \"term_months\": 3}",
+        "form": []
+      },
+      "auth": {
+        "type": "bearer",
+        "bearer": "{{memberToken}}"
+      }
+    },
+    {
+      "_id": "0989e907-133b-50ba-8241-668426d7ef85",
+      "colId": "b11c1b98-f22e-535e-aff3-5718134a1ed0",
+      "containerId": "970660f1-5d41-5b1c-97e3-55e95b1d5add",
+      "name": "04 Loans officer: list SACCO loans",
+      "url": "{{baseUrl}}/api/v1/loans/saccos/{{saccoId}}",
+      "method": "GET",
+      "sortNum": 40000,
+      "created": "2026-11-17T20:00:00.000Z",
+      "modified": "2026-11-17T20:00:00.000Z",
+      "headers": [],
+      "params": [],
+      "tests": [
+        {
+          "type": "res-code",
+          "custom": "",
+          "action": "equal",
+          "value": "200"
+        }
+      ],
+      "auth": {
+        "type": "bearer",
+        "bearer": "{{loansToken}}"
+      }
+    },
+    {
+      "_id": "bf166d75-f74e-545e-ae11-6ad565b19e7b",
+      "colId": "b11c1b98-f22e-535e-aff3-5718134a1ed0",
+      "containerId": "970660f1-5d41-5b1c-97e3-55e95b1d5add",
+      "name": "05 Member: cannot approve own loan (403)",
+      "url": "{{baseUrl}}/api/v1/loans/{{loanId}}/decisions",
+      "method": "POST",
+      "sortNum": 50000,
+      "created": "2026-11-17T20:00:00.000Z",
+      "modified": "2026-11-17T20:00:00.000Z",
+      "headers": [
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        }
+      ],
+      "params": [],
+      "tests": [
+        {
+          "type": "res-code",
+          "custom": "",
+          "action": "equal",
+          "value": "403"
+        }
+      ],
+      "body": {
+        "type": "json",
+        "raw": "{\"step\": 1, \"decision\": \"approve\"}",
+        "form": []
+      },
+      "auth": {
+        "type": "bearer",
+        "bearer": "{{memberToken}}"
+      }
+    },
+    {
+      "_id": "b0f4e2a0-459f-59d6-83c9-7844a53e2ce4",
+      "colId": "b11c1b98-f22e-535e-aff3-5718134a1ed0",
+      "containerId": "970660f1-5d41-5b1c-97e3-55e95b1d5add",
+      "name": "06 Admin: a SACCO admin never approves (403)",
+      "url": "{{baseUrl}}/api/v1/loans/{{loanId}}/decisions",
+      "method": "POST",
+      "sortNum": 60000,
+      "created": "2026-11-17T20:00:00.000Z",
+      "modified": "2026-11-17T20:00:00.000Z",
+      "headers": [
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        }
+      ],
+      "params": [],
+      "tests": [
+        {
+          "type": "res-code",
+          "custom": "",
+          "action": "equal",
+          "value": "403"
+        }
+      ],
+      "body": {
+        "type": "json",
+        "raw": "{\"step\": 1, \"decision\": \"approve\"}",
+        "form": []
+      },
+      "auth": {
+        "type": "bearer",
+        "bearer": "{{adminToken}}"
+      }
+    },
+    {
+      "_id": "2c002567-5d12-58fd-aa8c-2baf7ae41ecb",
+      "colId": "b11c1b98-f22e-535e-aff3-5718134a1ed0",
+      "containerId": "970660f1-5d41-5b1c-97e3-55e95b1d5add",
+      "name": "07 Finance: cannot disburse before approval (409)",
+      "url": "{{baseUrl}}/api/v1/loans/{{loanId}}/disbursements",
+      "method": "POST",
+      "sortNum": 70000,
+      "created": "2026-11-17T20:00:00.000Z",
+      "modified": "2026-11-17T20:00:00.000Z",
+      "headers": [
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        }
+      ],
+      "params": [],
+      "tests": [
+        {
+          "type": "res-code",
+          "custom": "",
+          "action": "equal",
+          "value": "409"
+        },
+        {
+          "type": "json-query",
+          "custom": "json.error.code",
+          "action": "equal",
+          "value": "LOAN_NEEDS_APPROVAL"
+        }
+      ],
+      "body": {
+        "type": "json",
+        "raw": "{\"reference\": \"demo{{run}}-disb-early\"}",
+        "form": []
+      },
+      "auth": {
+        "type": "bearer",
+        "bearer": "{{financeToken}}"
+      }
+    },
+    {
+      "_id": "c1b92268-7e0d-5c23-9244-baf37d798f0e",
+      "colId": "b11c1b98-f22e-535e-aff3-5718134a1ed0",
+      "containerId": "970660f1-5d41-5b1c-97e3-55e95b1d5add",
+      "name": "08 Loans officer 1: approve step 1",
+      "url": "{{baseUrl}}/api/v1/loans/{{loanId}}/decisions",
+      "method": "POST",
+      "sortNum": 80000,
+      "created": "2026-11-17T20:00:00.000Z",
+      "modified": "2026-11-17T20:00:00.000Z",
+      "headers": [
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        }
+      ],
+      "params": [],
+      "tests": [
+        {
+          "type": "res-code",
+          "custom": "",
+          "action": "equal",
+          "value": "201"
+        },
+        {
+          "type": "json-query",
+          "custom": "json.status",
+          "action": "equal",
+          "value": "requested"
+        }
+      ],
+      "body": {
+        "type": "json",
+        "raw": "{\"step\": 1, \"decision\": \"approve\"}",
+        "form": []
+      },
+      "auth": {
+        "type": "bearer",
+        "bearer": "{{loansToken}}"
+      }
+    },
+    {
+      "_id": "a4172e02-8d7b-514e-b5b3-360fdf1e930d",
+      "colId": "b11c1b98-f22e-535e-aff3-5718134a1ed0",
+      "containerId": "970660f1-5d41-5b1c-97e3-55e95b1d5add",
+      "name": "09 Loans officer 1: cannot approve step 2 too (403)",
+      "url": "{{baseUrl}}/api/v1/loans/{{loanId}}/decisions",
+      "method": "POST",
+      "sortNum": 90000,
+      "created": "2026-11-17T20:00:00.000Z",
+      "modified": "2026-11-17T20:00:00.000Z",
+      "headers": [
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        }
+      ],
+      "params": [],
+      "tests": [
+        {
+          "type": "res-code",
+          "custom": "",
+          "action": "equal",
+          "value": "403"
+        }
+      ],
+      "body": {
+        "type": "json",
+        "raw": "{\"step\": 2, \"decision\": \"approve\"}",
+        "form": []
+      },
+      "auth": {
+        "type": "bearer",
+        "bearer": "{{loansToken}}"
+      }
+    },
+    {
+      "_id": "962dbc6b-0f8d-5950-8007-0dc687729363",
+      "colId": "b11c1b98-f22e-535e-aff3-5718134a1ed0",
+      "containerId": "970660f1-5d41-5b1c-97e3-55e95b1d5add",
+      "name": "10 Loans officer 2: approve step 2",
+      "url": "{{baseUrl}}/api/v1/loans/{{loanId}}/decisions",
+      "method": "POST",
+      "sortNum": 100000,
+      "created": "2026-11-17T20:00:00.000Z",
+      "modified": "2026-11-17T20:00:00.000Z",
+      "headers": [
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        }
+      ],
+      "params": [],
+      "tests": [
+        {
+          "type": "res-code",
+          "custom": "",
+          "action": "equal",
+          "value": "201"
+        },
+        {
+          "type": "json-query",
+          "custom": "json.status",
+          "action": "equal",
+          "value": "approved"
+        }
+      ],
+      "body": {
+        "type": "json",
+        "raw": "{\"step\": 2, \"decision\": \"approve\"}",
+        "form": []
+      },
+      "auth": {
+        "type": "bearer",
+        "bearer": "{{loans2Token}}"
+      }
+    },
+    {
+      "_id": "6f522c2d-db11-5700-bbd2-893787896f38",
+      "colId": "b11c1b98-f22e-535e-aff3-5718134a1ed0",
+      "containerId": "970660f1-5d41-5b1c-97e3-55e95b1d5add",
+      "name": "11 Admin: loans officer 1 also becomes a finance officer",
+      "url": "{{baseUrl}}/api/v1/saccos/{{saccoId}}/members/{{loansMembershipId}}/roles",
+      "method": "PUT",
+      "sortNum": 110000,
+      "created": "2026-11-17T20:00:00.000Z",
+      "modified": "2026-11-17T20:00:00.000Z",
+      "headers": [
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        }
+      ],
+      "params": [],
+      "tests": [
+        {
+          "type": "res-code",
+          "custom": "",
+          "action": "equal",
+          "value": "200"
+        }
+      ],
+      "body": {
+        "type": "json",
+        "raw": "{\"roles\": [\"loans_officer\", \"finance_officer\"]}",
+        "form": []
+      },
+      "auth": {
+        "type": "bearer",
+        "bearer": "{{adminToken}}"
+      }
+    },
+    {
+      "_id": "33a58b8a-c089-5761-8b62-95ec8261878d",
+      "colId": "b11c1b98-f22e-535e-aff3-5718134a1ed0",
+      "containerId": "970660f1-5d41-5b1c-97e3-55e95b1d5add",
+      "name": "12 Loans officer 1 (an approver) cannot disburse (403)",
+      "url": "{{baseUrl}}/api/v1/loans/{{loanId}}/disbursements",
+      "method": "POST",
+      "sortNum": 120000,
+      "created": "2026-11-17T20:00:00.000Z",
+      "modified": "2026-11-17T20:00:00.000Z",
+      "headers": [
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        }
+      ],
+      "params": [],
+      "tests": [
+        {
+          "type": "res-code",
+          "custom": "",
+          "action": "equal",
+          "value": "403"
+        },
+        {
+          "type": "json-query",
+          "custom": "json.error.code",
+          "action": "equal",
+          "value": "LOAN_SAME_OFFICER"
+        }
+      ],
+      "body": {
+        "type": "json",
+        "raw": "{\"reference\": \"demo{{run}}-disb-same\"}",
+        "form": []
+      },
+      "auth": {
+        "type": "bearer",
+        "bearer": "{{loansToken}}"
+      }
+    },
+    {
+      "_id": "7fdf767a-1623-57a8-bcf5-5b698ee1e943",
+      "colId": "b11c1b98-f22e-535e-aff3-5718134a1ed0",
+      "containerId": "970660f1-5d41-5b1c-97e3-55e95b1d5add",
+      "name": "13 Finance: disburse",
+      "url": "{{baseUrl}}/api/v1/loans/{{loanId}}/disbursements",
+      "method": "POST",
+      "sortNum": 130000,
+      "created": "2026-11-17T20:00:00.000Z",
+      "modified": "2026-11-17T20:00:00.000Z",
+      "headers": [
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        }
+      ],
+      "params": [],
+      "tests": [
+        {
+          "type": "res-code",
+          "custom": "",
+          "action": "equal",
+          "value": "201"
+        },
+        {
+          "type": "json-query",
+          "custom": "json.status",
+          "action": "equal",
+          "value": "disbursed"
+        },
+        {
+          "type": "set-env-var",
+          "custom": "json.disbursement_transaction_id",
+          "action": "setto",
+          "value": "{{disbursementTxId}}"
+        }
+      ],
+      "body": {
+        "type": "json",
+        "raw": "{\"reference\": \"demo{{run}}-disb\"}",
+        "form": []
+      },
+      "auth": {
+        "type": "bearer",
+        "bearer": "{{financeToken}}"
+      }
+    },
+    {
+      "_id": "680b1838-993f-55cd-8fb7-2f221a36995d",
+      "colId": "b11c1b98-f22e-535e-aff3-5718134a1ed0",
+      "containerId": "970660f1-5d41-5b1c-97e3-55e95b1d5add",
+      "name": "14 Admin: cannot reverse the disbursement (409)",
+      "url": "{{baseUrl}}/api/v1/savings/transactions/{{disbursementTxId}}/reversals",
+      "method": "POST",
+      "sortNum": 140000,
+      "created": "2026-11-17T20:00:00.000Z",
+      "modified": "2026-11-17T20:00:00.000Z",
+      "headers": [
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        }
+      ],
+      "params": [],
+      "tests": [
+        {
+          "type": "res-code",
+          "custom": "",
+          "action": "equal",
+          "value": "409"
+        }
+      ],
+      "body": {
+        "type": "json",
+        "raw": "{\"reference\": \"demo{{run}}-rev-disb\"}",
+        "form": []
+      },
+      "auth": {
+        "type": "bearer",
+        "bearer": "{{adminToken}}"
+      }
+    },
+    {
+      "_id": "0b96ffbb-1d4f-5b4a-9359-73db5146fe2c",
+      "colId": "b11c1b98-f22e-535e-aff3-5718134a1ed0",
+      "containerId": "970660f1-5d41-5b1c-97e3-55e95b1d5add",
+      "name": "15 Member: repay 40.00",
+      "url": "{{baseUrl}}/api/v1/loans/{{loanId}}/repayments",
+      "method": "POST",
+      "sortNum": 150000,
+      "created": "2026-11-17T20:00:00.000Z",
+      "modified": "2026-11-17T20:00:00.000Z",
+      "headers": [
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        }
+      ],
+      "params": [],
+      "tests": [
+        {
+          "type": "res-code",
+          "custom": "",
+          "action": "equal",
+          "value": "201"
+        },
+        {
+          "type": "json-query",
+          "custom": "json.loan_status",
+          "action": "equal",
+          "value": "disbursed"
+        },
+        {
+          "type": "set-env-var",
+          "custom": "json.transaction_id",
+          "action": "setto",
+          "value": "{{repaymentTxId}}"
+        }
+      ],
+      "body": {
+        "type": "json",
+        "raw": "{\"amount\": 4000, \"reference\": \"demo{{run}}-rep1\"}",
+        "form": []
+      },
+      "auth": {
+        "type": "bearer",
+        "bearer": "{{memberToken}}"
+      }
+    },
+    {
+      "_id": "fef8cfc3-6875-56e9-9578-a27eb399f809",
+      "colId": "b11c1b98-f22e-535e-aff3-5718134a1ed0",
+      "containerId": "970660f1-5d41-5b1c-97e3-55e95b1d5add",
+      "name": "16 Admin: cannot reverse the repayment (409)",
+      "url": "{{baseUrl}}/api/v1/savings/transactions/{{repaymentTxId}}/reversals",
+      "method": "POST",
+      "sortNum": 160000,
+      "created": "2026-11-17T20:00:00.000Z",
+      "modified": "2026-11-17T20:00:00.000Z",
+      "headers": [
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        }
+      ],
+      "params": [],
+      "tests": [
+        {
+          "type": "res-code",
+          "custom": "",
+          "action": "equal",
+          "value": "409"
+        }
+      ],
+      "body": {
+        "type": "json",
+        "raw": "{\"reference\": \"demo{{run}}-rev-rep\"}",
+        "form": []
+      },
+      "auth": {
+        "type": "bearer",
+        "bearer": "{{adminToken}}"
+      }
+    },
+    {
+      "_id": "c3bfbb34-054f-55a2-892b-043d54816adc",
+      "colId": "b11c1b98-f22e-535e-aff3-5718134a1ed0",
+      "containerId": "970660f1-5d41-5b1c-97e3-55e95b1d5add",
+      "name": "17 Finance: repay the remaining 60.00",
+      "url": "{{baseUrl}}/api/v1/loans/{{loanId}}/repayments",
+      "method": "POST",
+      "sortNum": 170000,
+      "created": "2026-11-17T20:00:00.000Z",
+      "modified": "2026-11-17T20:00:00.000Z",
+      "headers": [
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        }
+      ],
+      "params": [],
+      "tests": [
+        {
+          "type": "res-code",
+          "custom": "",
+          "action": "equal",
+          "value": "201"
+        },
+        {
+          "type": "json-query",
+          "custom": "json.loan_status",
+          "action": "equal",
+          "value": "repaid"
+        }
+      ],
+      "body": {
+        "type": "json",
+        "raw": "{\"amount\": 6000, \"reference\": \"demo{{run}}-rep2\"}",
+        "form": []
+      },
+      "auth": {
+        "type": "bearer",
+        "bearer": "{{financeToken}}"
+      }
+    },
+    {
+      "_id": "40179ded-8414-5e9e-abef-d1733b9b01b9",
+      "colId": "b11c1b98-f22e-535e-aff3-5718134a1ed0",
+      "containerId": "970660f1-5d41-5b1c-97e3-55e95b1d5add",
+      "name": "18 Member: the loan, with its decisions",
+      "url": "{{baseUrl}}/api/v1/loans/{{loanId}}",
+      "method": "GET",
+      "sortNum": 180000,
+      "created": "2026-11-17T20:00:00.000Z",
+      "modified": "2026-11-17T20:00:00.000Z",
+      "headers": [],
+      "params": [],
+      "tests": [
+        {
+          "type": "res-code",
+          "custom": "",
+          "action": "equal",
+          "value": "200"
+        },
+        {
+          "type": "json-query",
+          "custom": "json.status",
+          "action": "equal",
+          "value": "repaid"
+        }
+      ],
+      "auth": {
+        "type": "bearer",
+        "bearer": "{{memberToken}}"
+      }
+    },
+    {
+      "_id": "b94127c9-3465-5677-b93d-5933d1e31791",
+      "colId": "b11c1b98-f22e-535e-aff3-5718134a1ed0",
+      "containerId": "e0cf126a-f4e0-5436-ae95-5594536c4243",
+      "name": "01 Member: request 20.00 (within cap and 3x savings: 1 approval)",
+      "url": "{{baseUrl}}/api/v1/loans/saccos/{{saccoId}}",
+      "method": "POST",
+      "sortNum": 10000,
+      "created": "2026-11-17T20:00:00.000Z",
+      "modified": "2026-11-17T20:00:00.000Z",
+      "headers": [
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        }
+      ],
+      "params": [],
+      "tests": [
+        {
+          "type": "res-code",
+          "custom": "",
+          "action": "equal",
+          "value": "201"
+        },
+        {
+          "type": "json-query",
+          "custom": "json.required_approvals",
+          "action": "equal",
+          "value": "1"
+        },
+        {
+          "type": "set-env-var",
+          "custom": "json.id",
+          "action": "setto",
+          "value": "{{loan2Id}}"
+        }
+      ],
+      "body": {
+        "type": "json",
+        "raw": "{\"principal\": 2000, \"term_months\": 3}",
+        "form": []
+      },
+      "auth": {
+        "type": "bearer",
+        "bearer": "{{memberToken}}"
+      }
+    },
+    {
+      "_id": "bf9aa865-9c4f-5546-8ee6-32fa9675ec7b",
+      "colId": "b11c1b98-f22e-535e-aff3-5718134a1ed0",
+      "containerId": "e0cf126a-f4e0-5436-ae95-5594536c4243",
+      "name": "02 Loans officer 2: a rejection without a reason (400)",
+      "url": "{{baseUrl}}/api/v1/loans/{{loan2Id}}/decisions",
+      "method": "POST",
+      "sortNum": 20000,
+      "created": "2026-11-17T20:00:00.000Z",
+      "modified": "2026-11-17T20:00:00.000Z",
+      "headers": [
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        }
+      ],
+      "params": [],
+      "tests": [
+        {
+          "type": "res-code",
+          "custom": "",
+          "action": "equal",
+          "value": "400"
+        }
+      ],
+      "body": {
+        "type": "json",
+        "raw": "{\"step\": 1, \"decision\": \"reject\"}",
+        "form": []
+      },
+      "auth": {
+        "type": "bearer",
+        "bearer": "{{loans2Token}}"
+      }
+    },
+    {
+      "_id": "953a7698-2a2a-5140-9cce-ef8182ecd09a",
+      "colId": "b11c1b98-f22e-535e-aff3-5718134a1ed0",
+      "containerId": "e0cf126a-f4e0-5436-ae95-5594536c4243",
+      "name": "03 Loans officer 2: reject with a reason",
+      "url": "{{baseUrl}}/api/v1/loans/{{loan2Id}}/decisions",
+      "method": "POST",
+      "sortNum": 30000,
+      "created": "2026-11-17T20:00:00.000Z",
+      "modified": "2026-11-17T20:00:00.000Z",
+      "headers": [
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        }
+      ],
+      "params": [],
+      "tests": [
+        {
+          "type": "res-code",
+          "custom": "",
+          "action": "equal",
+          "value": "201"
+        },
+        {
+          "type": "json-query",
+          "custom": "json.status",
+          "action": "equal",
+          "value": "rejected"
+        }
+      ],
+      "body": {
+        "type": "json",
+        "raw": "{\"step\": 1, \"decision\": \"reject\", \"reason\": \"Repaid a loan this week; apply next month.\"}",
+        "form": []
+      },
+      "auth": {
+        "type": "bearer",
+        "bearer": "{{loans2Token}}"
+      }
+    },
+    {
+      "_id": "428d1c6d-e005-5bee-a619-a03238e2803a",
+      "colId": "b11c1b98-f22e-535e-aff3-5718134a1ed0",
+      "containerId": "e0cf126a-f4e0-5436-ae95-5594536c4243",
+      "name": "04 Member: the rejected loan shows the reason",
+      "url": "{{baseUrl}}/api/v1/loans/{{loan2Id}}",
+      "method": "GET",
+      "sortNum": 40000,
+      "created": "2026-11-17T20:00:00.000Z",
+      "modified": "2026-11-17T20:00:00.000Z",
+      "headers": [],
+      "params": [],
+      "tests": [
+        {
+          "type": "res-code",
+          "custom": "",
+          "action": "equal",
+          "value": "200"
+        },
+        {
+          "type": "json-query",
+          "custom": "json.decisions[0].reason",
+          "action": "equal",
+          "value": "Repaid a loan this week; apply next month."
+        }
+      ],
+      "auth": {
+        "type": "bearer",
+        "bearer": "{{memberToken}}"
+      }
+    },
+    {
+      "_id": "2a1adc30-a908-5e1a-8954-ec216083b0c5",
+      "colId": "b11c1b98-f22e-535e-aff3-5718134a1ed0",
+      "containerId": "e0e7adea-b5e5-5952-b50c-16411b116441",
+      "name": "01 Admin: Beta's loans are invisible (404)",
+      "url": "{{baseUrl}}/api/v1/loans/saccos/{{betaSaccoId}}",
+      "method": "GET",
+      "sortNum": 10000,
+      "created": "2026-11-17T20:00:00.000Z",
+      "modified": "2026-11-17T20:00:00.000Z",
+      "headers": [],
+      "params": [],
+      "tests": [
+        {
+          "type": "res-code",
+          "custom": "",
+          "action": "equal",
+          "value": "404"
+        }
+      ],
+      "auth": {
+        "type": "bearer",
+        "bearer": "{{adminToken}}"
+      }
+    },
+    {
+      "_id": "ffd0b021-b452-51b7-a164-30683a6b5977",
+      "colId": "b11c1b98-f22e-535e-aff3-5718134a1ed0",
+      "containerId": "e0e7adea-b5e5-5952-b50c-16411b116441",
+      "name": "02 Admin: Beta's members are invisible (404)",
+      "url": "{{baseUrl}}/api/v1/saccos/{{betaSaccoId}}/members",
+      "method": "GET",
+      "sortNum": 20000,
+      "created": "2026-11-17T20:00:00.000Z",
+      "modified": "2026-11-17T20:00:00.000Z",
+      "headers": [],
+      "params": [],
+      "tests": [
+        {
+          "type": "res-code",
+          "custom": "",
+          "action": "equal",
+          "value": "404"
+        }
+      ],
+      "auth": {
+        "type": "bearer",
+        "bearer": "{{adminToken}}"
+      }
+    },
+    {
+      "_id": "9eb8cd70-d404-5c27-85d7-ae5f9438920d",
+      "colId": "b11c1b98-f22e-535e-aff3-5718134a1ed0",
+      "containerId": "e0e7adea-b5e5-5952-b50c-16411b116441",
+      "name": "03 Admin: Beta's settings are invisible (404)",
+      "url": "{{baseUrl}}/api/v1/saccos/{{betaSaccoId}}/settings",
+      "method": "GET",
+      "sortNum": 30000,
+      "created": "2026-11-17T20:00:00.000Z",
+      "modified": "2026-11-17T20:00:00.000Z",
+      "headers": [],
+      "params": [],
+      "tests": [
+        {
+          "type": "res-code",
+          "custom": "",
+          "action": "equal",
+          "value": "404"
+        }
+      ],
+      "auth": {
+        "type": "bearer",
+        "bearer": "{{adminToken}}"
+      }
+    },
+    {
+      "_id": "222902a2-779d-52d9-8237-626300c5a2bd",
+      "colId": "b11c1b98-f22e-535e-aff3-5718134a1ed0",
+      "containerId": "e0e7adea-b5e5-5952-b50c-16411b116441",
+      "name": "04 No token (401)",
+      "url": "{{baseUrl}}/api/v1/savings/accounts/me",
+      "method": "GET",
+      "sortNum": 40000,
+      "created": "2026-11-17T20:00:00.000Z",
+      "modified": "2026-11-17T20:00:00.000Z",
+      "headers": [],
+      "params": [],
+      "tests": [
+        {
+          "type": "res-code",
+          "custom": "",
+          "action": "equal",
+          "value": "401"
+        }
+      ]
+    },
+    {
+      "_id": "3492e0ea-a186-52fa-afb7-f1abe7eb82b4",
+      "colId": "b11c1b98-f22e-535e-aff3-5718134a1ed0",
+      "containerId": "e0e7adea-b5e5-5952-b50c-16411b116441",
+      "name": "05 Admin: SACCO summary report",
+      "url": "{{baseUrl}}/api/v1/admin/saccos/{{saccoId}}/reports/summary",
+      "method": "GET",
+      "sortNum": 50000,
+      "created": "2026-11-17T20:00:00.000Z",
+      "modified": "2026-11-17T20:00:00.000Z",
+      "headers": [],
+      "params": [],
+      "tests": [
+        {
+          "type": "res-code",
+          "custom": "",
+          "action": "equal",
+          "value": "200"
+        }
+      ],
+      "auth": {
+        "type": "bearer",
+        "bearer": "{{adminToken}}"
+      }
+    },
+    {
+      "_id": "aa12433c-4233-5497-8269-73caf2442ae6",
+      "colId": "b11c1b98-f22e-535e-aff3-5718134a1ed0",
+      "containerId": "e0e7adea-b5e5-5952-b50c-16411b116441",
+      "name": "06 Admin: cannot read the audit log (403)",
+      "url": "{{baseUrl}}/api/v1/admin/saccos/{{saccoId}}/audit",
+      "method": "GET",
+      "sortNum": 60000,
+      "created": "2026-11-17T20:00:00.000Z",
+      "modified": "2026-11-17T20:00:00.000Z",
+      "headers": [],
+      "params": [],
+      "tests": [
+        {
+          "type": "res-code",
+          "custom": "",
+          "action": "equal",
+          "value": "403"
+        }
+      ],
+      "auth": {
+        "type": "bearer",
+        "bearer": "{{adminToken}}"
+      }
+    },
+    {
+      "_id": "f9014574-0a74-5ff9-9daf-71183ca072f2",
+      "colId": "b11c1b98-f22e-535e-aff3-5718134a1ed0",
+      "containerId": "e0e7adea-b5e5-5952-b50c-16411b116441",
+      "name": "07 Owner: no SACCO audit log without consent (403)",
+      "url": "{{baseUrl}}/api/v1/admin/saccos/{{saccoId}}/audit",
+      "method": "GET",
+      "sortNum": 70000,
+      "created": "2026-11-17T20:00:00.000Z",
+      "modified": "2026-11-17T20:00:00.000Z",
+      "headers": [],
+      "params": [],
+      "tests": [
+        {
+          "type": "res-code",
+          "custom": "",
+          "action": "equal",
+          "value": "403"
+        }
+      ],
+      "auth": {
+        "type": "bearer",
+        "bearer": "{{ownerToken}}"
+      }
+    },
+    {
+      "_id": "dd7263b5-ca87-5c97-81dd-29b66ccd4d22",
+      "colId": "b11c1b98-f22e-535e-aff3-5718134a1ed0",
+      "containerId": "e0e7adea-b5e5-5952-b50c-16411b116441",
+      "name": "08 Owner: platform audit log",
+      "url": "{{baseUrl}}/api/v1/admin/audit",
+      "method": "GET",
+      "sortNum": 80000,
+      "created": "2026-11-17T20:00:00.000Z",
+      "modified": "2026-11-17T20:00:00.000Z",
+      "headers": [],
+      "params": [],
+      "tests": [
+        {
+          "type": "res-code",
+          "custom": "",
+          "action": "equal",
+          "value": "200"
+        }
+      ],
+      "auth": {
+        "type": "bearer",
+        "bearer": "{{ownerToken}}"
+      }
+    },
+    {
+      "_id": "c04c8c32-5955-58d3-9b8c-8bb738feaa88",
+      "colId": "b11c1b98-f22e-535e-aff3-5718134a1ed0",
+      "containerId": "b966fea3-d857-5fbb-aaf8-8b6a63c51e14",
+      "name": "01 Owner: ask to read Alpha's audit log",
+      "url": "{{baseUrl}}/api/v1/saccos/{{saccoId}}/support-access",
+      "method": "POST",
+      "sortNum": 10000,
+      "created": "2026-11-17T20:00:00.000Z",
+      "modified": "2026-11-17T20:00:00.000Z",
+      "headers": [
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        }
+      ],
+      "params": [],
+      "tests": [
+        {
+          "type": "res-code",
+          "custom": "",
+          "action": "equal",
+          "value": "201"
+        },
+        {
+          "type": "json-query",
+          "custom": "json.status",
+          "action": "equal",
+          "value": "requested"
+        },
+        {
+          "type": "set-env-var",
+          "custom": "json.id",
+          "action": "setto",
+          "value": "{{supportId}}"
+        }
+      ],
+      "body": {
+        "type": "json",
+        "raw": "{\"reason\": \"Demo: checking a member complaint\", \"scope\": \"audit\"}",
+        "form": []
+      },
+      "auth": {
+        "type": "bearer",
+        "bearer": "{{ownerToken}}"
+      }
+    },
+    {
+      "_id": "6ea36ab0-d2f7-5079-9b2e-7e53edeb1705",
+      "colId": "b11c1b98-f22e-535e-aff3-5718134a1ed0",
+      "containerId": "b966fea3-d857-5fbb-aaf8-8b6a63c51e14",
+      "name": "02 Admin: see the request",
+      "url": "{{baseUrl}}/api/v1/saccos/{{saccoId}}/support-access",
+      "method": "GET",
+      "sortNum": 20000,
+      "created": "2026-11-17T20:00:00.000Z",
+      "modified": "2026-11-17T20:00:00.000Z",
+      "headers": [],
+      "params": [],
+      "tests": [
+        {
+          "type": "res-code",
+          "custom": "",
+          "action": "equal",
+          "value": "200"
+        },
+        {
+          "type": "json-query",
+          "custom": "json.requests[0].status",
+          "action": "equal",
+          "value": "requested"
+        }
+      ],
+      "auth": {
+        "type": "bearer",
+        "bearer": "{{adminToken}}"
+      }
+    },
+    {
+      "_id": "e4c57d78-39dd-51e9-8f36-70aa28522703",
+      "colId": "b11c1b98-f22e-535e-aff3-5718134a1ed0",
+      "containerId": "b966fea3-d857-5fbb-aaf8-8b6a63c51e14",
+      "name": "03 Admin: approve it for 1 hour",
+      "url": "{{baseUrl}}/api/v1/support-access/{{supportId}}/approve",
+      "method": "POST",
+      "sortNum": 30000,
+      "created": "2026-11-17T20:00:00.000Z",
+      "modified": "2026-11-17T20:00:00.000Z",
+      "headers": [
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        }
+      ],
+      "params": [],
+      "tests": [
+        {
+          "type": "res-code",
+          "custom": "",
+          "action": "equal",
+          "value": "200"
+        },
+        {
+          "type": "json-query",
+          "custom": "json.status",
+          "action": "equal",
+          "value": "approved"
+        }
+      ],
+      "body": {
+        "type": "json",
+        "raw": "{\"hours\": 1}",
+        "form": []
+      },
+      "auth": {
+        "type": "bearer",
+        "bearer": "{{adminToken}}"
+      }
+    },
+    {
+      "_id": "db7e87ce-10ca-582d-a8de-0c8e3eba1969",
+      "colId": "b11c1b98-f22e-535e-aff3-5718134a1ed0",
+      "containerId": "b966fea3-d857-5fbb-aaf8-8b6a63c51e14",
+      "name": "04 Owner: read the audit log under the grant",
+      "url": "{{baseUrl}}/api/v1/admin/saccos/{{saccoId}}/audit",
+      "method": "GET",
+      "sortNum": 40000,
+      "created": "2026-11-17T20:00:00.000Z",
+      "modified": "2026-11-17T20:00:00.000Z",
+      "headers": [],
+      "params": [],
+      "tests": [
+        {
+          "type": "res-code",
+          "custom": "",
+          "action": "equal",
+          "value": "200"
+        }
+      ],
+      "auth": {
+        "type": "bearer",
+        "bearer": "{{ownerToken}}"
+      }
+    },
+    {
+      "_id": "02416f80-cfa9-5279-8151-571d4d3ccde3",
+      "colId": "b11c1b98-f22e-535e-aff3-5718134a1ed0",
+      "containerId": "b966fea3-d857-5fbb-aaf8-8b6a63c51e14",
+      "name": "05 Owner: members are another scope (403)",
+      "url": "{{baseUrl}}/api/v1/saccos/{{saccoId}}/members",
+      "method": "GET",
+      "sortNum": 50000,
+      "created": "2026-11-17T20:00:00.000Z",
+      "modified": "2026-11-17T20:00:00.000Z",
+      "headers": [],
+      "params": [],
+      "tests": [
+        {
+          "type": "res-code",
+          "custom": "",
+          "action": "equal",
+          "value": "403"
+        }
+      ],
+      "auth": {
+        "type": "bearer",
+        "bearer": "{{ownerToken}}"
+      }
+    },
+    {
+      "_id": "e94ae906-b8ea-5e48-9851-d343f5762e42",
+      "colId": "b11c1b98-f22e-535e-aff3-5718134a1ed0",
+      "containerId": "b966fea3-d857-5fbb-aaf8-8b6a63c51e14",
+      "name": "06 Admin: revoke the grant",
+      "url": "{{baseUrl}}/api/v1/support-access/{{supportId}}/revoke",
+      "method": "POST",
+      "sortNum": 60000,
+      "created": "2026-11-17T20:00:00.000Z",
+      "modified": "2026-11-17T20:00:00.000Z",
+      "headers": [],
+      "params": [],
+      "tests": [
+        {
+          "type": "res-code",
+          "custom": "",
+          "action": "equal",
+          "value": "200"
+        },
+        {
+          "type": "json-query",
+          "custom": "json.status",
+          "action": "equal",
+          "value": "revoked"
+        }
+      ],
+      "auth": {
+        "type": "bearer",
+        "bearer": "{{adminToken}}"
+      }
+    },
+    {
+      "_id": "d8f09d49-2737-54b1-bc38-38aa69605953",
+      "colId": "b11c1b98-f22e-535e-aff3-5718134a1ed0",
+      "containerId": "b966fea3-d857-5fbb-aaf8-8b6a63c51e14",
+      "name": "07 Owner: refused again after the revoke (403)",
+      "url": "{{baseUrl}}/api/v1/admin/saccos/{{saccoId}}/audit",
+      "method": "GET",
+      "sortNum": 70000,
+      "created": "2026-11-17T20:00:00.000Z",
+      "modified": "2026-11-17T20:00:00.000Z",
+      "headers": [],
+      "params": [],
+      "tests": [
+        {
+          "type": "res-code",
+          "custom": "",
+          "action": "equal",
+          "value": "403"
+        }
+      ],
+      "auth": {
+        "type": "bearer",
+        "bearer": "{{ownerToken}}"
+      }
+    },
+    {
+      "_id": "7567c855-80c1-552a-8e82-9fedfc1290f7",
+      "colId": "b11c1b98-f22e-535e-aff3-5718134a1ed0",
+      "containerId": "3a328034-37cc-5f2e-92e9-22708dea1ecd",
+      "name": "01 Owner: list owners (saves the second owner)",
+      "url": "{{baseUrl}}/api/v1/admin/owners",
+      "method": "GET",
+      "sortNum": 10000,
+      "created": "2026-11-17T20:00:00.000Z",
+      "modified": "2026-11-17T20:00:00.000Z",
+      "headers": [],
+      "params": [],
+      "tests": [
+        {
+          "type": "res-code",
+          "custom": "",
+          "action": "equal",
+          "value": "200"
+        },
+        {
+          "type": "json-query",
+          "custom": "json.owners[1].email",
+          "action": "equal",
+          "value": "owner2@example.com"
+        },
+        {
+          "type": "set-env-var",
+          "custom": "json.owners[1].user_id",
+          "action": "setto",
+          "value": "{{owner2Id}}"
+        }
+      ],
+      "auth": {
+        "type": "bearer",
+        "bearer": "{{ownerToken}}"
+      }
+    },
+    {
+      "_id": "ad7b7471-bf35-577e-8ee3-f8ed74e479c8",
+      "colId": "b11c1b98-f22e-535e-aff3-5718134a1ed0",
+      "containerId": "3a328034-37cc-5f2e-92e9-22708dea1ecd",
+      "name": "02 Admin: not a platform owner (403)",
+      "url": "{{baseUrl}}/api/v1/admin/owners",
+      "method": "GET",
+      "sortNum": 20000,
+      "created": "2026-11-17T20:00:00.000Z",
+      "modified": "2026-11-17T20:00:00.000Z",
+      "headers": [],
+      "params": [],
+      "tests": [
+        {
+          "type": "res-code",
+          "custom": "",
+          "action": "equal",
+          "value": "403"
+        }
+      ],
+      "auth": {
+        "type": "bearer",
+        "bearer": "{{adminToken}}"
+      }
+    },
+    {
+      "_id": "397c8703-ddf9-5b06-b176-d058e9cf1f4a",
+      "colId": "b11c1b98-f22e-535e-aff3-5718134a1ed0",
+      "containerId": "3a328034-37cc-5f2e-92e9-22708dea1ecd",
+      "name": "03 Owner: revoking the second owner would leave one (409)",
+      "url": "{{baseUrl}}/api/v1/admin/owners/{{owner2Id}}",
+      "method": "DELETE",
+      "sortNum": 30000,
+      "created": "2026-11-17T20:00:00.000Z",
+      "modified": "2026-11-17T20:00:00.000Z",
+      "headers": [],
+      "params": [],
+      "tests": [
+        {
+          "type": "res-code",
+          "custom": "",
+          "action": "equal",
+          "value": "409"
+        }
+      ],
+      "auth": {
+        "type": "bearer",
+        "bearer": "{{ownerToken}}"
+      }
+    },
+    {
+      "_id": "f10685a0-4bfe-56d1-b4c7-a51b26ca232e",
+      "colId": "b11c1b98-f22e-535e-aff3-5718134a1ed0",
+      "containerId": "b8eb125c-f267-5e5a-af55-d716b00a6a58",
+      "name": "01 Login: Beta admin",
+      "url": "{{baseUrl}}/api/v1/auth/login",
+      "method": "POST",
+      "sortNum": 10000,
+      "created": "2026-11-17T20:00:00.000Z",
+      "modified": "2026-11-17T20:00:00.000Z",
+      "headers": [
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        }
+      ],
+      "params": [],
+      "tests": [
+        {
+          "type": "res-code",
+          "custom": "",
+          "action": "equal",
+          "value": "200"
+        },
+        {
+          "type": "set-env-var",
+          "custom": "json.access_token",
+          "action": "setto",
+          "value": "{{betaAdminToken}}"
+        }
+      ],
+      "body": {
+        "type": "json",
+        "raw": "{\"email\": \"beta-admin@example.com\", \"password\": \"{{password}}\"}",
+        "form": []
+      }
+    },
+    {
+      "_id": "8ca01d3e-d10b-5920-b806-89da0789c7b3",
+      "colId": "b11c1b98-f22e-535e-aff3-5718134a1ed0",
+      "containerId": "b8eb125c-f267-5e5a-af55-d716b00a6a58",
+      "name": "02 Beta admin: invite a phone into Beta (shows join_code)",
+      "url": "{{baseUrl}}/api/v1/saccos/{{betaSaccoId}}/members",
+      "method": "POST",
+      "sortNum": 20000,
+      "created": "2026-11-17T20:00:00.000Z",
+      "modified": "2026-11-17T20:00:00.000Z",
+      "headers": [
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        }
+      ],
+      "params": [],
+      "tests": [
+        {
+          "type": "res-code",
+          "custom": "",
+          "action": "equal",
+          "value": "201"
+        },
+        {
+          "type": "set-env-var",
+          "custom": "json.join_code",
+          "action": "setto",
+          "value": "{{joinCode}}"
+        }
+      ],
+      "body": {
+        "type": "json",
+        "raw": "{\"phone\": \"+2547000100{{run}}\", \"role\": \"member\"}",
+        "form": []
+      },
+      "auth": {
+        "type": "bearer",
+        "bearer": "{{betaAdminToken}}"
+      }
+    },
+    {
+      "_id": "8a49873a-182d-5242-a169-ed04b54baac1",
+      "colId": "b11c1b98-f22e-535e-aff3-5718134a1ed0",
+      "containerId": "b8eb125c-f267-5e5a-af55-d716b00a6a58",
+      "name": "03 Member m1: join Beta with the code",
+      "url": "{{baseUrl}}/api/v1/auth/join",
+      "method": "POST",
+      "sortNum": 30000,
+      "created": "2026-11-17T20:00:00.000Z",
+      "modified": "2026-11-17T20:00:00.000Z",
+      "headers": [
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        }
+      ],
+      "params": [],
+      "tests": [
+        {
+          "type": "res-code",
+          "custom": "",
+          "action": "equal",
+          "value": "200"
+        },
+        {
+          "type": "set-env-var",
+          "custom": "json.setup_token",
+          "action": "setto",
+          "value": "{{setupToken}}"
+        }
+      ],
+      "body": {
+        "type": "json",
+        "raw": "{\"phone\": \"+2547000100{{run}}\", \"code\": \"{{joinCode}}\"}",
+        "form": []
+      },
+      "auth": {
+        "type": "bearer",
+        "bearer": "{{memberToken}}"
+      }
+    },
+    {
+      "_id": "7e1ec420-2cdd-5091-aca8-b96824ce7ba7",
+      "colId": "b11c1b98-f22e-535e-aff3-5718134a1ed0",
+      "containerId": "b8eb125c-f267-5e5a-af55-d716b00a6a58",
+      "name": "04 Member m1: set a 4-digit PIN",
+      "url": "{{baseUrl}}/api/v1/auth/join/pin",
+      "method": "POST",
+      "sortNum": 40000,
+      "created": "2026-11-17T20:00:00.000Z",
+      "modified": "2026-11-17T20:00:00.000Z",
+      "headers": [
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        }
+      ],
+      "params": [],
+      "tests": [
+        {
+          "type": "res-code",
+          "custom": "",
+          "action": "equal",
+          "value": "200"
+        },
+        {
+          "type": "json-query",
+          "custom": "json.status",
+          "action": "equal",
+          "value": "active"
+        }
+      ],
+      "body": {
+        "type": "json",
+        "raw": "{\"setup_token\": \"{{setupToken}}\", \"pin\": \"4826\"}",
+        "form": []
+      },
+      "auth": {
+        "type": "bearer",
+        "bearer": "{{memberToken}}"
+      }
+    },
+    {
+      "_id": "64f80d55-74a4-5fc8-9fad-2fccc6ace59e",
+      "colId": "b11c1b98-f22e-535e-aff3-5718134a1ed0",
+      "containerId": "b8eb125c-f267-5e5a-af55-d716b00a6a58",
+      "name": "05 Member m1: circle login with the PIN",
+      "url": "{{baseUrl}}/api/v1/auth/circle-login",
+      "method": "POST",
+      "sortNum": 50000,
+      "created": "2026-11-17T20:00:00.000Z",
+      "modified": "2026-11-17T20:00:00.000Z",
+      "headers": [
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        }
+      ],
+      "params": [],
+      "tests": [
+        {
+          "type": "res-code",
+          "custom": "",
+          "action": "equal",
+          "value": "200"
+        },
+        {
+          "type": "json-query",
+          "custom": "json.ok",
+          "action": "equal",
+          "value": "true"
+        }
+      ],
+      "body": {
+        "type": "json",
+        "raw": "{\"sacco_id\": {{betaSaccoId}}, \"pin\": \"4826\"}",
+        "form": []
+      },
+      "auth": {
+        "type": "bearer",
+        "bearer": "{{memberToken}}"
+      }
+    },
+    {
+      "_id": "66639250-1ec0-5ddc-9485-9f8248e562ea",
+      "colId": "b11c1b98-f22e-535e-aff3-5718134a1ed0",
+      "containerId": "b8eb125c-f267-5e5a-af55-d716b00a6a58",
+      "name": "06 Member m1: wrong PIN is refused",
+      "url": "{{baseUrl}}/api/v1/auth/circle-login",
+      "method": "POST",
+      "sortNum": 60000,
+      "created": "2026-11-17T20:00:00.000Z",
+      "modified": "2026-11-17T20:00:00.000Z",
+      "headers": [
+        {
+          "name": "Content-Type",
+          "value": "application/json"
+        }
+      ],
+      "params": [],
+      "tests": [
+        {
+          "type": "res-code",
+          "custom": "",
+          "action": "equal",
+          "value": "401"
+        }
+      ],
+      "body": {
+        "type": "json",
+        "raw": "{\"sacco_id\": {{betaSaccoId}}, \"pin\": \"0000\"}",
+        "form": []
+      },
+      "auth": {
+        "type": "bearer",
+        "bearer": "{{memberToken}}"
+      }
+    }
+  ]
+}

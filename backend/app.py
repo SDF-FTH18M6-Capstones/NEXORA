@@ -1,41 +1,16 @@
 import os
+from pathlib import Path
 
-import psycopg
 from dotenv import load_dotenv
-from flask import Flask, jsonify
 
-load_dotenv()
+# `python app.py` does not read .env by itself (only the `flask` command does),
+# and config.py reads the environment when it is imported. Load backend/.env
+# first; variables already set in the shell win.
+load_dotenv(Path(__file__).resolve().parent / ".env")
 
-app = Flask(__name__)
+from app import create_app  # noqa: E402
 
-
-@app.get("/api/health")
-def health():
-    database_url = os.getenv("DATABASE_URL")
-
-    if not database_url:
-        return jsonify({
-            "status": "error",
-            "database": "not_configured"
-        }), 503
-
-    try:
-        with psycopg.connect(database_url) as connection:
-            with connection.cursor() as cursor:
-                cursor.execute("SELECT 1")
-                cursor.fetchone()
-
-        return jsonify({
-            "status": "healthy",
-            "database": "connected"
-        }), 200
-
-    except psycopg.Error:
-        return jsonify({
-            "status": "error",
-            "database": "disconnected"
-        }), 503
-
+app = create_app()
 
 if __name__ == "__main__":
     app.run(

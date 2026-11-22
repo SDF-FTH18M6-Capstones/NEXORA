@@ -24,3 +24,10 @@ htmlcov/
 .idea/
 .DS_Store
 Thumbs.db
+
+# Local artifacts
+migration-output.txt
+
+# Thunder Client / Postman local environments hold this machine's values (see *.env.example)
+*.env
+!*.env.example
