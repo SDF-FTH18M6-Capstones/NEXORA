@@ -3771,6 +3771,97 @@ paths:
           $ref: '#/components/responses/Locked'
       security:
       - bearerAuth: []
+  /api/v1/saccos/{sacco_id}/stk-push:
+    parameters:
+    - $ref: '#/components/parameters/sacco_id'
+    post:
+      summary: Ask M-Pesa to prompt my phone (sandbox)
+      description: '**Who:** an active member (`savings.request`). **Sandbox only and off by default:** with
+        `DARAJA_ENABLED` unset this route answers 404 as if it did not exist, and the app refuses to start
+        with it on in production. Send `amount` (minor units, whole shillings, KES 1 to KES 150,000) and
+        `phone` (07.., 01.. or 254..). The member then enters their M-Pesa PIN on the phone. Nexora holds no
+        funds and credits nothing: an officer still confirms the deposit through the payment requests.
+
+
+        **Rate limit:** money limit.'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                amount: {type: integer, example: 10000}
+                phone: {type: string, example: '0712345678'}
+              required: [amount, phone]
+      responses:
+        '201':
+          description: '`{id, status: pending, amount, phone_last3, message, created_at}`.'
+        '400':
+          description: Bad amount or phone (`validation_error`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '502':
+          description: M-Pesa did not answer or refused. The attempt is recorded as `failed`.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      security:
+      - bearerAuth: []
+  /api/v1/saccos/{sacco_id}/stk-push/{push_id}:
+    parameters:
+    - $ref: '#/components/parameters/sacco_id'
+    - name: push_id
+      in: path
+      required: true
+      schema:
+        type: integer
+    get:
+      summary: The answer to one STK push (sandbox)
+      description: '**Who:** the member who asked, or a holder of `member.manage`; anyone else gets 404.
+        `status` is `pending`, `succeeded` or `failed`. 404 while the feature is off.
+
+
+        **Rate limit:** 120 per minute.'
+      responses:
+        '200':
+          description: '`{id, status, amount, phone_last3, message, created_at}`.'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      security:
+      - bearerAuth: []
+  /api/v1/daraja/callback/{token}:
+    parameters:
+    - name: token
+      in: path
+      required: true
+      schema:
+        type: string
+    post:
+      summary: Safaricom's answer to an STK push (sandbox)
+      description: 'Called by Safaricom, not by the app. The unguessable `token` in the path is the only
+        secret (`DARAJA_CALLBACK_TOKEN`); a wrong token is 404. Always acknowledges with
+        `{ResultCode: 0}`, even for an unknown or repeated answer, and changes nothing for those. A
+        success whose amount differs from the request is recorded as `failed`. 404 while the feature is
+        off.'
+      responses:
+        '200':
+          description: Acknowledged.
+        '404':
+          $ref: '#/components/responses/NotFound'
   /api/v1/saccos/{sacco_id}/settings:
     parameters:
     - $ref: '#/components/parameters/sacco_id'

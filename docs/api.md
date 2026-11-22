@@ -1753,6 +1753,55 @@ Response **200**: The updated profile (same shape as GET).
 
 Error statuses: 400, 409, 401, 403, 404, 423
 
+## POST /api/v1/saccos/{sacco_id}/stk-push
+
+**Ask M-Pesa to prompt my phone (sandbox)**
+
+**Who:** an active member (`savings.request`). **Sandbox only and off by default:** with `DARAJA_ENABLED` unset this route answers 404 as if it did not exist, and the app refuses to start with it on in production. Send `amount` (minor units, whole shillings, KES 1 to KES 150,000) and `phone` (07.., 01.. or 254..). The member then enters their M-Pesa PIN on the phone. Nexora holds no funds and credits nothing: an officer still confirms the deposit through the payment requests.
+
+**Rate limit:** money limit.
+
+Parameters: `sacco_id` (path, integer)
+
+Request body:
+
+```json
+{
+  "amount": 1,
+  "phone": "+254700000000"
+}
+```
+
+Response **201**: `{id, status: pending, amount, phone_last3, message, created_at}`.
+
+Error statuses: 400, 502, 401, 403, 404
+
+## GET /api/v1/saccos/{sacco_id}/stk-push/{push_id}
+
+**The answer to one STK push (sandbox)**
+
+**Who:** the member who asked, or a holder of `member.manage`; anyone else gets 404. `status` is `pending`, `succeeded` or `failed`. 404 while the feature is off.
+
+**Rate limit:** 120 per minute.
+
+Parameters: `sacco_id` (path, integer), `push_id` (path, integer)
+
+Response **200**: `{id, status, amount, phone_last3, message, created_at}`.
+
+Error statuses: 401, 403, 404
+
+## POST /api/v1/daraja/callback/{token}
+
+**Safaricom's answer to an STK push (sandbox)**
+
+Called by Safaricom, not by the app. The unguessable `token` in the path is the only secret (`DARAJA_CALLBACK_TOKEN`); a wrong token is 404. Always acknowledges with `{ResultCode: 0}`, even for an unknown or repeated answer, and changes nothing for those. A success whose amount differs from the request is recorded as `failed`. 404 while the feature is off.
+
+Parameters: `token` (path, string)
+
+Response **200**: Acknowledged.
+
+Error statuses: 404
+
 ## GET /api/v1/saccos/{sacco_id}/settings
 
 **The SACCO's loan rules**

@@ -25,6 +25,7 @@ admin_bp = Blueprint("admin", __name__, url_prefix="/admin")
 members_bp = Blueprint("members", __name__, url_prefix="/members")
 loans_bp = Blueprint("loans", __name__, url_prefix="/loans")
 support_bp = Blueprint("support", __name__, url_prefix="/support-access")
+daraja_bp = Blueprint("daraja", __name__, url_prefix="/daraja")
 
 BLUEPRINTS = (
     auth_bp,
@@ -34,6 +35,7 @@ BLUEPRINTS = (
     members_bp,
     loans_bp,
     support_bp,
+    daraja_bp,
 )
 MAX_ID = 2**31 - 1  # ids are 32-bit integers in Postgres
 
@@ -140,9 +142,11 @@ def create_app(config_class=Config):
         rules,
         sacco,
         savings,
+        stk_push,
         support,
         user,
     )
+    from app.payments import routes as payments_routes  # noqa: F401
     from app.saccos import access_routes as saccos_access_routes  # noqa: F401
     from app.saccos import payment_details_routes  # noqa: F401
     from app.saccos import routes as saccos_routes  # noqa: F401
@@ -215,6 +219,30 @@ def _check_required_settings(app):
         )
     if app_env == PRODUCTION:
         _check_production_settings(app)
+    if app.config.get("DARAJA_ENABLED"):
+        _check_daraja_settings(app, app_env)
+
+
+DARAJA_SETTINGS = (
+    "DARAJA_CONSUMER_KEY",
+    "DARAJA_CONSUMER_SECRET",
+    "DARAJA_PASSKEY",
+    "DARAJA_SHORTCODE",
+    "DARAJA_CALLBACK_URL",
+    "DARAJA_CALLBACK_TOKEN",
+)
+
+
+def _check_daraja_settings(app, app_env):
+    """STK push is sandbox only: never on in production, never half configured."""
+    if app_env == PRODUCTION:
+        raise RuntimeError(
+            "DARAJA_ENABLED must be off when APP_ENV=production: STK push is "
+            "sandbox only until a lawyer has ruled on the NPS Act."
+        )
+    missing = [k for k in DARAJA_SETTINGS if not app.config.get(k)]
+    if missing:
+        raise RuntimeError(f"DARAJA_ENABLED needs: {', '.join(missing)}.")
 
 
 def _check_production_settings(app):

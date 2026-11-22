@@ -1,4 +1,5 @@
 """NEXORA configuration. Secrets and connection strings come from environment variables only."""
+
 import os
 from datetime import timedelta
 
@@ -43,6 +44,20 @@ class Config:
     MAIL_PASSWORD = os.environ.get("MAIL_PASSWORD", "")
     FRONTEND_URL = os.environ.get("FRONTEND_URL", "http://localhost:5173")
 
+    # M-Pesa STK push, Safaricom SANDBOX only. Off unless set to 1, and refused
+    # outright when APP_ENV=production (see app/__init__.py).
+    DARAJA_ENABLED = os.environ.get("DARAJA_ENABLED", "").strip().lower() in (
+        "1",
+        "true",
+    )
+    DARAJA_CONSUMER_KEY = os.environ.get("DARAJA_CONSUMER_KEY", "")
+    DARAJA_CONSUMER_SECRET = os.environ.get("DARAJA_CONSUMER_SECRET", "")
+    DARAJA_PASSKEY = os.environ.get("DARAJA_PASSKEY", "")
+    DARAJA_SHORTCODE = os.environ.get("DARAJA_SHORTCODE", "")
+    # The public URL Safaricom posts to, ending in /api/v1/daraja/callback/<token>.
+    DARAJA_CALLBACK_URL = os.environ.get("DARAJA_CALLBACK_URL", "")
+    DARAJA_CALLBACK_TOKEN = os.environ.get("DARAJA_CALLBACK_TOKEN", "")
+
     TESTING = False
 
 
@@ -52,8 +67,8 @@ class TestConfig(Config):
     TESTING = True
     RATELIMIT_ENABLED = False  # tests make many logins from one address
     SECRET_KEY = "test-only-not-a-real-secret-0123456789"
+    DARAJA_ENABLED = False  # a test turns it on for itself; the default stays off
     SQLALCHEMY_DATABASE_URI = os.environ.get("TEST_DATABASE_URL", "")
     # A test that waits on a database lock for more than 15s fails with an error
     # instead of hanging forever (e.g. a stale connection left on the test database).
     SQLALCHEMY_ENGINE_OPTIONS = {"connect_args": {"options": "-c lock_timeout=15000"}}
-
