@@ -23,7 +23,7 @@ export const MOCK = !!(import.meta.env && import.meta.env.VITE_MOCK === '1') || 
 export const mockDelay = (ms = 450 + Math.random() * 450) => new Promise(r => setTimeout(r, ms));
 
 export class ApiError extends Error {
-  constructor(status, code, message, retryAfter = 0, fields = null) { super(message); this.name = 'ApiError'; this.status = status; this.code = code; this.retryAfter = retryAfter; this.fields = fields; }
+  constructor(status, code, message, retryAfter = 0) { super(message); this.name = 'ApiError'; this.status = status; this.code = code; this.retryAfter = retryAfter; }
 }
 
 /* ---------- tokens: browser storage for release 1 (decision recorded in docs/frontend-work.md section 13) ---------- */
@@ -74,7 +74,7 @@ async function send(method, path, { body, params, auth = true, token } = {}) {
   let json = null; try { json = await res.json(); } catch { /* no body */ }
   if (res.ok) return json;
   const err = (json && json.error) || {};
-  throw new ApiError(res.status, err.code || 'error', err.message || 'Something went wrong.', Number(res.headers.get('Retry-After')) || 0, err.fields || null);
+  throw new ApiError(res.status, err.code || 'error', err.message || 'Something went wrong.', Number(res.headers.get('Retry-After')) || 0);
 }
 
 async function request(method, path, opts = {}) {
@@ -88,8 +88,22 @@ async function request(method, path, opts = {}) {
   }
 }
 
+/* Two parts of the page asking for the same GET at the same moment (React's double render in development, a page and its panel)
+ * share ONE request. Nothing is cached: once the answer arrives the next call goes to the server again. */
+const inFlight = new Map();
+function getShared(path, opts = {}) {
+  if (opts.token) return request('GET', path, opts);
+  const params = opts.params ? Object.entries(opts.params).filter(([, v]) => v !== undefined && v !== null && v !== '').sort() : [];
+  const tokens = getTokens();
+  const key = `${tokens ? tokens.access : ''} ${path}?${JSON.stringify(params)} ${opts.auth === false}`;
+  if (inFlight.has(key)) return inFlight.get(key);
+  const pending = request('GET', path, opts).finally(() => inFlight.delete(key));
+  inFlight.set(key, pending);
+  return pending;
+}
+
 export const http = {
-  get: (p, o) => request('GET', p, o),
+  get: (p, o) => getShared(p, o),
   post: (p, o) => request('POST', p, o),
   patch: (p, o) => request('PATCH', p, o),
   put: (p, o) => request('PUT', p, o),

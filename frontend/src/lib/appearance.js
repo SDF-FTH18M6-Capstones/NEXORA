@@ -52,6 +52,24 @@ export function saveAppearance(userId, v) {
   if (userId == null) return;
   try { localStorage.setItem(KEY_PREFIX + userId, JSON.stringify(v)); } catch { /* private mode: the choice just lasts until reload */ }
 }
+/* The five optional fonts are not in index.html: each loads once, the first time somebody picks it. */
+const OPTIONAL_FONTS = {
+  'dm-sans': 'DM+Sans:wght@400;500;600;700',
+  lora: 'Lora:wght@500;600',
+  nunito: 'Nunito:wght@400;600;700',
+  merriweather: 'Merriweather:wght@400;700',
+  atkinson: 'Atkinson+Hyperlegible:wght@400;700',
+};
+function ensureFont(key) {
+  const family = OPTIONAL_FONTS[key];
+  const id = 'font-' + key;
+  if (!family || document.getElementById(id)) return;
+  const link = document.createElement('link');
+  link.id = id; link.rel = 'stylesheet';
+  link.href = 'https://fonts.googleapis.com/css2?family=' + family + '&display=swap';
+  document.head.appendChild(link);
+}
+
 /* fade = true adds a short colour fade (class theme-fade in nexora-2.css); skipped when the person asked for reduced motion */
 export function applyAppearance(v = DEFAULT_APPEARANCE, fade = false) {
   const de = document.documentElement;
@@ -60,6 +78,7 @@ export function applyAppearance(v = DEFAULT_APPEARANCE, fade = false) {
     setTimeout(() => de.classList.remove('theme-fade'), 450);
   }
   const t = THEMES.find(x => x.id === v.theme) || THEMES[0];
+  ensureFont(v.font);
   de.dataset.theme = t.id; de.dataset.font = v.font; de.dataset.size = v.size; de.dataset.mode = t.dark ? 'dark' : 'light';
 }
 /* call when the signed-in person changes: after sign-in, after sign-out (null), in the harness when the role picker changes */

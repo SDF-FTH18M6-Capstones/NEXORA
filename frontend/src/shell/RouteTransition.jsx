@@ -3,15 +3,13 @@ import Intro from '../pages/public/Intro.jsx';
 import { useLocation, useOutlet } from 'react-router-dom';
 
 const INTRO_MS = 4800;
+const RISE_MS = 900;
 const LIFT_MS = 1100;
-const FADE_MS = 160;
-const INTRO_KEY = 'nexora.intro-seen';
-
-// The signature intro is a first-visit piece: replaying it on every reload made
-// the app feel slow, so it plays once per browser session.
-function introSeen() {
-  try { return window.sessionStorage.getItem(INTRO_KEY) === '1'; } catch { return false; }
-}
+const REDUCED_FADE_MS = 140;
+/* The curtain (coin and wave) plays only when the app loads and when a person goes to the Overview.
+ * Every other page change uses the quick fade, so a click shows its page at once. */
+const CURTAIN_PATHS = ['/overview', '/pf-overview'];
+const wantsCurtain = path => CURTAIN_PATHS.includes(path);
 
 export default function RouteTransition() {
   const outlet = useOutlet();
@@ -20,14 +18,14 @@ export default function RouteTransition() {
     typeof window !== 'undefined'
     && window.matchMedia('(prefers-reduced-motion: reduce)').matches
   ));
-  const [skipIntro] = useState(() => reducedMotion || introSeen());
-  const initialPhase = skipIntro ? 'idle' : 'intro';
+  const initialPhase = reducedMotion ? 'idle' : 'intro';
   const [phase, setPhaseState] = useState(initialPhase);
   const [visibleOutlet, setVisibleOutlet] = useState(outlet);
-  const [sequence] = useState(0);
+  const [sequence, setSequence] = useState(0);
   const outletRef = useRef(outlet);
   const phaseRef = useRef(initialPhase);
   const locationKeyRef = useRef(location.key);
+  const [quickMode, setQuickMode] = useState(false);
   const curtainRef = useRef(null);
 
   function setPhase(next) {
@@ -37,63 +35,87 @@ export default function RouteTransition() {
 
   useEffect(() => {
     outletRef.current = outlet;
-    // A new route is swapped in by the fade below; this only follows the same
-    // route's own updates (a lazy page finishing loading) and the intro.
-    const sameRoute = locationKeyRef.current === location.key;
-    if (phaseRef.current === 'intro' || (phaseRef.current === 'idle' && sameRoute)) setVisibleOutlet(outlet);
-  }, [outlet, location.key]);
+    if (phaseRef.current === 'intro') setVisibleOutlet(outlet);
+  }, [outlet, reducedMotion]);
 
   useEffect(() => {
-    if (skipIntro) return undefined;
-    try { window.sessionStorage.setItem(INTRO_KEY, '1'); } catch { /* private mode: it just plays again next time */ }
+    if (reducedMotion) return undefined;
     const exitTimer = window.setTimeout(() => setPhase('exit'), INTRO_MS - LIFT_MS);
     const finishTimer = window.setTimeout(() => setPhase('idle'), INTRO_MS);
     return () => {
       window.clearTimeout(exitTimer);
       window.clearTimeout(finishTimer);
     };
-  }, [skipIntro]);
+  }, [reducedMotion]);
 
   useEffect(() => {
     if (locationKeyRef.current === location.key) return undefined;
     locationKeyRef.current = location.key;
+    const quick = !reducedMotion && !wantsCurtain(location.pathname);
 
     if (phaseRef.current === 'intro') {
       setVisibleOutlet(outlet);
       return undefined;
     }
 
-    // Fade the old page out, swap, fade the new one in. No full-screen curtain.
     let cancelled = false;
+    let frame = 0;
     const timers = [];
     const schedule = (callback, delay) => {
       timers.push(window.setTimeout(callback, delay));
     };
-    setPhase('fade-out');
+
+    if (reducedMotion || quick) {
+      schedule(() => {
+        if (quick) setQuickMode(true);
+        setPhase('reduced-cover');
+      }, 0);
+      schedule(() => setPhase('reduced-reveal'), REDUCED_FADE_MS);
+      schedule(() => {
+        setPhase('idle');
+        if (quick) { setVisibleOutlet(outletRef.current); setQuickMode(false); }
+      }, REDUCED_FADE_MS * 2);
+      return () => {
+        cancelled = true;
+        timers.forEach(window.clearTimeout);
+      };
+    }
+
     schedule(() => {
       if (cancelled) return;
-      setVisibleOutlet(outletRef.current);
-      window.scrollTo(0, 0);
-      setPhase('idle');
-    }, FADE_MS);
+      setSequence(value => value + 1);
+      setPhase('entering');
+      schedule(() => {
+        if (cancelled) return;
+        setVisibleOutlet(outletRef.current);
+        setPhase('covered');
+        frame = window.requestAnimationFrame(() => {
+          if (cancelled) return;
+          setPhase('exit');
+          schedule(() => setPhase('idle'), LIFT_MS);
+        });
+      }, RISE_MS);
+    }, 0);
 
     return () => {
       cancelled = true;
       timers.forEach(window.clearTimeout);
+      if (frame) window.cancelAnimationFrame(frame);
     };
-  }, [location.key, outlet]);
+  }, [location.key, location.pathname, outlet, reducedMotion]);
 
+  const fast = reducedMotion || quickMode;
   return (
     <>
       <div
-        className="route-content"
-        style={{
-          opacity: phase === 'fade-out' ? 0 : 1,
-          transition: `opacity ${FADE_MS}ms ease`,
-        }}
+        className={fast ? 'route-content' : 'contents'}
+        style={fast ? {
+          opacity: phase === 'reduced-cover' ? 0 : 1,
+          transition: `opacity ${REDUCED_FADE_MS}ms ease`,
+        } : undefined}
       >
         <Suspense fallback={<div className="glass p-6 text-muted">Loading...</div>}>
-          {visibleOutlet}
+          {fast ? outlet : visibleOutlet}
         </Suspense>
       </div>
       <Intro phase={phase} sequence={sequence} curtainRef={curtainRef} />
