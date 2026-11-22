@@ -358,7 +358,12 @@ def holding_since(sacco_id: int, user_id: int, permission: str):
     """When this user began holding `permission` in this SACCO, or None.
 
     The earliest time a title that carries it was given. A membership with no
-    title rows (the legacy fallback) counts from when it was created.
+    title rows (the legacy fallback: the role column alone grants the power)
+    counts from when the membership was created. The API writes a title row on
+    every add, invite and role change, so a membership without rows has had the
+    same role since it began: a legacy admin is not a new officer. It gets no
+    shortcut either: the same comparison with a proposal applies, so a legacy
+    membership created after a proposal still cannot approve it.
     """
     membership = _membership_for(user_id, sacco_id)
     if membership is None or membership.status is not MembershipStatus.ACTIVE:

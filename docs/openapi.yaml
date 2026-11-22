@@ -3453,7 +3453,9 @@ paths:
       description: '**Who:** holders of `payin.manage`, never the officer who proposed the change
         (403 `PAYIN_SAME_OFFICER`). The change is named by id, so nobody approves values that changed
         after they read them. The approver must have become an officer before the change was proposed
-        (403 `PAYIN_NEW_OFFICER`), and the proposer must still be an officer (409). Audited as
+        (403 `PAYIN_NEW_OFFICER`), and the proposer must still be an officer (409). Officer since is the
+        earliest `granted_at` of a title that carries `payin.manage` (editing other titles keeps it);
+        an admin with no title rows counts from when the membership was created. Audited as
         `payin.approve`; every officer is emailed. Everyone is also emailed when someone gains
         `payin.manage` (member add, role or title change).
 

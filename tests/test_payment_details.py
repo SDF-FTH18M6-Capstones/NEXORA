@@ -796,3 +796,41 @@ def test_a_waiting_change_can_still_be_approved_after_an_unrelated_title_edit(
     assert put.status_code == 200, put.json
     db.session.remove()
     assert approve(c, s.finance, s, change["id"]).status_code == 200
+
+
+def test_a_legacy_admin_may_approve_another_officers_change(schema_app, mails):  # noqa: F811
+    s = circle()  # the admin has no title rows: the role column alone grants it
+    c = schema_app.test_client()
+    change = propose(c, s.finance, s).json["change"]
+    assert approve(c, s.admin, s, change["id"]).status_code == 200
+
+
+def test_a_legacy_admin_cannot_approve_their_own_change(schema_app, mails):  # noqa: F811
+    s = circle()
+    c = schema_app.test_client()
+    change = propose(c, s.admin, s).json["change"]
+    blocked = approve(c, s.admin, s, change["id"])
+    assert blocked.status_code == 403
+    assert blocked.json["error"]["code"] == "PAYIN_SAME_OFFICER"
+
+
+def test_a_legacy_admin_created_after_the_proposal_is_still_a_new_officer(
+    schema_app,  # noqa: F811
+    mails,
+):
+    from app.models.membership import MembershipRole
+
+    s = circle()
+    c = schema_app.test_client()
+    change = propose(c, s.finance, s).json["change"]
+    late = make_user()
+    db.session.add(
+        SaccoMembership(
+            user_id=late.id, sacco_id=s.sacco.id, role=MembershipRole.SACCO_ADMIN
+        )
+    )
+    db.session.commit()
+    db.session.remove()
+    blocked = approve(c, late, s, change["id"])
+    assert blocked.status_code == 403
+    assert blocked.json["error"]["code"] == "PAYIN_NEW_OFFICER"
