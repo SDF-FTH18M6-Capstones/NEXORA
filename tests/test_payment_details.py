@@ -876,3 +876,25 @@ def test_cyrillic_and_bidi_characters_are_refused_in_every_text_field(
     resp = propose(schema_app.test_client(), s.admin, s, **{field: bad})
     assert resp.status_code == 400, resp.json
     assert field in resp.json["error"]["fields"]
+
+
+def test_a_mail_failure_is_logged_with_circle_and_officer_ids_never_the_numbers(
+    schema_app,  # noqa: F811
+    monkeypatch,
+    caplog,
+):
+    def broken(*_):
+        raise OSError("smtp down")
+
+    monkeypatch.setattr(logic, "send_text_email", broken)
+    # The migration run in the schema_app fixture calls logging.fileConfig, which
+    # disables loggers that already exist.
+    monkeypatch.setattr(logic.log, "disabled", False)
+    s = circle()
+    with caplog.at_level("ERROR", logger=logic.log.name):
+        assert propose(schema_app.test_client(), s.admin, s).status_code == 201
+    text = caplog.text
+    for officer_id in (s.admin.id, s.finance.id):
+        assert f"officer {officer_id} of circle {s.sacco.id}" in text
+    for number in ("400200", "0123456789"):
+        assert number not in text

@@ -291,12 +291,15 @@ def officers(sacco_id: int) -> list[User]:
     return list(db.session.execute(select(User).where(User.id.in_(ids))).scalars())
 
 
-def _send_all(emails: list[str], subject: str, body: str) -> None:
-    for email in emails:
+def _send_all(
+    sacco_id: int, recipients: list[tuple[int, str]], subject: str, body: str
+) -> None:
+    for user_id, email in recipients:
         try:
             send_text_email(email, subject, body)
         except Exception:
-            log.exception("Could not email an officer")
+            # Ids only: the pay-in numbers must never reach the logs.
+            log.exception("Could not email officer %s of circle %s", user_id, sacco_id)
 
 
 def notify_officers(sacco_id: int, subject: str, body: str) -> None:
@@ -305,18 +308,18 @@ def notify_officers(sacco_id: int, subject: str, body: str) -> None:
     thread so a slow mail server cannot hold a worker (same reason as
     `mail.send_safely`); the log backend sends inline."""
     try:
-        recipients = [user.email for user in officers(sacco_id)]
+        recipients = [(user.id, user.email) for user in officers(sacco_id)]
     except Exception:
         log.exception("Could not list the officers of circle %s", sacco_id)
         return
     if current_app.config["MAIL_BACKEND"] != "smtp":
-        _send_all(recipients, subject, body)
+        _send_all(sacco_id, recipients, subject, body)
         return
     app = current_app._get_current_object()
 
     def work():
         with app.app_context():
-            _send_all(recipients, subject, body)
+            _send_all(sacco_id, recipients, subject, body)
 
     threading.Thread(target=work, daemon=True).start()
 
