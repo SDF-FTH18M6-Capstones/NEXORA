@@ -1,5 +1,6 @@
 import { dLong, kesFromMinor } from '../lib/format.js';
 import { FREQUENCY_WORDS } from '../lib/rules.js';
+import NotEnforced from './NotEnforced.jsx';
 
 const Row = ({ label, children }) => (
   <div className="flex flex-wrap justify-between gap-x-4 gap-y-1 border-b border-black/5 py-2 last:border-0">
@@ -18,8 +19,8 @@ export default function RulesView({ rules }) {
         <h3 id="rules-costs" className="font-serif text-lg">What it costs you</h3>
         <dl>
           <Row label="Contribution">{kesFromMinor(r.contribution_amount)} {FREQUENCY_WORDS[r.contribution_frequency]}</Row>
-          <Row label="Late-payment fine">{r.late_fine_amount ? `${kesFromMinor(r.late_fine_amount)} each time` : 'None'}</Row>
-          <Row label="Interest or service charge">{r.interest_percent ? `${r.interest_percent}% of each loan` : 'None'}</Row>
+          <Row label={<>Late-payment fine<NotEnforced /></>}>{r.late_fine_amount ? `${kesFromMinor(r.late_fine_amount)} each time` : 'None'}</Row>
+          <Row label={<>Interest or service charge<NotEnforced /></>}>{r.interest_percent ? `${r.interest_percent}% of each loan` : 'None'}</Row>
           <Row label="If you leave">{r.exit_rules || 'No exit rules were written.'}</Row>
         </dl>
         <p className="muted text-sm">There are no other charges in these rules. NEXORA records them; it does not move money or collect them for you.</p>
@@ -29,7 +30,7 @@ export default function RulesView({ rules }) {
         <dl>
           <Row label="Most you can borrow">{r.loan_cap_multiple} times your savings</Row>
           <Row label="Repay within">{r.repayment_period_value} {r.repayment_period_unit}</Row>
-          <Row label="Guarantors needed">{r.guarantors_required || 'None'}</Row>
+          <Row label={<>Guarantors needed<NotEnforced /></>}>{r.guarantors_required || 'None'}</Row>
           <Row label="Wait before your first loan">{r.min_membership_days ? `${r.min_membership_days} days` : 'None'}</Row>
           <Row label="Allowed purposes">{r.loan_purposes || 'Not limited'}</Row>
         </dl>

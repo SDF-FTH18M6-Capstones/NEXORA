@@ -1,4 +1,5 @@
 import Field from './Field.jsx';
+import NotEnforced from './NotEnforced.jsx';
 
 const Hint = ({ children }) => <p className="muted text-sm">{children}</p>;
 
@@ -28,10 +29,10 @@ export default function RulesForm({ value, onChange, errors = {}, disabled = fal
         <input {...input('multiple', { inputMode: 'numeric', placeholder: '3' })} />
       </Field>
       <Hint>A whole number from 1 to 10. Example: 3 means savings of KES 1,000 allow a loan of up to KES 3,000. Starts at 3, the limit the CARE VSLA manual recommends; you can change it.</Hint>
-      <Field id="rule-interest" label="Interest or service charge per loan (%)" error={errors.interest_percent}>
+      <Field id="rule-interest" label={<>Interest or service charge per loan (%)<NotEnforced /></>} error={errors.interest_percent}>
         <input {...input('interest', { inputMode: 'decimal', placeholder: 'Type the rate' })} />
       </Field>
-      <Hint>Required, with no default, because no standard rate has been verified. Type what your circle agreed, from 0 to 100. Example: 10 means 10% of each loan. Type 0 for no charge.</Hint>
+      <Hint>Required, with no default, because no standard rate has been verified. Type what your circle agreed, from 0 to 100. Example: 10 means 10% of each loan. Type 0 for no charge. NEXORA records the rate; it does not add interest to any loan.</Hint>
 
       <div className="grid grid-cols-2 gap-3">
         <Field id="rule-period" label="Repayment period" error={errors.repayment_period_value}>
@@ -45,17 +46,17 @@ export default function RulesForm({ value, onChange, errors = {}, disabled = fal
         </Field>
       </div>
       <Hint>Required. The longest a loan may take to repay. Example: 6 months.</Hint>
-      <Field id="rule-fine" label="Late-payment fine (KES)" error={errors.late_fine_amount}>
+      <Field id="rule-fine" label={<>Late-payment fine (KES)<NotEnforced /></>} error={errors.late_fine_amount}>
         <input {...input('fine', { inputMode: 'decimal', placeholder: '50' })} />
       </Field>
-      <Hint>Required. A flat amount for each late payment. Example: 50. Type 0 for no fine.</Hint>
+      <Hint>Required. A flat amount for each late payment. Example: 50. Type 0 for no fine. NEXORA records the fine; it does not charge it.</Hint>
       <Field id="rule-cycle" label="Cycle length (months)" error={errors.cycle_months}>
         <input {...input('cycle', { inputMode: 'numeric', placeholder: '12' })} />
       </Field>
       <Hint>9 to 12 months. Starts at 12. Rules cannot change before the cycle ends.</Hint>
 
       <b className="text-sm">Optional</b>
-      <Field id="rule-guarantors" label="Guarantors required" error={errors.guarantors_required}>
+      <Field id="rule-guarantors" label={<>Guarantors required<NotEnforced /></>} error={errors.guarantors_required}>
         <input {...input('guarantors', { inputMode: 'numeric', placeholder: '0' })} />
       </Field>
       <Hint>A whole number from 0 to 10. Example: 2. Recorded as a rule; NEXORA does not check guarantors yet.</Hint>
