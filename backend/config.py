@@ -3,11 +3,24 @@ import os
 from datetime import timedelta
 
 
+def _database_url() -> str:
+    """DATABASE_URL, rewritten so SQLAlchemy uses psycopg 3.
+
+    Hosts such as Render hand out postgres:// or postgresql://, which makes
+    SQLAlchemy look for psycopg2. Anything already carrying a driver is untouched.
+    """
+    url = os.environ.get("DATABASE_URL", "").strip()
+    for prefix in ("postgres://", "postgresql://"):
+        if url.startswith(prefix):
+            return "postgresql+psycopg://" + url[len(prefix):]
+    return url
+
+
 class Config:
     """Default settings used by `flask run`. Values come from .env or your shell."""
 
     SECRET_KEY = os.environ.get("SECRET_KEY", "")
-    SQLALCHEMY_DATABASE_URI = os.environ.get("DATABASE_URL", "")
+    SQLALCHEMY_DATABASE_URI = _database_url()
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     # Reverse proxies in front of the app (0 = none). Per-IP rate limits need the
     # real client address, so set this to the proxy count when deployed behind one.
