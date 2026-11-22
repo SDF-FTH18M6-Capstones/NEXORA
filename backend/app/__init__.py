@@ -124,10 +124,12 @@ def create_app(config_class=Config):
     from app.ledger.reconcile import reconcile_command
     from app.ledger.status import eod_status_command
     from app.loans import routes as loans_routes  # noqa: F401
+    from app.members import profile_routes  # noqa: F401
     from app.members import routes as members_routes  # noqa: F401
     from app.models import (  # noqa: F401
         access,
         audit,
+        consent,
         identity,
         ledger,
         loan,

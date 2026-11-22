@@ -143,3 +143,11 @@ decides by role name (`tests/test_access_by_permission.py` enforces this).
 
 Agreed for the demo on 2026-11-17. `tests/test_schema_rules.py` holds one test
 per rule.
+
+## Member personal data
+
+A member's full name, national ID, gender and date of birth are read and written only by the member
+themself and by holders of `member.manage` (the SACCO admin). The platform owner never reads them, and
+no list or search returns them. They can be stored only while the member's own `member_profile` consent
+is active (nobody can consent for someone else), and withdrawing consent erases them. Share capital is
+not personal data: only `member.manage` records it. Every field is optional for now.

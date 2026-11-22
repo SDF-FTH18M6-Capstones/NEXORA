@@ -3586,6 +3586,181 @@ paths:
         '403': {description: "Only members vote.", content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
         '404': {description: "Not found.", content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
         '409': {description: "Voting has closed.", content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
+  /api/v1/saccos/{sacco_id}/members/me/data-consent:
+    parameters:
+    - $ref: '#/components/parameters/sacco_id'
+    get:
+      summary: The data-protection wording and my consent
+      description: '**Who:** an active member of the SACCO. Returns `notice` (`version`, `purpose`, `text`) and
+        `consent` (`purpose`, `notice_version`, `granted_at`, or `null`).
+
+
+        **Rate limit:** 120 per minute.'
+      responses:
+        '200':
+          description: '`{notice, consent}`.'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '423':
+          $ref: '#/components/responses/Locked'
+      security:
+      - bearerAuth: []
+    post:
+      summary: Agree to NEXORA keeping my personal details
+      description: '**Who:** the member, for themself only (nobody can consent for someone else). Send the
+        `notice_version` you read; another version is 409. Personal details (full name, national ID,
+        gender, date of birth) can be stored only while this consent is active. Repeating it returns the
+        existing consent (200). Audited as `consent.grant`.
+
+
+        **Rate limit:** 30 per minute.'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                notice_version: {type: integer, example: 1}
+              required: [notice_version]
+      responses:
+        '201':
+          description: '`{consent}`: new.'
+        '200':
+          description: '`{consent}`: already given.'
+        '400':
+          description: '`notice_version` missing or not a whole number.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: The wording changed since the member read it.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '423':
+          $ref: '#/components/responses/Locked'
+      security:
+      - bearerAuth: []
+  /api/v1/saccos/{sacco_id}/members/me/data-consent/withdraw:
+    parameters:
+    - $ref: '#/components/parameters/sacco_id'
+    post:
+      summary: Withdraw consent; my personal details are erased
+      description: '**Who:** the member. Ends the consent and erases full name, national ID, gender and date of
+        birth at once. Savings, loans, share capital and the audit trail stay. Audited as
+        `consent.withdraw` with the names of the erased fields, never the values.
+
+
+        **Rate limit:** 30 per minute.'
+      responses:
+        '200':
+          description: '`{consent: null, erased: [field names]}`.'
+        '409':
+          description: No active consent to withdraw.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '423':
+          $ref: '#/components/responses/Locked'
+      security:
+      - bearerAuth: []
+  /api/v1/saccos/{sacco_id}/members/{membership_id}/profile:
+    parameters:
+    - $ref: '#/components/parameters/sacco_id'
+    - name: membership_id
+      in: path
+      required: true
+      schema:
+        type: integer
+    get:
+      summary: A member's personal details, share capital and consent
+      description: '**Who:** the member themself, or a holder of `member.manage` (the SACCO admin). Nobody
+        else, the platform owner included. Personal details never appear in the member list.
+
+
+        **Rate limit:** 120 per minute.'
+      responses:
+        '200':
+          description: '`{membership_id, full_name, national_id, gender, date_of_birth, share_capital, consent}`. Every field can be `null`.'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '423':
+          $ref: '#/components/responses/Locked'
+      security:
+      - bearerAuth: []
+    patch:
+      summary: Set a member's personal details or share capital
+      description: '**Who:** the member themself or a holder of `member.manage`; `share_capital` only by a
+        holder of `member.manage` (403 otherwise). Send any of `full_name` (2 to 120 letters, spaces, `''`
+        `.` `-`), `national_id` (7 or 8 digits, unique within the SACCO), `gender` (`female`, `male`,
+        `other`), `date_of_birth` (`YYYY-MM-DD`, 1900 to today), `share_capital` (whole minor units, zero
+        or more). `null` or an empty string clears a field. Every field is optional. Setting a personal
+        detail needs the member''s own active consent (409 `CONSENT_REQUIRED`); clearing one and
+        `share_capital` do not. Audited as `member.profile_update` with the field names only.
+
+
+        **Rate limit:** 30 per minute.'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                full_name: {type: string, nullable: true}
+                national_id: {type: string, nullable: true}
+                gender: {type: string, enum: [female, male, other], nullable: true}
+                date_of_birth: {type: string, format: date, nullable: true}
+                share_capital: {type: integer, minimum: 0, nullable: true}
+      responses:
+        '200':
+          description: The updated profile (same shape as GET).
+        '400':
+          description: Unknown field, no field, or a bad value (`validation_error`, `error.fields`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: '`CONSENT_REQUIRED`, or the national ID is already used by another member of this SACCO.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '423':
+          $ref: '#/components/responses/Locked'
+      security:
+      - bearerAuth: []
   /api/v1/saccos/{sacco_id}/settings:
     parameters:
     - $ref: '#/components/parameters/sacco_id'

@@ -1661,6 +1661,98 @@ Response **200**: The proposal with its tally.
 
 Error statuses: 400, 401, 403, 404, 409
 
+## GET /api/v1/saccos/{sacco_id}/members/me/data-consent
+
+**The data-protection wording and my consent**
+
+**Who:** an active member of the SACCO. Returns `notice` (`version`, `purpose`, `text`) and `consent` (`purpose`, `notice_version`, `granted_at`, or `null`).
+
+**Rate limit:** 120 per minute.
+
+Parameters: `sacco_id` (path, integer)
+
+Response **200**: `{notice, consent}`.
+
+Error statuses: 401, 403, 404, 423
+
+## POST /api/v1/saccos/{sacco_id}/members/me/data-consent
+
+**Agree to NEXORA keeping my personal details**
+
+**Who:** the member, for themself only (nobody can consent for someone else). Send the `notice_version` you read; another version is 409. Personal details (full name, national ID, gender, date of birth) can be stored only while this consent is active. Repeating it returns the existing consent (200). Audited as `consent.grant`.
+
+**Rate limit:** 30 per minute.
+
+Parameters: `sacco_id` (path, integer)
+
+Request body:
+
+```json
+{
+  "notice_version": 1
+}
+```
+
+Response **201**: `{consent}`: new.
+
+Response **200**: `{consent}`: already given.
+
+Error statuses: 400, 409, 401, 403, 404, 423
+
+## POST /api/v1/saccos/{sacco_id}/members/me/data-consent/withdraw
+
+**Withdraw consent; my personal details are erased**
+
+**Who:** the member. Ends the consent and erases full name, national ID, gender and date of birth at once. Savings, loans, share capital and the audit trail stay. Audited as `consent.withdraw` with the names of the erased fields, never the values.
+
+**Rate limit:** 30 per minute.
+
+Parameters: `sacco_id` (path, integer)
+
+Response **200**: `{consent: null, erased: [field names]}`.
+
+Error statuses: 409, 401, 403, 404, 423
+
+## GET /api/v1/saccos/{sacco_id}/members/{membership_id}/profile
+
+**A member's personal details, share capital and consent**
+
+**Who:** the member themself, or a holder of `member.manage` (the SACCO admin). Nobody else, the platform owner included. Personal details never appear in the member list.
+
+**Rate limit:** 120 per minute.
+
+Parameters: `sacco_id` (path, integer), `membership_id` (path, integer)
+
+Response **200**: `{membership_id, full_name, national_id, gender, date_of_birth, share_capital, consent}`. Every field can be `null`.
+
+Error statuses: 401, 403, 404, 423
+
+## PATCH /api/v1/saccos/{sacco_id}/members/{membership_id}/profile
+
+**Set a member's personal details or share capital**
+
+**Who:** the member themself or a holder of `member.manage`; `share_capital` only by a holder of `member.manage` (403 otherwise). Send any of `full_name` (2 to 120 letters, spaces, `'` `.` `-`), `national_id` (7 or 8 digits, unique within the SACCO), `gender` (`female`, `male`, `other`), `date_of_birth` (`YYYY-MM-DD`, 1900 to today), `share_capital` (whole minor units, zero or more). `null` or an empty string clears a field. Every field is optional. Setting a personal detail needs the member's own active consent (409 `CONSENT_REQUIRED`); clearing one and `share_capital` do not. Audited as `member.profile_update` with the field names only.
+
+**Rate limit:** 30 per minute.
+
+Parameters: `sacco_id` (path, integer), `membership_id` (path, integer)
+
+Request body:
+
+```json
+{
+  "full_name": "full_name",
+  "national_id": "national_id",
+  "gender": "female",
+  "date_of_birth": "2026-11-18",
+  "share_capital": 1
+}
+```
+
+Response **200**: The updated profile (same shape as GET).
+
+Error statuses: 400, 409, 401, 403, 404, 423
+
 ## GET /api/v1/saccos/{sacco_id}/settings
 
 **The SACCO's loan rules**
