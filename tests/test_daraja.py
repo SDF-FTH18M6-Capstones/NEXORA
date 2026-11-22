@@ -10,6 +10,7 @@ from app.models.audit import AuditLog
 from app.models.savings import SavingsAccount
 from app.models.stk_push import StkPush
 from app.payments import daraja
+from app.payments import routes as stk_routes
 from config import Config, TestConfig
 from test_member_profile import P
 from test_sacco_detail import ADMIN, MEMBER, make_sacco
@@ -269,6 +270,10 @@ def test_a_receipt_number_cannot_close_two_pushes(client, on):
     db.session.expire_all()
     first, second = db.session.query(StkPush).order_by(StkPush.id).all()
     assert (first.status, second.status) == ("succeeded", "failed")
+    # Both answers are on the audit trail, the failed one too.
+    assert (
+        db.session.query(AuditLog).filter_by(action="payment.stk_result").count() == 2
+    )
 
 
 def test_only_the_owner_or_a_manager_reads_a_push(client, on):
@@ -438,3 +443,41 @@ def test_sacco_login_is_registered_once(app):
         r for r in app.url_map.iter_rules() if r.rule.endswith("/auth/sacco-login")
     ]
     assert len(rules) == 1
+
+
+def test_stale_read_must_not_overwrite_a_callback_that_lands_meanwhile(
+    client, on, monkeypatch
+):
+    """GET marks a 15-minute-old pending push failed with an unconditional
+    UPDATE. A success callback committed after GET read the row but before GET
+    commits is overwritten: M-Pesa took the money, the record says failed."""
+    p = P(make_sacco(), MEMBER)
+    push(client, p)
+    db.session.execute(
+        text("UPDATE stk_pushes SET created_at = now() - interval '20 minutes'")
+    )
+    db.session.commit()
+    row_id = db.session.query(StkPush).one().id
+    real = stk_routes.datetime
+
+    class Stub:
+        fired = False
+
+        @staticmethod
+        def now(tz=None):
+            if not Stub.fired:
+                Stub.fired = True
+                with db.engine.begin() as other:  # the callback commits here
+                    other.execute(
+                        text(
+                            "UPDATE stk_pushes SET status='succeeded', "
+                            "mpesa_receipt='ABC1234567' WHERE id=:i"
+                        ),
+                        {"i": row_id},
+                    )
+            return real.now(tz)
+
+    monkeypatch.setattr(stk_routes, "datetime", Stub)
+    client.get(f"/api/v1/saccos/{p.sacco_id}/stk-push/{row_id}", headers=p.headers)
+    db.session.remove()
+    assert db.session.query(StkPush).one().status == "succeeded"

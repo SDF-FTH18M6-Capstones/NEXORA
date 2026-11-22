@@ -140,8 +140,14 @@ def get_stk_push(sacco_id, push_id):
         return error_response(404, "Not found.")
     if row.status == "pending" and row.created_at < datetime.now(UTC) - STALE:
         # No answer from M-Pesa in time (a lost callback): stop showing "pending".
-        row.status, row.result_desc = "failed", "M-Pesa did not answer in time."
+        # Conditional: a callback that lands meanwhile has already closed the row.
+        db.session.execute(
+            update(StkPush)
+            .where(StkPush.id == row.id, StkPush.status == "pending")
+            .values(status="failed", result_desc="M-Pesa did not answer in time.")
+        )
         db.session.commit()
+        db.session.refresh(row)
     return jsonify(_json(row))
 
 
@@ -184,7 +190,7 @@ def stk_callback(token):
     audit_log.record(
         row.sacco_id, None, "payment.stk_result", f"stk:{row.id} {row.status}"
     )
-    row_id = row.id
+    row_id, sacco_id = row.id, row.sacco_id
     try:
         db.session.commit()
     except IntegrityError:  # this receipt number is already on another push
@@ -193,6 +199,9 @@ def stk_callback(token):
             update(StkPush)
             .where(StkPush.id == row_id)
             .values(status="failed", result_desc="Duplicate receipt number.")
+        )
+        audit_log.record(
+            sacco_id, None, "payment.stk_result", f"stk:{row_id} failed"
         )
         db.session.commit()
     return jsonify(ACK)
