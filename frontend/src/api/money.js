@@ -59,8 +59,8 @@ export async function postMoney(accountId, kind, { amount, reference, note }) {
   return http.post(`/savings/accounts/${accountId}/${kind === 'deposit' ? 'deposits' : 'withdrawals'}`, { body: { amount: toMinor(amount), reference, note: note || undefined } });
 }
 
-/* POST /savings/transactions/<id>/reversals. The reason is kept by the audit trail when the server supports it; the sentence for a double reverse comes from the server. */
-export async function reverseTransaction(accountId, transactionId, { reference, reason }) {
+/* POST /savings/transactions/<id>/reversals. `override` sends the reason as `override_reason`: only a SACCO admin may, and only to reverse past an open loan's cap (the server answers 409 LOAN_OVER_CAP first); the sentence for a double reverse comes from the server. */
+export async function reverseTransaction(accountId, transactionId, { reference, reason, override = false }) {
   if (MOCK) {
     await mockDelay();
     logRef('reversal', reference);
@@ -75,7 +75,7 @@ export async function reverseTransaction(accountId, transactionId, { reference, 
     rows.unshift({ id: store.next.tx++, type: back, amount: orig.amount, reference, note: reason, created_at: new Date().toISOString(), reverses_id: transactionId });
     return { ok: true };
   }
-  return http.post(`/savings/transactions/${transactionId}/reversals`, { body: { reference, reason } });
+  return http.post(`/savings/transactions/${transactionId}/reversals`, { body: { reference, reason, override_reason: override ? reason : undefined } });
 }
 
 /* One account, fresh (the ledger header shows its balance). */

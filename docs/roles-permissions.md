@@ -92,6 +92,7 @@ staff: secretary, member: member).
 | savings.post (deposit, withdraw, interest, fee, open account) | yes | | yes | | |
 | savings.request (send a deposit or withdrawal request for my own account) | | | | | yes |
 | savings.reverse | yes | | yes | | |
+| savings.reverse_override (reverse past an open loan's cap, with a reason; audited) | yes | | | | |
 | report.view | yes | yes | yes | yes | |
 | sacco.view (SACCO name, status, settings) | yes | yes | yes | yes | yes |
 | sacco.update (rename the SACCO) | yes | | | | |

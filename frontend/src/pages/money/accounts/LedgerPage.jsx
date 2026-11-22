@@ -15,6 +15,8 @@ import { failure, isCredit, reversedSet, txTitle, usePaged } from '../helpers.js
 const FILTERS = [['all', 'All'], ['deposit', 'Deposits'], ['withdrawal', 'Withdrawals'], ['reversed', 'Reversed']];
 
 function ReverseDialog({ tx, onClose, onDone }) {
+  const { can } = useSession();
+  const [capBlock, setCapBlock] = useState(null);   // the server's sentence when an open loan's cap blocks the reversal
   const [reason, setReason] = useState('');
   const [error, setError] = useState('');
   const [note, setNote] = useState(null);
@@ -25,15 +27,17 @@ function ReverseDialog({ tx, onClose, onDone }) {
   useEffect(() => { const el = document.getElementById('reverse-reason'); if (el) el.focus(); }, []);
   useEffect(() => { const k = e => { if (e.key === 'Escape' && !busy.current) onClose(); }; window.addEventListener('keydown', k); return () => window.removeEventListener('keydown', k); }, [onClose]);
 
-  async function submit(e) {
+  async function submit(e, override = false) {
     e.preventDefault();
     if (busy.current) return;
     if (!reason.trim()) { setError('Write a reason for the reversal.'); const el = document.getElementById('reverse-reason'); if (el) el.focus(); return; }
+    if (override && reason.trim().length < 10) { setError('An override needs a reason of at least 10 characters.'); return; }
     busy.current = true; setSending(true); setNote(null);
-    try { await reverseTransaction(tx.account_id, tx.id, { reference, reason: reason.trim() }); setReference(newReference()); onDone({ kind: 'ok', text: `Entry #${tx.id} reversed.` }); }
+    try { await reverseTransaction(tx.account_id, tx.id, { reference, reason: reason.trim(), override }); setReference(newReference()); onDone({ kind: 'ok', text: `Entry #${tx.id} reversed.` }); }
     catch (err) {
       const f = failure(err, 'Reverse');
-      if (f.page) onDone({ page: f.page });
+      if (err.code === 'LOAN_OVER_CAP') setCapBlock(err.message);
+      else if (f.page) onDone({ page: f.page });
       else if (f.offline) setNote({ kind: 'warn', text: f.text });
       else onDone({ kind: 'err', text: f.text });
     } finally { busy.current = false; setSending(false); }
@@ -48,8 +52,10 @@ function ReverseDialog({ tx, onClose, onDone }) {
           <textarea value={reason} onChange={e => { setReason(e.target.value); setError(''); }} />
         </Field>
         {note && <ErrorBanner kind={note.kind}>{note.text}</ErrorBanner>}
+        {capBlock && <ErrorBanner kind="warn">{capBlock}</ErrorBanner>}
         <div className="sam-row-gap">
-          <button type="submit" className="btn warn" disabled={sending}>{sending ? 'Reversing...' : 'Reverse entry'}</button>
+          {!capBlock && <button type="submit" className="btn warn" disabled={sending}>{sending ? 'Reversing...' : 'Reverse entry'}</button>}
+          {capBlock && can('savings.reverse_override') && <button type="button" className="btn warn" disabled={sending} onClick={e => submit(e, true)}>{sending ? 'Reversing...' : 'Override and reverse'}</button>}
           <button type="button" className="btn ghost" disabled={sending} onClick={onClose}>Cancel</button>
         </div>
       </form>

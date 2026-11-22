@@ -45,6 +45,17 @@ def parse_reference(value) -> str:
     return value
 
 
+def parse_override_reason(value, low: int = 10, high: int = 140) -> str | None:
+    """Optional. A reason is a plain sentence the audit trail will keep."""
+    if value is None:
+        return None
+    if not isinstance(value, str) or not low <= len(value.strip()) <= high:
+        raise InvalidRequest(
+            f"override_reason must be {low} to {high} characters saying why."
+        )
+    return value.strip()
+
+
 def parse_open_account(body: dict) -> int:
     """Returns the membership id the account is opened for."""
     return parse_id(body.get("membership_id"), "membership_id")

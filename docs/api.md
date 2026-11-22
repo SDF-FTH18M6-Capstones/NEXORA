@@ -1067,6 +1067,8 @@ Error statuses: 400, 401, 403, 404, 423, 429
 
 A reversal is a new opposite entry; nobody may reverse an entry on their own account (403). An entry can be reversed once, and a reversal cannot be reversed (409). `reference` is required. A new entry answers **201**; repeating the same reference with the same request answers **200** with `replayed: true`; the same reference with a different request is 409. Holders of `savings.reverse` (admin, finance officer) reverse entries, others cannot (403). Amounts are integers in minor units.
 
+**Loan cap:** reversing a deposit (or interest) takes money off the account. If that would leave the member's savings below what their open loan needs under the SACCO's cap multiple, it is refused (409 `LOAN_OVER_CAP`). A SACCO admin (`savings.reverse_override`) may force it by sending `override_reason` (10 to 140 characters); the reversal is then audited as `savings.reverse_override` with the reason. Anyone else who sends a reason for a blocked reversal gets 403. A reason sent when nothing blocks the reversal is ignored.
+
 Parameters: `transaction_id` (path, integer)
 
 Request body:

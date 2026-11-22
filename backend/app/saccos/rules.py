@@ -415,12 +415,12 @@ def check_loan_disburse(loan, savings: int) -> None:
         )
 
 
-def check_withdrawal(account, amount: int) -> None:
-    """Refuse a withdrawal that would leave the member's savings too small for
-    the cap on a loan they still have open. The caller holds the circle lock."""
+def _cap_floor(account) -> tuple[int, int, int] | None:
+    """(open loan principal, cap multiple, least savings allowed) or None when no
+    rule applies: the SACCO has no rules or the member has no open loan."""
     rules = current_rules(account.sacco_id)
     if rules is None:
-        return
+        return None
     principal = db.session.scalar(
         select(func.max(Loan.principal)).where(
             Loan.membership_id == account.membership_id,
@@ -428,9 +428,18 @@ def check_withdrawal(account, amount: int) -> None:
         )
     )
     if principal is None:
-        return
+        return None
     multiple = rules.loan_cap_multiple
-    keep = -(-principal // multiple)  # savings must stay at or above principal / cap
+    return principal, multiple, -(-principal // multiple)  # principal / cap, rounded up
+
+
+def check_withdrawal(account, amount: int) -> None:
+    """Refuse a withdrawal that would leave the member's savings too small for
+    the cap on a loan they still have open. The caller holds the circle lock."""
+    floor = _cap_floor(account)
+    if floor is None:
+        return
+    principal, multiple, keep = floor
     if account.balance - amount < keep:
         raise Conflict(
             f"You have an open loan of {kes(principal)}. This circle lets you borrow "
@@ -439,6 +448,25 @@ def check_withdrawal(account, amount: int) -> None:
             f"{kes(max(account.balance - keep, 0))}.",
             code=LOAN_OVER_CAP,
         )
+
+
+def reversal_cap_problem(account, amount: int) -> str | None:
+    """Why taking `amount` off this account by a reversal would break the cap of
+    the holder's open loan, or None when it would not. The caller holds the
+    circle lock."""
+    floor = _cap_floor(account)
+    if floor is None:
+        return None
+    principal, multiple, keep = floor
+    if account.balance - amount >= keep:
+        return None
+    return (
+        f"This reversal would leave the member's savings at "
+        f"{kes(account.balance - amount)}. They have an open loan of "
+        f"{kes(principal)} and this SACCO lets members borrow {multiple} times "
+        f"their savings, so savings must stay at {kes(keep)} or more while it is "
+        f"open. A SACCO admin can override this with a written reason."
+    )
 
 
 def check_loan_request(membership, savings: int, principal: int, term_months) -> None:

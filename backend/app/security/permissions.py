@@ -44,6 +44,9 @@ PERMISSIONS: dict[str, str] = {
     "savings.view": "Read savings accounts and their history",
     "savings.post": "Post deposits, withdrawals, interest and fees",
     "savings.reverse": "Reverse a posted ledger entry",
+    # Reverse an entry even when it would leave savings below an open loan's cap.
+    # Needs a written reason and is audited.
+    "savings.reverse_override": "Override the loan-cap block on a reversal",
     "savings.request": "Send a deposit or withdrawal request for my own account",
     "loan.view": "Read loan requests and their decisions",
     "loan.request": "Request a loan",
@@ -78,6 +81,7 @@ ROLE_PERMISSIONS: dict[str, frozenset[str]] = {
             "savings.view",
             "savings.post",
             "savings.reverse",
+            "savings.reverse_override",
             "loan.view",
             "report.view",
             "savings.view_all",

@@ -11,7 +11,11 @@ Rules enforced here:
   reversed, post a fresh deposit or withdrawal;
 - loan disbursements and repayments cannot be reversed here;
 - an entry can be reversed once; retrying the same reversal returns it;
-- a reversal that would take the balance below zero is refused (409).
+- a reversal that would take the balance below zero is refused (409);
+- a reversal that takes money off an account (a deposit or interest reversed)
+  and would leave savings below the cap of the holder's open loan is refused
+  (409 LOAN_OVER_CAP). A SACCO admin (`savings.reverse_override`) may force it
+  with `override_reason`, which is audited (`savings.reverse_override`).
 """
 
 from dataclasses import dataclass
@@ -21,14 +25,17 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 
 from app.audit import log as audit_log
-from app.errors import DUPLICATE_REFERENCE, INSUFFICIENT_FUNDS
+from app.errors import DUPLICATE_REFERENCE, INSUFFICIENT_FUNDS, LOAN_OVER_CAP
 from app.extensions import db
 from app.ledger import service as ledger
 from app.models.ledger import Transaction, TransactionType
 from app.models.membership import MembershipStatus, SaccoMembership
 from app.models.savings import SavingsAccount
 from app.savings import service as savings
-from app.savings.service import Conflict, NotFound, _atomic
+from app.savings.service import DEBIT_TYPES, Conflict, Forbidden, NotFound, _atomic
+
+MIN_REASON = 10
+MAX_REASON = 140  # the audit target column holds 255 characters in all
 
 OPPOSITE = {
     TransactionType.DEPOSIT: TransactionType.WITHDRAWAL,
@@ -94,7 +101,10 @@ def _is_loan_entry(transaction_id: int) -> bool:
 
 @_atomic
 def reverse_transaction(
-    user_id: int, transaction_id: int, reference: str
+    user_id: int,
+    transaction_id: int,
+    reference: str,
+    override_reason: str | None = None,
 ) -> ReversalView:
     original = ledger.get_entry(transaction_id)
     if original is None:
@@ -102,6 +112,13 @@ def reverse_transaction(
     actor: SaccoMembership = savings._actor(
         user_id, original.sacco_id, "savings.reverse"
     )
+
+    takes_money_off = OPPOSITE[original.type] in DEBIT_TYPES
+    if takes_money_off:
+        # SACCO lock before the account lock, the order a withdrawal uses too.
+        from app.saccos.rules import lock_sacco  # rules imports the savings service
+
+        lock_sacco(original.sacco_id)
 
     # Same lock as deposits and withdrawals, so a reversal and a withdrawal on
     # one account cannot interleave.
@@ -139,6 +156,22 @@ def reverse_transaction(
     if existing is not None:
         raise Conflict("This transaction has already been reversed.")
 
+    overridden = False
+    if takes_money_off:
+        from app.saccos.rules import reversal_cap_problem
+
+        problem = reversal_cap_problem(account, original.amount)
+        if problem is not None:
+            if override_reason is None:
+                raise Conflict(problem, code=LOAN_OVER_CAP)
+            try:
+                savings._actor(user_id, account.sacco_id, "savings.reverse_override")
+            except Forbidden:
+                raise Forbidden(
+                    "Only a SACCO admin can override the loan cap on a reversal."
+                ) from None
+            overridden = True
+
     entry = Transaction(
         sacco_id=account.sacco_id,
         savings_account_id=account.id,
@@ -174,6 +207,13 @@ def reverse_transaction(
         "savings.reverse",
         f"savings_account:{account.id}/transaction:{entry.id}/reverses:{original.id}",
     )
+    if overridden:
+        audit_log.record(
+            account.sacco_id,
+            user_id,
+            "savings.reverse_override",
+            f"transaction:{entry.id}/reverses:{original.id} reason:{override_reason}",
+        )
     view = _view(entry, account.balance, replayed=False)
     db.session.commit()
     return view
