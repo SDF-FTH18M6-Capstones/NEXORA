@@ -3444,6 +3444,50 @@ paths:
                 $ref: '#/components/schemas/Error'
       security:
       - bearerAuth: []
+  /api/v1/saccos/{sacco_id}/payment-details/changes/{change_id}/cancel:
+    parameters:
+    - $ref: '#/components/parameters/sacco_id'
+    - name: change_id
+      in: path
+      required: true
+      schema:
+        type: integer
+    post:
+      summary: Cancel an approved change before it goes live
+      description: '**Who:** any single holder of `payin.manage`, the proposer and the approver included.
+        No second approval is needed: stopping is the safe direction. Only an approved change still inside
+        its 24 hours can be cancelled; it becomes `cancelled`, never goes live, and the details members see
+        stay as they are. Audited as `payin.cancel`; the other officers (the admin included) are emailed,
+        without the numbers. A change that is live, replaced, already cancelled or still waiting for a
+        second officer answers 409.
+
+
+        **Rate limit:** 30 per minute.'
+      responses:
+        '200':
+          description: '`{change}` with `status: cancelled`.'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: The change is not an approved change still waiting to go live (`conflict`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '423':
+          $ref: '#/components/responses/Locked'
+        '429':
+          description: Rate limit exceeded (`rate_limited`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      security:
+      - bearerAuth: []
   /api/v1/saccos/{sacco_id}/rules/proposals:
     parameters:
     - $ref: '#/components/parameters/sacco_id'

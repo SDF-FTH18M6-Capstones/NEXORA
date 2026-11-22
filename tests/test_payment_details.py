@@ -50,6 +50,10 @@ def read(client, user, s):
     return client.get(url(s), headers=auth(user))
 
 
+def cancel(client, user, s, change_id):
+    return client.post(url(s, f"/changes/{change_id}/cancel"), headers=auth(user))
+
+
 def go_live(change_id):
     """Pretend the 24h delay has passed, so the next read applies the change."""
     db.session.execute(
@@ -332,6 +336,121 @@ def test_the_database_refuses_a_go_live_before_the_approval(schema_app, mails): 
             {"i": change["id"], "u": s.finance.id},
         )
     db.session.rollback()
+
+
+def _approved(c, s, **overrides):
+    """A change proposed by the admin and approved by the finance officer."""
+    change = propose(c, s.admin, s, **overrides).json["change"]
+    assert approve(c, s.finance, s, change["id"]).status_code == 200
+    return change
+
+
+def test_any_single_officer_can_cancel_an_approved_change_and_it_never_goes_live(
+    schema_app,  # noqa: F811
+    mails,
+):
+    # The proposer, the approver and a third officer may each cancel alone.
+    for canceller in ("admin", "finance", "third"):
+        s = circle()
+        third = officer(s, "finance_officer")
+        who = {"admin": s.admin, "finance": s.finance, "third": third}[canceller]
+        c = schema_app.test_client()
+        live = _approved(c, s)
+        go_live(live["id"])
+        assert read(c, s.member, s).json["details"]["mpesa_number"] == "400200"
+        change = _approved(c, s, mpesa_number="400999")
+        assert read(c, s.member, s).json["scheduled"] is not None
+
+        done = cancel(c, who, s, change["id"])
+        assert done.status_code == 200, done.json
+        assert done.json["change"]["status"] == "cancelled"
+        seen = read(c, s.member, s).json
+        assert seen["scheduled"] is None
+        assert seen["details"]["mpesa_number"] == "400200"
+
+        # Even after its go-live time has passed, the cancelled change never
+        # goes live: the existing details stay.
+        go_live(change["id"])
+        after = read(c, s.member, s).json
+        assert after["details"]["mpesa_number"] == "400200"
+        assert read(c, s.finance, s).json["scheduled"] is None
+
+
+def test_a_cancelled_first_change_leaves_the_details_unset(schema_app, mails):  # noqa: F811
+    s = circle()
+    c = schema_app.test_client()
+    change = _approved(c, s)
+    assert cancel(c, s.admin, s, change["id"]).status_code == 200
+    go_live(change["id"])
+    assert read(c, s.member, s).json["details"] is None
+
+
+def test_a_cancel_is_audited_and_alerts_the_other_officers_only(schema_app, mails):  # noqa: F811
+    s = circle()
+    secretary = officer(s, "secretary")
+    c = schema_app.test_client()
+    change = _approved(c, s)
+    mails.clear()
+
+    assert cancel(c, s.finance, s, change["id"]).status_code == 200
+    admin_email = db.session.get(User, s.admin.id).email
+    finance_email = db.session.get(User, s.finance.id).email
+    assert [to for to, _, _ in mails] == [admin_email]  # not the one who cancelled
+    assert "cancelled" in mails[0][1]
+    assert finance_email in mails[0][2]
+    assert "400200" not in mails[0][2] and "0123456789" not in mails[0][2]
+    assert db.session.get(User, secretary.id).email not in [to for to, _, _ in mails]
+
+    row = (
+        db.session.query(AuditLog)
+        .filter(AuditLog.sacco_id == s.sacco.id, AuditLog.action == "payin.cancel")
+        .one()
+    )
+    assert row.actor_id == s.finance.id and row.target == f"change:{change['id']}"
+
+
+def test_only_an_approved_change_still_waiting_can_be_cancelled(schema_app, mails):  # noqa: F811
+    s = circle()
+    c = schema_app.test_client()
+    # Still waiting for a second officer.
+    pending = propose(c, s.admin, s).json["change"]
+    assert cancel(c, s.finance, s, pending["id"]).status_code == 409
+    approve(c, s.finance, s, pending["id"])
+    # Cancelled once; a second cancel is refused.
+    assert cancel(c, s.finance, s, pending["id"]).status_code == 200
+    assert cancel(c, s.admin, s, pending["id"]).status_code == 409
+    # Replaced by a newer approval.
+    old = _approved(c, s, mpesa_number="400111")
+    _approved(c, s, mpesa_number="400222")
+    assert cancel(c, s.admin, s, old["id"]).status_code == 409
+    # Already live.
+    live = _approved(c, s, mpesa_number="400333")
+    go_live(live["id"])
+    late = cancel(c, s.admin, s, live["id"])
+    assert late.status_code == 409
+    assert read(c, s.member, s).json["details"]["mpesa_number"] == "400333"
+    assert cancel(c, s.admin, s, 999999).status_code == 404
+
+
+def test_only_officers_of_this_circle_can_cancel(schema_app, mails):  # noqa: F811
+    s, other = circle(), circle()
+    c = schema_app.test_client()
+    change = _approved(c, s)
+    assert cancel(c, s.member, s, change["id"]).status_code == 403
+    for outsider in (other.admin, other.finance):
+        assert cancel(c, outsider, s, change["id"]).status_code == 404
+    assert read(c, s.admin, s).json["scheduled"]["id"] == change["id"]
+
+
+def test_a_new_change_can_be_proposed_after_a_cancel(schema_app, mails):  # noqa: F811
+    s = circle()
+    c = schema_app.test_client()
+    change = _approved(c, s)
+    cancel(c, s.admin, s, change["id"])
+    again = propose(c, s.admin, s)  # the same values: nothing is live, so allowed
+    assert again.status_code == 201
+    approve_and_wait(c, s.finance, s, again.json["change"]["id"])
+    assert read(c, s.member, s).json["details"]["mpesa_number"] == "400200"
 
 
 def test_a_second_change_replaces_the_live_values(schema_app, mails):  # noqa: F811

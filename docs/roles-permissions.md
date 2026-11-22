@@ -97,7 +97,7 @@ staff: secretary, member: member).
 | sacco.view (SACCO name, status, settings) | yes | yes | yes | yes | yes |
 | sacco.update (rename the SACCO) | yes | | | | |
 | support.approve (approve, deny or revoke a platform owner's support access) | yes | | | | |
-| payin.manage (propose or approve the circle's pay-in details; a different officer must approve) | yes | | yes | | |
+| payin.manage (propose, approve or cancel the circle's pay-in details; a different officer must approve, any one may cancel before it goes live) | yes | | yes | | |
 | audit.view (SACCO audit log) | **never** | yes | | | |
 | loan.view (every loan) | yes | yes | yes | yes | own only |
 | loan.approve | **never** | | | yes | |

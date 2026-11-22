@@ -1558,6 +1558,20 @@ Response **200**: `{change}` with `status: approved`, `approved_at` and `go_live
 
 Error statuses: 401, 403, 404, 409, 423, 429
 
+## POST /api/v1/saccos/{sacco_id}/payment-details/changes/{change_id}/cancel
+
+**Cancel an approved change before it goes live**
+
+**Who:** any single holder of `payin.manage`, the proposer and the approver included. No second approval is needed: stopping is the safe direction. Only an approved change still inside its 24 hours can be cancelled; it becomes `cancelled`, never goes live, and the details members see stay as they are. Audited as `payin.cancel`; the other officers (the admin included) are emailed, without the numbers. A change that is live, replaced, already cancelled or still waiting for a second officer answers 409.
+
+**Rate limit:** 30 per minute.
+
+Parameters: `sacco_id` (path, integer), `change_id` (path, integer)
+
+Response **200**: `{change}` with `status: cancelled`.
+
+Error statuses: 401, 403, 404, 409, 423, 429
+
 ## GET /api/v1/saccos/{sacco_id}/rules/proposals
 
 **Proposed rule changes**

@@ -2,7 +2,7 @@ import '../../styles/neo.css';
 import { useState } from 'react';
 import { useSession } from '../../lib/session.jsx';
 import { useAsync } from '../../lib/useAsync.js';
-import { approvePayIn, getPayIn, proposePayIn } from '../../api/payin.js';
+import { approvePayIn, cancelPayIn, getPayIn, proposePayIn } from '../../api/payin.js';
 import ErrorBanner from '../../components/ErrorBanner.jsx';
 import PayInForm from '../../components/PayInForm.jsx';
 import PayInView from '../../components/PayInView.jsx';
@@ -80,7 +80,12 @@ export default function PayInPage() {
           <div className="neo-stack">
             <h3 className="font-serif text-lg">Approved, going live on {dTime(scheduled.go_live_at)}</h3>
             <PayInView details={scheduled.values} showDate={false} />
-            <p className="muted text-sm">Members keep seeing the details above until then. If this is not right, send a new change and have it approved: it replaces this one.</p>
+            <p className="muted text-sm">Members keep seeing the details above until then. If this is not right, cancel it: any one officer can, and the details above stay.</p>
+            <div>
+              <button type="button" className="btn warn" disabled={busy} onClick={() => run(() => cancelPayIn(saccoId, scheduled.id), 'Change cancelled. Members still see the details above')}>
+                Cancel this change
+              </button>
+            </div>
           </div>
         )}
 

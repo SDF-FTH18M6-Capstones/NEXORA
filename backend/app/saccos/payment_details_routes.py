@@ -2,7 +2,8 @@
 
 GET  .../payment-details                       any active member: the live details
 POST .../payment-details/changes               an officer (`payin.manage`): propose
-POST .../payment-details/changes/<cid>/approve a different officer: go live
+POST .../payment-details/changes/<cid>/approve a different officer: schedule it
+POST .../payment-details/changes/<cid>/cancel  any officer: stop it before it goes live
 (all under /saccos/<id>)
 
 A proposal changes nothing members see. An approval by someone other than the
@@ -213,5 +214,54 @@ def approve_payment_details(sacco_id, change_id):
             "seeing the current details.",
             actor,
         ),
+    )
+    return jsonify(change=body)
+
+
+@saccos_bp.post("/<int:sacco_id>/payment-details/changes/<int:change_id>/cancel")
+@write_limit
+@permission_scoped(logic.PERMISSION)
+def cancel_payment_details(sacco_id, change_id):
+    """Any single officer may stop an approved change during its 24 hours. No
+    second approval: stopping is the safe direction, and the details members
+    see never changed."""
+    user = g.access.user
+    logic.apply_due(sacco_id)  # commits, so it must come before the lock
+    logic.lock_sacco(sacco_id)
+    change = db.session.execute(
+        select(CirclePaymentDetailsChange)
+        .where(
+            CirclePaymentDetailsChange.id == change_id,
+            CirclePaymentDetailsChange.sacco_id == sacco_id,
+        )
+        .with_for_update()
+    ).scalar_one_or_none()
+    if change is None:
+        db.session.rollback()
+        return error_response(404, "Not found.")
+    waiting = logic.waiting_change(sacco_id)
+    if change.status != "approved" or waiting is None or waiting.id != change.id:
+        db.session.rollback()
+        return error_response(
+            409,
+            "Only an approved change that has not gone live yet can be cancelled. "
+            "This one is live, was replaced, was already cancelled, or still "
+            "waits for a second officer.",
+        )
+    change.status = "cancelled"
+    audit_log.record(sacco_id, user.id, "payin.cancel", f"change:{change.id}")
+    circle, actor = g.access.sacco.name, user.email
+    body = logic.change_json(change)
+    db.session.commit()
+    logic.notify_officers(
+        sacco_id,
+        "NEXORA: a pay-in details change was cancelled",
+        _email_body(
+            circle,
+            "An approved change to the pay-in details was cancelled before it went "
+            "live. Members keep seeing the current details.",
+            actor,
+        ),
+        skip_user_id=user.id,
     )
     return jsonify(change=body)

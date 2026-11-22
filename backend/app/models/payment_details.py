@@ -26,7 +26,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 from app.extensions import db
 
 MPESA_TYPES = ("paybill", "till")
-CHANGE_STATUSES = ("pending", "approved", "superseded")
+CHANGE_STATUSES = ("pending", "approved", "superseded", "cancelled")
 
 
 def value_checks(table: str) -> list[CheckConstraint]:
@@ -120,11 +120,12 @@ class CirclePaymentDetailsChange(_Values, db.Model):
     __table_args__ = (
         *value_checks("circle_payment_detail_changes"),
         CheckConstraint(
-            "status IN ('pending', 'approved', 'superseded')",
+            "status IN ('pending', 'approved', 'superseded', 'cancelled')",
             name="ck_circle_payment_detail_changes_status",
         ),
-        # An approved change replaced before it went live keeps its approval
-        # but becomes 'superseded', so only "approved" requires the pair.
+        # An approved change replaced or cancelled before it went live keeps its
+        # approval but becomes 'superseded' or 'cancelled', so only "approved"
+        # requires the pair.
         CheckConstraint(
             "(approved_by IS NULL) = (approved_at IS NULL) "
             "AND (status <> 'approved' OR approved_by IS NOT NULL)",

@@ -47,3 +47,15 @@ export async function approvePayIn(saccoId, changeId) {
   }
   return (await http.post(`/saccos/${saccoId}/payment-details/changes/${changeId}/approve`)).change;
 }
+
+/* Any one officer may stop an approved change during its 24 hours; the details members see stay as they are. */
+export async function cancelPayIn(saccoId, changeId) {
+  if (MOCK) {
+    await mockDelay();
+    if (!mock.scheduled || mock.scheduled.id !== changeId) throw new ApiError(409, 'conflict', 'Only an approved change that has not gone live yet can be cancelled.');
+    const done = { ...mock.scheduled, status: 'cancelled' };
+    mock.scheduled = null;
+    return structuredClone(done);
+  }
+  return (await http.post(`/saccos/${saccoId}/payment-details/changes/${changeId}/cancel`)).change;
+}

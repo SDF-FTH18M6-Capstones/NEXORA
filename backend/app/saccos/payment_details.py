@@ -354,13 +354,21 @@ def _send_all(
             log.exception("Could not email officer %s of circle %s", user_id, sacco_id)
 
 
-def notify_officers(sacco_id: int, subject: str, body: str) -> None:
-    """Email every officer. Call after the commit: a mail outage never fails the
+def notify_officers(
+    sacco_id: int, subject: str, body: str, *, skip_user_id: int | None = None
+) -> None:
+    """Email every officer except `skip_user_id`.
+
+    Call after the commit: a mail outage never fails the
     request and never leaves a half-saved change. SMTP goes out on a background
     thread so a slow mail server cannot hold a worker (same reason as
     `mail.send_safely`); the log backend sends inline."""
     try:
-        recipients = [(user.id, user.email) for user in officers(sacco_id)]
+        recipients = [
+            (user.id, user.email)
+            for user in officers(sacco_id)
+            if user.id != skip_user_id
+        ]
     except Exception:
         log.exception("Could not list the officers of circle %s", sacco_id)
         return
