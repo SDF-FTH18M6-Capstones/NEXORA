@@ -24,7 +24,7 @@ export default function Verify() {
   }, [token]);
 
   return (
-    <AuthFrame eyebrow="Verify your email" heading="Confirming your email">
+    <AuthFrame eyebrow="Verify your email" effect="drift" heading="Confirming your email">
       {status === 'working' && <p className="text-muted">Checking your link...</p>}
       {status === 'ok' && (
         <>

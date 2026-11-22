@@ -37,7 +37,7 @@ cd backend && python app.py                 # API on http://localhost:5000
 
 Check it: `curl http://localhost:5000/api/health` should print `{"database":"connected","status":"healthy"}`.
 
-The seed prints every seeded email. All of them share the password `Dev-Seed-Pass-2026`:
+The seed prints every seeded email. All of them share the password `Dev-Seed-Pass-2026` and the circle PIN `2468` (the React app asks for the PIN after sign-in):
 
 | Who | Email | Role |
 |---|---|---|

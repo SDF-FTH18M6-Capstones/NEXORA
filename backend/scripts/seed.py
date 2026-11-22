@@ -17,6 +17,8 @@ sys.path.insert(0, str(BACKEND))
 
 # One clearly fake password for every seeded user (dev databases only).
 DEV_PASSWORD = "Dev-Seed-Pass-2026"
+# Circle PIN for every seeded membership; without one nobody seeded can pass /enter.
+DEV_PIN = "2468"
 DOMAIN = "example.com"
 OWNER_EMAIL = f"owner@{DOMAIN}"
 # The schema keeps at least two platform owners, so the seed starts with two.
@@ -74,6 +76,7 @@ def seed(app, require_dev=True):
     from sqlalchemy import func, select
 
     from app.auth.passwords import hash_password, validate_password
+    from app.auth.pin import set_pin
     from app.extensions import db
     from app.ledger import reversals
     from app.models.ledger import Transaction
@@ -170,6 +173,9 @@ def seed(app, require_dev=True):
             db.session.commit()
         else:
             membership_id = found.id
+        if not found.pin_hash:
+            set_pin(found, DEV_PIN)
+            db.session.commit()
         grant_job_title(membership_id, role, title)
         return membership_id
 
@@ -252,7 +258,7 @@ def main():
 
     app = create_app()
     seeded = seed(app)
-    print(f"Seeded. Every user's password is: {DEV_PASSWORD}\n")
+    print(f"Seeded. Every user's password is: {DEV_PASSWORD}, circle PIN {DEV_PIN}\n")
     for row in seeded:
         where = row["sacco"] or "-"
         print(f"  {row['email']:<28} {row['role']:<15} {where}")

@@ -35,6 +35,7 @@ export default function Forgot() {
   return (
     <AuthFrame
       eyebrow="Forgot password"
+      effect="ripple"
       heading="Get back in"
       intro="Enter your email and we will send a reset link."
       onSubmit={submit}

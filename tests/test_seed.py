@@ -61,6 +61,23 @@ def test_every_seeded_user_can_log_in(schema_app):
         assert resp.status_code == 200, row["email"]
 
 
+def test_every_seeded_member_can_enter_their_circle_with_the_dev_pin(schema_app):
+    seeded = seed_script.seed(schema_app, require_dev=False)
+    client = schema_app.test_client()
+    row = next(r for r in seeded if r["email"] == "alpha-m1@example.com")
+    login = client.post(
+        "/api/v1/auth/login",
+        json={"email": row["email"], "password": seed_script.DEV_PASSWORD},
+    ).get_json()
+    sacco_id = db.session.scalar(select(Sacco.id).where(Sacco.name == row["sacco"]))
+    resp = client.post(
+        "/api/v1/auth/circle-login",
+        json={"sacco_id": sacco_id, "pin": seed_script.DEV_PIN},
+        headers={"Authorization": f"Bearer {login['access_token']}"},
+    )
+    assert resp.status_code == 200
+
+
 def test_the_seed_refuses_a_database_that_is_not_a_dev_one(schema_app):
     with pytest.raises(SystemExit) as excinfo:
         seed_script.seed(schema_app)
