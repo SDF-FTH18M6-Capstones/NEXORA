@@ -50,6 +50,27 @@ def read(client, user, s):
     return client.get(url(s), headers=auth(user))
 
 
+def go_live(change_id):
+    """Pretend the 24h delay has passed, so the next read applies the change."""
+    db.session.execute(
+        text(
+            "UPDATE circle_payment_detail_changes SET "
+            "approved_at = approved_at - interval '25 hours', "
+            "go_live_at = go_live_at - interval '25 hours' WHERE id = :i"
+        ),
+        {"i": change_id},
+    )
+    db.session.commit()
+
+
+def approve_and_wait(client, user, s, change_id):
+    """Approve, then let the go-live delay pass. Returns the approve response."""
+    done = approve(client, user, s, change_id)
+    assert done.status_code == 200, done.json
+    go_live(change_id)
+    return done
+
+
 @pytest.fixture
 def mails(monkeypatch):
     sent = []
@@ -177,7 +198,8 @@ def test_a_circle_may_use_mpesa_only_or_bank_only(schema_app):  # noqa: F811
 def test_a_proposal_is_not_live_until_approved(schema_app, mails):  # noqa: F811
     s = circle()
     c = schema_app.test_client()
-    assert read(c, s.member, s).json == {"details": None, "pending": None}
+    empty = {"details": None, "pending": None, "scheduled": None}
+    assert read(c, s.member, s).json == empty
 
     made = propose(c, s.admin, s)
     assert made.status_code == 201, made.json
@@ -185,49 +207,142 @@ def test_a_proposal_is_not_live_until_approved(schema_app, mails):  # noqa: F811
     assert change["status"] == "pending"
 
     # Members still see nothing, and never see the waiting change.
-    assert read(c, s.member, s).json == {"details": None, "pending": None}
+    assert read(c, s.member, s).json == empty
     # The proposer and the other officer both see it waiting.
     for officer_ in (s.admin, s.finance):
         waiting = read(c, officer_, s).json
         assert waiting["details"] is None
         assert waiting["pending"]["id"] == change["id"]
 
-    done = approve(c, s.finance, s, change["id"])
-    assert done.status_code == 200, done.json
+    approve_and_wait(c, s.finance, s, change["id"])
     live = read(c, s.member, s).json
-    assert live["pending"] is None
+    assert live["pending"] is None and live["scheduled"] is None
     assert live["details"]["mpesa_number"] == "400200"
     assert live["details"]["bank_account_number"] == "0123456789"
-    assert live["details"]["updated_at"] == done.json["details"]["updated_at"]
 
 
-def test_updated_at_is_the_approval_time_not_the_proposal_time(schema_app, mails):  # noqa: F811
+def test_updated_at_is_the_go_live_time_not_the_proposal_or_approval_time(  # noqa: F811
+    schema_app,  # noqa: F811
+    mails,
+):
     s = circle()
     c = schema_app.test_client()
     change = propose(c, s.admin, s).json["change"]
-    live = approve(c, s.finance, s, change["id"]).json["details"]
+    approve_and_wait(c, s.finance, s, change["id"])
+    live = read(c, s.member, s).json["details"]
     db.session.expire_all()
     row = db.session.execute(
         text(
-            "SELECT proposed_at, approved_at FROM circle_payment_detail_changes "
-            "WHERE id = :i"
+            "SELECT proposed_at, approved_at, go_live_at "
+            "FROM circle_payment_detail_changes WHERE id = :i"
         ),
         {"i": change["id"]},
     ).one()
     stamp = datetime.fromisoformat(live["updated_at"])
-    assert stamp == row.approved_at
-    assert stamp > row.proposed_at
+    assert stamp == row.go_live_at
+    assert row.go_live_at - row.approved_at == logic.GO_LIVE_DELAY
+
+
+def test_an_approved_change_waits_24_hours_and_members_only_see_when(  # noqa: F811
+    schema_app,  # noqa: F811
+    mails,
+):
+    s = circle()
+    c = schema_app.test_client()
+    first = propose(c, s.admin, s).json["change"]
+    approve_and_wait(c, s.finance, s, first["id"])
+    second = propose(c, s.finance, s, mpesa_number="400300").json["change"]
+    done = approve(c, s.admin, s, second["id"])
+    assert done.status_code == 200, done.json
+    change = done.json["change"]
+    gap = datetime.fromisoformat(change["go_live_at"]) - datetime.fromisoformat(
+        change["approved_at"]
+    )
+    assert gap == logic.GO_LIVE_DELAY
+
+    # The old number stands. A member learns that a change is coming and when,
+    # never what it is.
+    seen = read(c, s.member, s).json
+    assert seen["details"]["mpesa_number"] == "400200"
+    assert seen["pending"] is None
+    assert list(seen["scheduled"]) == ["go_live_at"]
+    assert datetime.fromisoformat(
+        seen["scheduled"]["go_live_at"]
+    ) == datetime.fromisoformat(change["go_live_at"])
+    assert "400300" not in str(seen)
+    # An officer sees the values that are scheduled.
+    waiting = read(c, s.finance, s).json["scheduled"]
+    assert waiting["id"] == second["id"]
+    assert waiting["values"]["mpesa_number"] == "400300"
+
+    go_live(second["id"])
+    after = read(c, s.member, s).json
+    assert after["details"]["mpesa_number"] == "400300"
+    assert after["scheduled"] is None
+
+
+def test_the_first_ever_details_also_wait_for_the_delay(schema_app, mails):  # noqa: F811
+    s = circle()
+    c = schema_app.test_client()
+    approve(c, s.finance, s, propose(c, s.admin, s).json["change"]["id"])
+    seen = read(c, s.member, s).json
+    assert seen["details"] is None and seen["scheduled"] is not None
+
+
+def test_a_newer_approval_replaces_a_change_still_waiting(schema_app, mails):  # noqa: F811
+    s = circle()
+    c = schema_app.test_client()
+    old = propose(c, s.admin, s, mpesa_number="400111").json["change"]
+    approve(c, s.finance, s, old["id"])
+    new = propose(c, s.admin, s, mpesa_number="400222").json["change"]
+    approve(c, s.finance, s, new["id"])
+
+    status = dict(
+        db.session.execute(
+            text("SELECT id, status FROM circle_payment_detail_changes")
+        ).all()
+    )
+    assert status[old["id"]] == "superseded" and status[new["id"]] == "approved"
+    assert read(c, s.finance, s).json["scheduled"]["id"] == new["id"]
+
+    # Once the delay has passed, only the newer one goes live, never the old one.
+    go_live(new["id"])
+    go_live(old["id"])
+    assert read(c, s.member, s).json["details"]["mpesa_number"] == "400222"
+    actions = [
+        r.action
+        for r in db.session.query(AuditLog)
+        .filter(AuditLog.sacco_id == s.sacco.id, AuditLog.action.like("payin.%"))
+        .order_by(AuditLog.id)
+    ]
+    assert actions.count("payin.supersede") == 1
+
+
+def test_the_database_refuses_a_go_live_before_the_approval(schema_app, mails):  # noqa: F811
+    s = circle()
+    c = schema_app.test_client()
+    change = propose(c, s.admin, s).json["change"]
+    with pytest.raises(IntegrityError):
+        db.session.execute(
+            text(
+                "UPDATE circle_payment_detail_changes SET status = 'approved', "
+                "approved_by = :u, approved_at = now(), "
+                "go_live_at = now() - interval '1 hour' WHERE id = :i"
+            ),
+            {"i": change["id"], "u": s.finance.id},
+        )
+    db.session.rollback()
 
 
 def test_a_second_change_replaces_the_live_values(schema_app, mails):  # noqa: F811
     s = circle()
     c = schema_app.test_client()
     first = propose(c, s.admin, s).json["change"]
-    approve(c, s.finance, s, first["id"])
+    approve_and_wait(c, s.finance, s, first["id"])
     second = propose(c, s.finance, s, mpesa_number="400300").json["change"]
     # Still the old number until the other officer approves.
     assert read(c, s.member, s).json["details"]["mpesa_number"] == "400200"
-    assert approve(c, s.admin, s, second["id"]).status_code == 200
+    approve_and_wait(c, s.admin, s, second["id"])
     assert read(c, s.member, s).json["details"]["mpesa_number"] == "400300"
     db.session.expire_all()
     assert (
@@ -242,7 +357,7 @@ def test_a_second_change_replaces_the_live_values(schema_app, mails):  # noqa: F
 def test_proposing_what_is_already_live_is_refused(schema_app, mails):  # noqa: F811
     s = circle()
     c = schema_app.test_client()
-    approve(c, s.finance, s, propose(c, s.admin, s).json["change"]["id"])
+    approve_and_wait(c, s.finance, s, propose(c, s.admin, s).json["change"]["id"])
     same = propose(c, s.admin, s)
     assert same.status_code == 409
     assert "already see" in same.json["error"]["message"]
@@ -296,7 +411,8 @@ def test_the_database_refuses_self_approval_and_a_second_pending(schema_app, mai
         db.session.execute(
             text(
                 "UPDATE circle_payment_detail_changes SET status = 'approved', "
-                "approved_by = proposed_by, approved_at = now() WHERE id = :i"
+                "approved_by = proposed_by, approved_at = now(), go_live_at = now() "
+                "WHERE id = :i"
             ),
             {"i": change["id"]},
         )
@@ -386,7 +502,7 @@ def test_someone_from_another_circle_gets_404_everywhere(schema_app, mails):  # 
     other = circle()
     c = schema_app.test_client()
     change = propose(c, s.admin, s).json["change"]
-    approve(c, s.finance, s, change["id"])
+    approve_and_wait(c, s.finance, s, change["id"])
     pending = propose(c, s.admin, s, mpesa_number="400555").json["change"]
 
     for outsider in (other.member, other.admin, other.finance):
@@ -402,7 +518,7 @@ def test_someone_from_another_circle_gets_404_everywhere(schema_app, mails):  # 
 def test_each_circle_has_its_own_details(schema_app, mails):  # noqa: F811
     a, b = circle(), circle()
     c = schema_app.test_client()
-    approve(c, a.finance, a, propose(c, a.admin, a).json["change"]["id"])
+    approve_and_wait(c, a.finance, a, propose(c, a.admin, a).json["change"]["id"])
     assert read(c, b.member, b).json["details"] is None
     assert read(c, a.member, a).json["details"] is not None
 
@@ -426,7 +542,8 @@ def test_a_shared_bank_paybill_is_marked_manual_confirm_only(schema_app, mails):
         c, s.admin, s, bank_uses_shared_paybill=True, bank_paybill_number="247247"
     ).json["change"]
     assert shared["values"]["bank_manual_confirm_only"] is True
-    live = approve(c, s.finance, s, shared["id"]).json["details"]
+    approve_and_wait(c, s.finance, s, shared["id"])
+    live = read(c, s.member, s).json["details"]
     assert live["bank_manual_confirm_only"] is True
     assert live["bank_paybill_number"] == "247247"
     assert read(c, s.member, s).json["details"]["bank_manual_confirm_only"] is True
@@ -440,7 +557,7 @@ def test_every_proposal_and_approval_is_audited_without_the_numbers(schema_app, 
     c = schema_app.test_client()
     first = propose(c, s.admin, s).json["change"]
     second = propose(c, s.finance, s, mpesa_number="400300").json["change"]
-    approve(c, s.admin, s, second["id"])
+    approved = approve(c, s.admin, s, second["id"])
     rows = (
         db.session.query(AuditLog)
         .filter(AuditLog.sacco_id == s.sacco.id, AuditLog.action.like("payin.%"))
@@ -455,7 +572,8 @@ def test_every_proposal_and_approval_is_audited_without_the_numbers(schema_app, 
     ]
     assert rows[0].target.startswith(f"change:{first['id']} fields:")
     assert "mpesa_number" in rows[0].target
-    assert rows[3].target == f"change:{second['id']}"
+    go_live_at = approved.json["change"]["go_live_at"]
+    assert rows[3].target == f"change:{second['id']} go_live_at:{go_live_at}"
     everything = " ".join(r.target for r in rows)
     assert "400200" not in everything and "0123456789" not in everything
 
@@ -490,8 +608,15 @@ def test_every_officer_and_only_officers_are_emailed(schema_app, mails):  # noqa
 
     mails.clear()
     approve(c, s.finance, s, change["id"])
-    assert sorted(to for to, _, _ in mails) == sorted([admin_email, finance_email])
-    assert "changed" in mails[0][1]
+    # The approval alerts every active member too, because the delay is the
+    # window in which a change nobody expected can be questioned.
+    everyone = {
+        db.session.get(User, u.id).email
+        for u in (s.admin, s.finance, secretary, s.member)
+    }
+    assert sorted(to for to, _, _ in mails) == sorted(everyone)
+    assert "24 hours" in mails[0][1]
+    assert "400200" not in mails[0][2] and "0123456789" not in mails[0][2]
 
 
 def test_an_inactive_officer_is_not_emailed(schema_app, mails):  # noqa: F811
@@ -518,7 +643,7 @@ def test_a_mail_outage_does_not_fail_or_undo_the_change(schema_app, monkeypatch)
     c = schema_app.test_client()
     made = propose(c, s.admin, s)
     assert made.status_code == 201
-    assert approve(c, s.finance, s, made.json["change"]["id"]).status_code == 200
+    approve_and_wait(c, s.finance, s, made.json["change"]["id"])
     assert read(c, s.member, s).json["details"] is not None
 
 

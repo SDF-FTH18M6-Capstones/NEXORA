@@ -5,9 +5,10 @@ POST .../payment-details/changes               an officer (`payin.manage`): prop
 POST .../payment-details/changes/<cid>/approve a different officer: go live
 (all under /saccos/<id>)
 
-A proposal changes nothing members see. Only an approval by someone other than
-the proposer copies it onto the live row. Every proposal and approval is audited
-in the same transaction, and every officer is emailed after the commit.
+A proposal changes nothing members see. An approval by someone other than the
+proposer schedules it: it goes live 24 hours later (`GO_LIVE_DELAY`), and
+members and officers are emailed at once so a change nobody expected can be
+questioned. Every proposal and approval is audited in the same transaction.
 """
 
 from datetime import UTC, datetime
@@ -60,15 +61,24 @@ def _email_body(circle: str, lead: str, actor: str) -> str:
 @read_limit
 @permission_scoped("sacco.view")
 def get_payment_details(sacco_id):
+    logic.apply_due(sacco_id)
     live = logic.live_details(sacco_id)
     pending = None
+    scheduled = None
+    waiting = logic.waiting_change(sacco_id)
+    if waiting is not None:
+        # Everyone is told a change is coming and when, never what it is.
+        scheduled = {"go_live_at": waiting.go_live_at.isoformat()}
     # Waiting changes are for officers only: members see what is live.
     if can(g.access.user, g.access.sacco, logic.PERMISSION):
         change = logic.pending_change(sacco_id)
         pending = logic.change_json(change) if change else None
+        if waiting is not None:
+            scheduled = logic.change_json(waiting)
     return jsonify(
         details=logic.live_json(live) if live else None,
         pending=pending,
+        scheduled=scheduled,
     )
 
 
@@ -80,6 +90,7 @@ def propose_payment_details(sacco_id):
     if errors:
         return _invalid(errors)
     user = g.access.user
+    logic.apply_due(sacco_id)  # commits, so it must come before the lock
     logic.lock_sacco(sacco_id)
     if logic.too_many_proposals(sacco_id):
         db.session.rollback()
@@ -129,6 +140,7 @@ def propose_payment_details(sacco_id):
 @permission_scoped(logic.PERMISSION)
 def approve_payment_details(sacco_id, change_id):
     user = g.access.user
+    logic.apply_due(sacco_id)  # commits, so it must come before the lock
     logic.lock_sacco(sacco_id)
     change = db.session.execute(
         select(CirclePaymentDetailsChange)
@@ -169,17 +181,37 @@ def approve_payment_details(sacco_id, change_id):
             "proposal, so the officers the circle already had stand behind it.",
         )
 
+    # A change still waiting for its go-live time is replaced, not stacked: two
+    # waiting changes would put the older (possibly mistaken) one live first.
+    replaced = logic.waiting_change(sacco_id)
+    if replaced is not None:
+        replaced.status = "superseded"
+        audit_log.record(sacco_id, user.id, "payin.supersede", f"change:{replaced.id}")
+    now = datetime.now(UTC)
     change.status = "approved"
     change.approved_by = user.id
-    change.approved_at = datetime.now(UTC)
+    change.approved_at = now
+    change.go_live_at = now + logic.GO_LIVE_DELAY
     db.session.flush()
-    logic.go_live(change)
-    audit_log.record(sacco_id, user.id, "payin.approve", f"change:{change.id}")
+    audit_log.record(
+        sacco_id,
+        user.id,
+        "payin.approve",
+        f"change:{change.id} go_live_at:{change.go_live_at.isoformat()}",
+    )
     circle, actor = g.access.sacco.name, user.email
+    body = logic.change_json(change)
     db.session.commit()
     logic.notify_officers(
         sacco_id,
-        "NEXORA: pay-in details changed",
-        _email_body(circle, "New pay-in details are now live for members.", actor),
+        "NEXORA: pay-in details will change in 24 hours",
+        _email_body(
+            circle,
+            "New pay-in details were approved and go live for members at "
+            f"{change.go_live_at:%d %b %Y %H:%M} UTC. Until then members keep "
+            "seeing the current details.",
+            actor,
+        ),
+        everyone=True,
     )
-    return jsonify(details=logic.live_json(logic.live_details(sacco_id)))
+    return jsonify(change=body)

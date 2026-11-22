@@ -46,13 +46,14 @@ export default function PayInPage() {
 
   const live = payIn.data && payIn.data.details;
   const pending = payIn.data && payIn.data.pending;
+  const scheduled = payIn.data && payIn.data.scheduled;
   const mine = pending && user && pending.proposed_by === user.id;
 
   return (
     <section className="glass neo-stack loose">
       <div>
         <h2 className="font-serif text-xl">Pay-in details</h2>
-        <p className="muted text-sm">Where members pay in. A change goes live only after a second officer approves it, so one person alone cannot point members at a new account.</p>
+        <p className="muted text-sm">Where members pay in. A change needs a second officer's approval, then goes live 24 hours later. Members and officers are told when it is approved, so one person alone cannot quietly point members at a new account.</p>
       </div>
       {notice && <ErrorBanner>{notice}</ErrorBanner>}
       <Body status={payIn.status} error={payIn.error} reload={payIn.reload}>
@@ -67,7 +68,7 @@ export default function PayInPage() {
               <p className="muted text-sm">You proposed this change. A different officer must approve it. Until then members still see the details above.</p>
             ) : (
               <div>
-                <button type="button" className="btn" disabled={busy} onClick={() => run(() => approvePayIn(saccoId, pending.id), 'Pay-in details are now live')}>
+                <button type="button" className="btn" disabled={busy} onClick={() => run(() => approvePayIn(saccoId, pending.id), 'Approved. It goes live in 24 hours')}>
                   Check the numbers, then approve
                 </button>
               </div>
@@ -75,10 +76,19 @@ export default function PayInPage() {
           </div>
         )}
 
+        {scheduled && scheduled.values && (
+          <div className="neo-stack">
+            <h3 className="font-serif text-lg">Approved, going live on {dTime(scheduled.go_live_at)}</h3>
+            <PayInView details={scheduled.values} showDate={false} />
+            <p className="muted text-sm">Members keep seeing the details above until then. If this is not right, send a new change and have it approved: it replaces this one.</p>
+          </div>
+        )}
+
         {!form && <div><button type="button" className="btn ghost" onClick={() => { setErrors({}); setForm(live ? payInToForm(live) : emptyPayIn()); }}>{live ? 'Propose a change' : 'Set the pay-in details'}</button></div>}
         {form && (
           <form className="neo-stack" noValidate onSubmit={event => { event.preventDefault(); send(); }}>
             {pending && <p className="muted text-sm">Sending a new change replaces the one waiting for approval.</p>}
+            {scheduled && <p className="muted text-sm">Once approved, a new change replaces the one going live on {dTime(scheduled.go_live_at)}.</p>}
             {errors._ && <div className="field-msg" role="alert">{errors._}</div>}
             <PayInForm value={form} onChange={value => { setForm(value); setErrors({}); }} errors={errors} disabled={busy} />
             <div className="flex flex-wrap gap-2">

@@ -3,7 +3,7 @@
 import { useRef, useState } from 'react';
 import { useSession } from '../../../lib/session.jsx';
 import { useAsync } from '../../../lib/useAsync.js';
-import { parseAmount, kes, kesFromMinor, fromMinor, newReference } from '../../../lib/format.js';
+import { dTime, parseAmount, kes, kesFromMinor, fromMinor, newReference } from '../../../lib/format.js';
 import { createRequest } from '../../../api/requests.js';
 import { getPayIn } from '../../../api/payin.js';
 import { getMyAccount } from '../../../api/money.js';
@@ -48,8 +48,10 @@ function HowToPay({ method, pay }) {
   const details = pay.data.details;
   if (!details) return <ErrorBanner kind="warn">Pay-in details not set. Ask an officer of your circle to set them. You cannot send a request until they are.</ErrorBanner>;
   const till = details.mpesa_type === 'till';
+  const scheduled = pay.data.scheduled;
   return (
     <>
+      {scheduled && <ErrorBanner kind="info">The pay-in details are changing on {dTime(scheduled.go_live_at)}. Until then, pay to the details shown below. If you were not told about this change, ask an officer before you pay.</ErrorBanner>}
       {method === 'mpesa' ? (
         <ol className="sam-steps">
           <li>Open M-Pesa on your phone and choose Lipa na M-Pesa, then {till ? 'Buy Goods and Services' : 'Pay Bill'}.</li>

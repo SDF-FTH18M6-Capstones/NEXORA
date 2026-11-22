@@ -1501,13 +1501,13 @@ Error statuses: 401, 403, 404, 409
 
 **Where members pay in**
 
-**Who:** any active member of the circle (`sacco.view`), or the platform owner. Returns `details` (the live values, or `null` when the circle has not set any) and `pending` (the change waiting for a second officer, or `null`). `pending` is only filled for holders of `payin.manage`; a member never sees a change before it is approved. `updated_at` is when a second officer approved the live values. `bank_manual_confirm_only` is true when the bank uses a shared paybill.
+**Who:** any active member of the circle (`sacco.view`), or the platform owner. Returns `details` (the live values, or `null` when the circle has not set any) and `pending` (the change waiting for a second officer, or `null`). `pending` is only filled for holders of `payin.manage`; a member never sees a change before it is live. `scheduled` is the approved change still waiting for its go-live time (24 hours after approval): holders of `payin.manage` get the change with its values, everyone else only `{go_live_at}`, never the numbers. `updated_at` is when the live values went live (approval plus 24 hours). Reading applies a change whose time has come. `bank_manual_confirm_only` is true when the bank uses a shared paybill.
 
 **Rate limit:** 120 per minute.
 
 Parameters: `sacco_id` (path, integer)
 
-Response **200**: `{details, pending}`. Never a pending change for a member.
+Response **200**: `{details, pending, scheduled}`. Members never get a pending change or the scheduled values.
 
 Error statuses: 401, 403, 404, 423, 429
 
@@ -1544,15 +1544,15 @@ Error statuses: 400, 401, 403, 404, 409, 423, 429
 
 ## POST /api/v1/saccos/{sacco_id}/payment-details/changes/{change_id}/approve
 
-**Approve a waiting change so it goes live**
+**Approve a waiting change so it goes live in 24 hours**
 
-**Who:** holders of `payin.manage`, never the officer who proposed the change (403 `PAYIN_SAME_OFFICER`). The change is named by id, so nobody approves values that changed after they read them. The approver must have become an officer before the change was proposed (403 `PAYIN_NEW_OFFICER`), and the proposer must still be an officer (409). Officer since is the earliest `granted_at` of a title that carries `payin.manage` (editing other titles keeps it); an admin with no title rows counts from when the membership was created. Audited as `payin.approve`; every officer is emailed. Everyone is also emailed when someone gains `payin.manage` (member add, role or title change).
+**Who:** holders of `payin.manage`, never the officer who proposed the change (403 `PAYIN_SAME_OFFICER`). The change is named by id, so nobody approves values that changed after they read them. The approver must have become an officer before the change was proposed (403 `PAYIN_NEW_OFFICER`), and the proposer must still be an officer (409). Officer since is the earliest `granted_at` of a title that carries `payin.manage` (editing other titles keeps it); an admin with no title rows counts from when the membership was created. Audited as `payin.approve`. The change goes live 24 hours after approval (`go_live_at`), not at once; every officer and every active member is emailed at approval, without the numbers. Approving while another approved change still waits replaces it (`payin.supersede`). Everyone is also emailed when someone gains `payin.manage` (member add, role or title change).
 
 **Rate limit:** 30 per minute.
 
 Parameters: `sacco_id` (path, integer), `change_id` (path, integer)
 
-Response **200**: `{details}`: the values now live, with `updated_at` set to the approval time.
+Response **200**: `{change}` with `status: approved`, `approved_at` and `go_live_at`. Members keep seeing the current details until `go_live_at`.
 
 Error statuses: 401, 403, 404, 409, 423, 429
 

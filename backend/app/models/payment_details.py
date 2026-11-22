@@ -107,7 +107,7 @@ class CirclePaymentDetails(_Values, db.Model):
     sacco_id: Mapped[int] = mapped_column(
         ForeignKey("saccos.id"), nullable=False, unique=True
     )
-    # The moment a second officer approved the values now live, not the proposal.
+    # The moment these values went live (approval plus the go-live delay).
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
@@ -123,10 +123,17 @@ class CirclePaymentDetailsChange(_Values, db.Model):
             "status IN ('pending', 'approved', 'superseded')",
             name="ck_circle_payment_detail_changes_status",
         ),
+        # An approved change replaced before it went live keeps its approval
+        # but becomes 'superseded', so only "approved" requires the pair.
         CheckConstraint(
-            "(status = 'approved') = "
-            "(approved_by IS NOT NULL AND approved_at IS NOT NULL)",
+            "(approved_by IS NULL) = (approved_at IS NULL) "
+            "AND (status <> 'approved' OR approved_by IS NOT NULL)",
             name="ck_circle_payment_detail_changes_approval_pair",
+        ),
+        CheckConstraint(
+            "(approved_at IS NULL) = (go_live_at IS NULL) "
+            "AND (go_live_at IS NULL OR go_live_at >= approved_at)",
+            name="ck_circle_payment_detail_changes_go_live",
         ),
         # Two officers, always: the database refuses a self-approval too.
         CheckConstraint(
@@ -155,3 +162,5 @@ class CirclePaymentDetailsChange(_Values, db.Model):
     )
     approved_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
     approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Members see the values only from here: approved_at plus the go-live delay.
+    go_live_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

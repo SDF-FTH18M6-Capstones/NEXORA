@@ -16,6 +16,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from app.extensions import db
 from app.mail import send_text_email
+from app.models.membership import MembershipStatus, SaccoMembership
 from app.models.payment_details import (
     CirclePaymentDetails,
     CirclePaymentDetailsChange,
@@ -28,6 +29,9 @@ log = logging.getLogger(__name__)
 
 PERMISSION = "payin.manage"
 MAX_PROPOSALS_PER_HOUR = 10
+# An approved change waits this long before members see it, so a change nobody
+# expected can be questioned while the old details still stand.
+GO_LIVE_DELAY = timedelta(hours=24)
 FIELDS = (
     "mpesa_type",
     "mpesa_number",
@@ -258,6 +262,7 @@ def change_json(row: CirclePaymentDetailsChange) -> dict:
         "proposed_at": row.proposed_at.isoformat(),
         "approved_by": row.approved_by,
         "approved_at": row.approved_at.isoformat() if row.approved_at else None,
+        "go_live_at": row.go_live_at.isoformat() if row.go_live_at else None,
         "values": values_json(row),
     }
 
@@ -266,6 +271,54 @@ def live_details(sacco_id: int) -> CirclePaymentDetails | None:
     return db.session.execute(
         select(CirclePaymentDetails).where(CirclePaymentDetails.sacco_id == sacco_id)
     ).scalar_one_or_none()
+
+
+def waiting_change(sacco_id: int) -> CirclePaymentDetailsChange | None:
+    """The approved change whose go-live time has not come yet (call
+    `apply_due` first, so anything already due is live and not waiting)."""
+    return db.session.execute(
+        select(CirclePaymentDetailsChange)
+        .where(
+            CirclePaymentDetailsChange.sacco_id == sacco_id,
+            CirclePaymentDetailsChange.status == "approved",
+            CirclePaymentDetailsChange.go_live_at > datetime.now(UTC),
+        )
+        .order_by(CirclePaymentDetailsChange.go_live_at.desc())
+        .limit(1)
+    ).scalar_one_or_none()
+
+
+def _due_change(sacco_id: int) -> CirclePaymentDetailsChange | None:
+    live = live_details(sacco_id)
+    query = (
+        select(CirclePaymentDetailsChange)
+        .where(
+            CirclePaymentDetailsChange.sacco_id == sacco_id,
+            CirclePaymentDetailsChange.status == "approved",
+            CirclePaymentDetailsChange.go_live_at <= datetime.now(UTC),
+        )
+        .order_by(CirclePaymentDetailsChange.go_live_at.desc())
+        .limit(1)
+    )
+    if live is not None:
+        query = query.where(CirclePaymentDetailsChange.go_live_at > live.updated_at)
+    return db.session.execute(query).scalar_one_or_none()
+
+
+def apply_due(sacco_id: int) -> None:
+    """Put the newest approved change whose delay has passed onto the live row.
+
+    There is no background job: whoever reads or changes the details next
+    applies it. Members only ever see `live_details`, so nothing shows early.
+    Commits only when something went live.
+    """
+    if _due_change(sacco_id) is None:
+        return
+    lock_sacco(sacco_id)
+    change = _due_change(sacco_id)  # another request may have applied it
+    if change is not None:
+        go_live(change)
+    db.session.commit()
 
 
 def pending_change(sacco_id: int) -> CirclePaymentDetailsChange | None:
@@ -302,13 +355,34 @@ def _send_all(
             log.exception("Could not email officer %s of circle %s", user_id, sacco_id)
 
 
-def notify_officers(sacco_id: int, subject: str, body: str) -> None:
-    """Email every officer. Call after the commit: a mail outage never fails the
+def members_and_officers(sacco_id: int) -> list[User]:
+    """Everyone who pays in or runs the SACCO: active members with an account."""
+    users = list(
+        db.session.execute(
+            select(User)
+            .join(SaccoMembership, SaccoMembership.user_id == User.id)
+            .where(
+                SaccoMembership.sacco_id == sacco_id,
+                SaccoMembership.status == MembershipStatus.ACTIVE,
+            )
+        ).scalars()
+    )
+    seen = {user.id for user in users}
+    return users + [user for user in officers(sacco_id) if user.id not in seen]
+
+
+def notify_officers(
+    sacco_id: int, subject: str, body: str, *, everyone: bool = False
+) -> None:
+    """Email every officer (or, with `everyone`, every active member too).
+
+    Call after the commit: a mail outage never fails the
     request and never leaves a half-saved change. SMTP goes out on a background
     thread so a slow mail server cannot hold a worker (same reason as
     `mail.send_safely`); the log backend sends inline."""
     try:
-        recipients = [(user.id, user.email) for user in officers(sacco_id)]
+        found = members_and_officers(sacco_id) if everyone else officers(sacco_id)
+        recipients = [(user.id, user.email) for user in found]
     except Exception:
         log.exception("Could not list the officers of circle %s", sacco_id)
         return
@@ -380,7 +454,7 @@ def go_live(change: CirclePaymentDetailsChange) -> None:
     values = {field: getattr(change, field) for field in FIELDS}
     row = {
         "updated_by": change.proposed_by,
-        "updated_at": change.approved_at,
+        "updated_at": change.go_live_at,
         **values,
     }
     db.session.execute(
