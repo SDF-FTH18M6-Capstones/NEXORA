@@ -23,7 +23,15 @@ from app.models.audit import AuditLog
 from app.savings import service
 from app.savings.balance import verify_balance
 from app.savings.validation import MAX_TRANSACTION_AMOUNT
-from savings_support import Setup, release_session, schema_app  # noqa: F401
+from savings_support import (  # noqa: F401
+    Setup,
+    add_officer,
+    approve_reversal,
+    ask_for_reversal,
+    manual_body,
+    release_session,
+    schema_app,
+)
 
 pytestmark = pytest.mark.schema
 
@@ -110,17 +118,14 @@ def test_the_endpoint_refuses_a_reversal_of_a_reversal(schema_app):
     s = Setup()
     original = deposit(s, 200, "d1")
 
-    first = client.post(
-        reversal_url(original.id), json={"reference": "r1"}, headers=auth(s.admin)
-    )
+    asked = ask_for_reversal(client, s.admin, original.id)
+    first = approve_reversal(client, add_officer(s), asked.json["id"], "r1")
     assert first.status_code == 201
     assert first.get_json()["balance"] == 0
     assert type(first.get_json()["amount"]) is int
 
     reversed_id = first.get_json()["id"]
-    resp = client.post(
-        reversal_url(reversed_id), json={"reference": "r2"}, headers=auth(s.admin)
-    )
+    resp = ask_for_reversal(client, s.admin, reversed_id)
     assert resp.status_code == 409
     assert resp.get_json()["error"]["message"] == REVERSAL_OF_REVERSAL
     assert ledger_rows(s.account.id) == [
@@ -135,12 +140,8 @@ def test_a_retried_reversal_of_a_reversal_is_still_refused(schema_app):
     original = deposit(s, 100, "d1")
     reversal = reversals.reverse_transaction(s.admin.id, original.id, "r1")
 
-    for reference in ("r2", "r2", "r3"):
-        resp = client.post(
-            reversal_url(reversal.id),
-            json={"reference": reference},
-            headers=auth(s.admin),
-        )
+    for _ in range(3):
+        resp = ask_for_reversal(client, s.admin, reversal.id)
         assert resp.status_code == 409
     assert len(ledger_rows(s.account.id)) == 2
 
@@ -253,7 +254,7 @@ def test_a_bad_amount_is_400_and_writes_nothing(schema_app, amount):
 
     resp = client.post(
         deposit_url(s),
-        json={"amount": amount, "reference": "d1"},
+        json=manual_body(amount),
         headers=auth(s.admin),
     )
 
@@ -267,7 +268,7 @@ def test_the_kept_messages_are_still_the_ones_clients_see(schema_app):
     headers = auth(s.admin)
 
     whole = client.post(
-        deposit_url(s), json={"amount": 1.5, "reference": "d1"}, headers=headers
+        deposit_url(s), json=manual_body(1.5), headers=headers
     )
     assert whole.get_json()["error"]["message"] == (
         "amount must be a whole number of minor units."
@@ -275,7 +276,7 @@ def test_the_kept_messages_are_still_the_ones_clients_see(schema_app):
 
     over = client.post(
         deposit_url(s),
-        json={"amount": MAX_TRANSACTION_AMOUNT + 1, "reference": "d2"},
+        json=manual_body(MAX_TRANSACTION_AMOUNT + 1),
         headers=headers,
     )
     assert over.get_json()["error"]["message"] == (
@@ -283,7 +284,7 @@ def test_the_kept_messages_are_still_the_ones_clients_see(schema_app):
     )
 
     zero = client.post(
-        deposit_url(s), json={"amount": 0, "reference": "d3"}, headers=headers
+        deposit_url(s), json=manual_body(0), headers=headers
     )
     assert zero.get_json()["error"]["message"] == "amount must be greater than zero."
 
@@ -294,16 +295,17 @@ def test_the_maximum_is_accepted_and_stays_an_integer(schema_app):
 
     resp = client.post(
         deposit_url(s),
-        json={"amount": MAX_TRANSACTION_AMOUNT, "reference": "d-max"},
+        json=manual_body(MAX_TRANSACTION_AMOUNT),
         headers=auth(s.admin),
     )
 
-    assert resp.status_code == 201
-    body = resp.get_json()
-    assert body["amount"] == MAX_TRANSACTION_AMOUNT
-    assert type(body["amount"]) is int
-    assert body["balance"] == MAX_TRANSACTION_AMOUNT
-    assert type(body["balance"]) is int
+    # The maximum is a large amount, so it waits for a second officer.
+    assert resp.status_code == 202
+    body = resp.get_json()["request"]
+    assert body["amount_minor"] == MAX_TRANSACTION_AMOUNT
+    assert type(body["amount_minor"]) is int
+    assert "large_amount" in body["flags"]
+    assert ledger_rows(s.account.id) == []
 
 
 def test_a_reference_used_by_a_reversal_cannot_be_replayed_as_a_deposit(schema_app):

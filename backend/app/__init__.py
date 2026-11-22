@@ -136,6 +136,7 @@ def create_app(config_class=Config):
         audit,
         consent,
         daraja_settings,
+        deposit_controls,
         identity,
         ledger,
         loan,
@@ -143,6 +144,7 @@ def create_app(config_class=Config):
         payment_details,
         payment_request,
         refresh_token,
+        reversal_request,
         rules,
         sacco,
         savings,
@@ -156,6 +158,7 @@ def create_app(config_class=Config):
     from app.saccos import routes as saccos_routes  # noqa: F401
     from app.saccos import rules_routes as saccos_rules_routes  # noqa: F401
     from app.savings import accounts as savings_accounts  # noqa: F401
+    from app.savings import controls_routes  # noqa: F401
     from app.savings import history as savings_history  # noqa: F401
     from app.savings import requests_routes as savings_requests_routes  # noqa: F401
     from app.savings import routes as savings_routes  # noqa: F401

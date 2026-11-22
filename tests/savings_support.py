@@ -100,3 +100,72 @@ class Setup:
         if balance:
             service.deposit(self.admin.id, self.account.id, balance, f"setup-{tag}")
         db.session.remove()
+
+
+def manual_body(amount=10, receipt=None, **extra):
+    """The body of a manual deposit: the officer types in the M-Pesa receipt."""
+    code = receipt or uuid.uuid4().hex[:10].upper()
+    return {"amount": amount, "mpesa_receipt": code, "phone": "0712345678", **extra}
+
+
+def switch_off_quick_withdrawal_flag(sacco_id, admin_user_id):
+    """`Setup` funds an account just before a test withdraws from it, which the
+    deposit-then-withdrawal flag would catch. Tests of other things switch it off."""
+    from app.models.deposit_controls import DEFAULTS, SaccoDepositControls
+
+    values = {**DEFAULTS, "quick_withdrawal_hours": 0}
+    db.session.add(
+        SaccoDepositControls(sacco_id=sacco_id, updated_by=admin_user_id, **values)
+    )
+    db.session.commit()
+    db.session.remove()
+
+
+def add_officer(s, title="finance_officer"):
+    """A second officer in the SACCO of `s`, for the checker side of a maker-checker."""
+    from app.models.access import MembershipRoleLink, Role
+
+    n = next(_counter)
+    tag = uuid.uuid4().hex[:8]
+    user = User(email=f"officer{n}-{tag}@example.com", password_hash="x")
+    db.session.add(user)
+    db.session.flush()
+    membership = SaccoMembership(
+        user_id=user.id, sacco_id=s.sacco.id, role=MembershipRole.STAFF
+    )
+    db.session.add(membership)
+    db.session.flush()
+    role = db.session.query(Role).filter_by(code=title).one()
+    db.session.add(MembershipRoleLink(membership_id=membership.id, role_id=role.id))
+    db.session.commit()
+    officer = _ref(user)
+    officer.membership_id = membership.id
+    db.session.remove()
+    return officer
+
+
+def auth_headers(user):
+    from app.auth.tokens import create_access_token
+
+    return {
+        "Authorization": f"Bearer {create_access_token(user.id, user.token_version)}"
+    }
+
+
+REVERSAL_REASON = "Posted to the wrong member"
+
+
+def ask_for_reversal(client, requester, transaction_id, reason=REVERSAL_REASON):
+    return client.post(
+        f"/api/v1/savings/transactions/{transaction_id}/reversals",
+        json={"reason": reason},
+        headers=auth_headers(requester),
+    )
+
+
+def approve_reversal(client, approver, request_id, reference, **extra):
+    return client.post(
+        f"/api/v1/savings/reversal-requests/{request_id}/approve",
+        json={"reference": reference, **extra},
+        headers=auth_headers(approver),
+    )

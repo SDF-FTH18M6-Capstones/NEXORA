@@ -6,7 +6,12 @@ from app.auth.passwords import hash_password
 from app.auth.suspension import SUSPENDED_MESSAGE
 from app.extensions import db
 from app.models.user import User
-from savings_support import Setup, release_session, schema_app  # noqa: F401
+from savings_support import (  # noqa: F401
+    Setup,
+    manual_body,
+    release_session,
+    schema_app,
+)
 from test_schema_rules import auth, make_user
 
 pytestmark = pytest.mark.schema
@@ -38,7 +43,7 @@ def scoped_requests(s):
         ("get", f"/api/v1/savings/accounts/{acc}", None),
         ("get", f"/api/v1/savings/accounts/{acc}/transactions", None),
         ("post", f"/api/v1/savings/accounts/{acc}/deposits",
-         {"amount": 10, "reference": "susp-dep"}),
+         manual_body(10)),
         ("get", f"/api/v1/loans/saccos/{sid}", None),
         ("get", f"/api/v1/admin/saccos/{sid}/reports/summary", None),
         ("get", f"/api/v1/admin/saccos/{sid}/accounts", None),

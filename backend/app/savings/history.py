@@ -61,6 +61,7 @@ def _tx_json(tx: Transaction) -> dict:
         "reference": tx.reference,
         "created_at": tx.created_at.isoformat(),
         "reverses_id": tx.reverses_id,
+        "source": tx.source,
     }
 
 

@@ -5,7 +5,13 @@ from sqlalchemy import func, select
 
 from app.extensions import db
 from app.models.audit import AuditLog
-from savings_support import Setup, release_session, schema_app  # noqa: F401
+from savings_support import (  # noqa: F401
+    Setup,
+    manual_body,
+    release_session,
+    schema_app,
+    switch_off_quick_withdrawal_flag,
+)
 from test_schema_rules import auth, make_user, officer
 
 pytestmark = pytest.mark.schema
@@ -98,7 +104,7 @@ WRITES = [
     (
         "post",
         "/api/v1/savings/accounts/{account}/deposits",
-        {"amount": 10, "reference": "aud-dep"},
+        manual_body(10, receipt="AUD0DEP001"),
         "savings.deposit",
     ),
     (
@@ -115,6 +121,7 @@ WRITES = [
 @pytest.mark.parametrize(("method", "path", "body", "action"), WRITES)
 def test_sacco_writes_leave_an_audit_row(schema_app, method, path, body, action):  # noqa: F811
     s = Setup(balance=1_000)
+    switch_off_quick_withdrawal_flag(s.sacco.id, s.admin.id)
     client = schema_app.test_client()
     fill = {"account": s.account.id, "sacco": s.sacco.id}
     body = {k: v.format(**fill) if isinstance(v, str) else v for k, v in body.items()}

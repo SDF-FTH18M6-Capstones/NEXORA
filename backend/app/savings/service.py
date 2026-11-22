@@ -183,12 +183,24 @@ def open_account(user_id: int, membership_id: int) -> AccountView:
 
 @_atomic
 def _post(
-    user_id: int, account_id: int, kind: TransactionType, amount: int, reference: str
+    user_id: int | None,
+    account_id: int,
+    kind: TransactionType,
+    amount: int,
+    reference: str,
+    source: str = "standard",
+    system: bool = False,
 ) -> PostedTransaction:
+    """`system` is for a deposit M-Pesa itself confirmed (an auto-confirmed STK
+    payment): there is no officer, so the holder's own membership is recorded
+    as the actor and the audit row has no user."""
     account = db.session.get(SavingsAccount, account_id)
     if account is None:
         raise NotFound("Not found.")
-    actor = _actor(user_id, account.sacco_id)
+    if system:
+        actor = db.session.get(SaccoMembership, account.membership_id)
+    else:
+        actor = _actor(user_id, account.sacco_id)
 
     if kind is TransactionType.WITHDRAWAL:
         # SACCO lock before the account lock, the order a loan payout uses too.
@@ -201,7 +213,8 @@ def _post(
     # together exceed the balance cannot both succeed.
     account = lock_account(account_id)
 
-    _require_not_own_account(actor, account)
+    if not system:
+        _require_not_own_account(actor, account)
     _require_sacco_active(account.sacco_id)
     holder = db.session.get(SaccoMembership, account.membership_id)
     if holder.status is not MembershipStatus.ACTIVE:
@@ -255,6 +268,7 @@ def _post(
         amount=amount,
         reference=reference,
         created_by_membership_id=actor.id,
+        source=source,
     )
     db.session.add(tx)
     try:
@@ -291,8 +305,17 @@ def _post(
     return view
 
 
-def deposit(user_id: int, account_id: int, amount: int, reference: str):
-    return _post(user_id, account_id, TransactionType.DEPOSIT, amount, reference)
+def deposit(
+    user_id: int | None,
+    account_id: int,
+    amount: int,
+    reference: str,
+    source: str = "standard",
+    system: bool = False,
+):
+    return _post(
+        user_id, account_id, TransactionType.DEPOSIT, amount, reference, source, system
+    )
 
 
 def withdraw(user_id: int, account_id: int, amount: int, reference: str):

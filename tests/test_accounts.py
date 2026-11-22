@@ -11,7 +11,15 @@ from app.models.membership import MembershipRole, MembershipStatus, SaccoMembers
 from app.models.user import User
 from app.savings import service
 from app.savings.balance import ledger_balance
-from savings_support import Setup, release_session, schema_app  # noqa: F401
+from savings_support import (  # noqa: F401
+    Setup,
+    add_officer,
+    approve_reversal,
+    ask_for_reversal,
+    manual_body,
+    release_session,
+    schema_app,
+)
 from support_grants import approve_support
 from test_history_admin import add_member, auth, suspend
 
@@ -310,7 +318,7 @@ def test_foreign_and_missing_ids_answer_with_the_same_404_body(schema_app):
     def deposit_to(account_id):
         return client.post(
             f"{SAVINGS}/accounts/{account_id}/deposits",
-            json={"amount": 100, "reference": "probe-1"},
+            json=manual_body(100),
             headers=headers,
         )
 
@@ -318,16 +326,36 @@ def test_foreign_and_missing_ids_answer_with_the_same_404_body(schema_app):
     bodies(s.account.id, 2_000_000_000, deposit_to)
 
 
-@pytest.mark.parametrize("suffix", ["deposits", "withdrawals"])
 @pytest.mark.parametrize("body", [{"amount": 100}, {"amount": 100, "reference": None}])
-def test_a_money_request_without_a_reference_is_400(schema_app, suffix, body):
+def test_a_withdrawal_without_a_reference_is_400(schema_app, body):
     """Without a reference a timed-out retry would post twice, so it is refused."""
     s = Setup(balance=500)
     resp = schema_app.test_client().post(
-        f"{SAVINGS}/accounts/{s.account.id}/{suffix}", json=body, headers=auth(s.admin)
+        f"{SAVINGS}/accounts/{s.account.id}/withdrawals",
+        json=body,
+        headers=auth(s.admin),
     )
     assert resp.status_code == 400
     assert resp.get_json()["error"]["message"] == "reference is required."
+    assert ledger_balance(s.account.id) == 500
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        {"amount": 100, "phone": "0712345678"},
+        {"amount": 100, "mpesa_receipt": None, "phone": "0712345678"},
+        {"amount": 100, "mpesa_receipt": "not a receipt", "phone": "0712345678"},
+    ],
+)
+def test_a_manual_deposit_without_a_receipt_is_400(schema_app, body):
+    """The receipt is the deposit's key: without it a double entry goes unseen."""
+    s = Setup(balance=500)
+    resp = schema_app.test_client().post(
+        f"{SAVINGS}/accounts/{s.account.id}/deposits", json=body, headers=auth(s.admin)
+    )
+    assert resp.status_code == 400
+    assert "mpesa_receipt is required" in resp.get_json()["error"]["message"]
     assert ledger_balance(s.account.id) == 500
 
 
@@ -354,10 +382,13 @@ def test_nobody_posts_money_on_their_own_account(schema_app):
     staff = add_member(s, MembershipRole.STAFF)  # has an account of their own
     give_title(staff.id, s.sacco.id, "finance_officer")  # may post, just not here
     client = schema_app.test_client()
-    for suffix in ("deposits", "withdrawals"):
+    for suffix, body in (
+        ("deposits", manual_body(100)),
+        ("withdrawals", {"amount": 100, "reference": "own-withdrawals"}),
+    ):
         resp = client.post(
             f"{SAVINGS}/accounts/{staff.account_id}/{suffix}",
-            json={"amount": 100, "reference": f"own-{suffix}"},
+            json=body,
             headers=auth(staff),
         )
         assert resp.status_code == 403
@@ -375,13 +406,18 @@ def test_nobody_reverses_an_entry_on_their_own_account(schema_app):
     client = schema_app.test_client()
     url = f"{SAVINGS}/transactions/{posted.id}/reversals"
 
-    own = client.post(url, json={"reference": "self-rev"}, headers=auth(staff))
+    own = client.post(
+        url, json={"reason": "Posted to the wrong member"}, headers=auth(staff)
+    )
     assert own.status_code == 403
     assert own.get_json()["error"]["message"] == (
         "You cannot post money on your own account."
     )
     assert ledger_balance(staff.account_id) == 300
 
-    other = client.post(url, json={"reference": "admin-rev"}, headers=auth(s.admin))
-    assert other.status_code == 201
+    asked = ask_for_reversal(client, s.admin, posted.id)
+    assert asked.status_code == 201
+    assert ledger_balance(staff.account_id) == 300  # asking posts nothing
+    done = approve_reversal(client, add_officer(s), asked.json["id"], "admin-rev")
+    assert done.status_code == 201
     assert ledger_balance(staff.account_id) == 0

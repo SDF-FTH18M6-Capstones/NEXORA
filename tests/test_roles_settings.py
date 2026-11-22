@@ -9,7 +9,13 @@ from app.extensions import db
 from app.models.membership import MembershipRole, SaccoMembership
 from app.models.user import User
 from app.savings.balance import verify_balance
-from savings_support import Setup, release_session, schema_app  # noqa: F401
+from savings_support import (  # noqa: F401
+    Setup,
+    add_officer,
+    ask_for_reversal,
+    release_session,
+    schema_app,
+)
 
 pytestmark = pytest.mark.schema
 
@@ -213,11 +219,7 @@ def test_full_loan_flow_and_loan_rows_cannot_be_reversed(schema_app):  # noqa: F
         headers=auth(s.admin),
     ).json["transactions"]
     disbursement_id = next(t["id"] for t in history if t["reference"] == "disb-1")
-    reverse = client.post(
-        f"/api/v1/savings/transactions/{disbursement_id}/reversals",
-        json={"reference": "rev-disb"},
-        headers=auth(s.admin),
-    )
+    reverse = ask_for_reversal(client, s.admin, disbursement_id)
     assert reverse.status_code == 409
 
     repaid = client.post(
@@ -227,11 +229,7 @@ def test_full_loan_flow_and_loan_rows_cannot_be_reversed(schema_app):  # noqa: F
     )
     assert repaid.status_code == 201, repaid.json
     assert repaid.json["loan_status"] == "repaid"
-    reverse = client.post(
-        f"/api/v1/savings/transactions/{repaid.json['transaction_id']}/reversals",
-        json={"reference": "rev-rep"},
-        headers=auth(s.admin),
-    )
+    reverse = ask_for_reversal(client, s.admin, repaid.json["transaction_id"])
     assert reverse.status_code == 409
     check = verify_balance(s.account.id)
     assert check.consistent and check.stored == 10_000

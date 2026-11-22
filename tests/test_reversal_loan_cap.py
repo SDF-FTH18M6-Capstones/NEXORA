@@ -13,7 +13,14 @@ from app.ledger import reversals
 from app.models.audit import AuditLog
 from app.savings import service
 from app.security.permissions import ROLE_PERMISSIONS
-from savings_support import Setup, release_session, schema_app  # noqa: F401
+from savings_support import (  # noqa: F401
+    Setup,
+    add_officer,
+    approve_reversal,
+    ask_for_reversal,
+    release_session,
+    schema_app,
+)
 from test_sacco_rules import _approved_loan
 
 pytestmark = pytest.mark.schema
@@ -129,24 +136,27 @@ def test_without_an_open_loan_or_rules_a_reversal_is_free(schema_app):
 def test_the_endpoint_answers_409_then_201_with_a_reason_and_400_for_a_bad_one(
     schema_app,
 ):
-    s, deposit, _ = _loan_setup()
+    s, deposit, finance = _loan_setup()
     client = schema_app.test_client()
-    blocked = client.post(
-        _url(deposit.id), json={"reference": _ref()}, headers=_headers(s.admin)
-    )
+    # The finance officer asks; the admin approves and may override the cap.
+    asked = ask_for_reversal(client, finance, deposit.id)
+    assert asked.status_code == 201, asked.json
+    blocked = approve_reversal(client, s.admin, asked.json["id"], _ref())
     assert blocked.status_code == 409
     assert blocked.json["error"]["code"] == "LOAN_OVER_CAP"
     for bad in ("short", 12345, "x" * 141, "   "):
-        refused = client.post(
-            _url(deposit.id),
-            json={"reference": _ref(), "override_reason": bad},
-            headers=_headers(s.admin),
+        refused = approve_reversal(
+            client, s.admin, asked.json["id"], _ref(), override_reason=bad
         )
         assert refused.status_code == 400, bad
-    done = client.post(
-        _url(deposit.id),
-        json={"reference": _ref(), "override_reason": REASON},
-        headers=_headers(s.admin),
+    # A finance officer who is not the requester cannot override.
+    other = add_officer(s)
+    no = approve_reversal(
+        client, other, asked.json["id"], _ref(), override_reason=REASON
+    )
+    assert no.status_code == 403
+    done = approve_reversal(
+        client, s.admin, asked.json["id"], _ref(), override_reason=REASON
     )
     assert done.status_code == 201, done.json
 
@@ -163,11 +173,11 @@ def test_the_endpoint_answers_409_then_201_with_a_reason_and_400_for_a_bad_one(
     ],
 )
 def test_an_override_reason_with_control_or_hidden_characters_is_400(schema_app, bad):
-    s, deposit, _ = _loan_setup()
-    done = schema_app.test_client().post(
-        _url(deposit.id),
-        json={"reference": _ref(), "override_reason": bad},
-        headers=_headers(s.admin),
+    s, deposit, finance = _loan_setup()
+    client = schema_app.test_client()
+    asked = ask_for_reversal(client, finance, deposit.id)
+    done = approve_reversal(
+        client, s.admin, asked.json["id"], _ref(), override_reason=bad
     )
     assert done.status_code == 400
     assert "savings.reverse_override" not in _actions(s.sacco.id)

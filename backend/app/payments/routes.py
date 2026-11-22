@@ -4,8 +4,9 @@ POST /saccos/<id>/stk-push        a member asks M-Pesa to prompt their phone
 GET  /saccos/<id>/stk-push/<pid>  that member, or `member.manage`: the answer
 POST /daraja/callback/<token>     Safaricom's answer (the token is the secret)
 
-Nothing here credits savings: the answer is a record, and an officer still
-confirms the deposit through the payment requests.
+A paid answer becomes a pending deposit (`savings.deposits.record_stk_payment`):
+an officer confirms it, unless the SACCO set an auto-confirm limit and the
+payment is below it and not flagged. Nothing else here moves money.
 """
 
 import hmac
@@ -29,6 +30,7 @@ from app.models.membership import SaccoMembership
 from app.models.stk_push import StkPush
 from app.payments import credentials, daraja
 from app.saccos import payment_details as pay_in
+from app.savings import deposits
 from app.security.permissions import can
 from app.security.tenant import permission_scoped
 
@@ -245,6 +247,15 @@ def stk_callback(token):
         )
         audit_log.record(sacco_id, None, "payment.stk_result", f"stk:{row_id} failed")
         db.session.commit()
+        return jsonify(ACK)
+    if paid:
+        # The answer is already saved. A failure here must not make Safaricom
+        # retry; the reconciliation report lists a paid push with no deposit.
+        try:
+            deposits.record_stk_payment(db.session.get(StkPush, row_id))
+        except Exception:
+            db.session.rollback()
+            current_app.logger.exception("No pending deposit for stk %s", row_id)
     return jsonify(ACK)
 
 

@@ -82,9 +82,12 @@ def sacco_requests(user_id: int, sacco_id: int):
 @money_limit
 @signed_in
 def confirm_request(user_id: int, request_id: int):
+    # Optional for a payment with an M-Pesa receipt: that receipt is its reference.
     reference = _body().get("reference")
-    if not isinstance(reference, str) or not reference.strip():
-        raise InvalidRequest("reference is required.")
+    if reference is not None and (
+        not isinstance(reference, str) or not reference.strip()
+    ):
+        raise InvalidRequest("reference must be a non-blank string.")
     return jsonify(request_service.confirm(user_id, request_id, reference))
 
 

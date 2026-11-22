@@ -927,13 +927,13 @@ Error statuses: 401, 403, 404, 423, 429
 
 ## POST /api/v1/savings/accounts/{account_id}/deposits
 
-**Post a deposit**
+**Record a manual deposit from an M-Pesa receipt**
 
 **Who:** a member of this SACCO holding `savings.post` (SACCO admin or finance officer)
 
 **Rate limit:** 20 per minute.
 
-`reference` is required. A new entry answers **201**; repeating the same reference with the same request answers **200** with `replayed: true`; the same reference with a different request is 409. Holders of `savings.post` (admin, finance officer) post money, others cannot (403), and nobody may post on their own account (403). Amounts are integers in minor units.
+A manual deposit needs `amount` (minor units), `mpesa_receipt` (the code from the M-Pesa message, 8 to 12 capital letters and digits) and `phone` (the payer). The ledger row is marked `source: manual`. One receipt is one payment per SACCO: recording it again with the same amount is a retry (**200**, `replayed: true`); any other repeat, or a receipt an M-Pesa callback already recorded, is 409 `DUPLICATE_RECEIPT`. A later callback for a receipt entered here is linked to it, not added. A **flagged** deposit (a manual entry at or over the SACCO's limit, a large amount, or the same amount again and again) is not posted: it answers **202** `{queued: true, request}` with this officer's first approval, and a different officer confirms it in the request queue. Holders of `savings.post` post money, others cannot (403), and nobody may post on their own account (403). Amounts are integers in minor units.
 
 Parameters: `account_id` (path, integer)
 
@@ -946,7 +946,7 @@ Request body:
 }
 ```
 
-Response **201**: New entry.
+Response **201**: New entry (`source: manual`, with `request_id` and `mpesa_receipt`).
 
 ```json
 {
@@ -957,11 +957,16 @@ Response **201**: New entry.
   "reference": "dep-2026-11-18-001",
   "balance": 1,
   "created_at": "2026-11-18T09:00:00Z",
-  "replayed": true
+  "replayed": true,
+  "source": "source",
+  "request_id": 1,
+  "mpesa_receipt": "mpesa_receipt"
 }
 ```
 
-Response **200**: Replay of an earlier request with the same reference.
+Response **202**: Flagged: `{queued: true, request}`. Nothing is posted yet.
+
+Response **200**: Retry of the same receipt entered earlier.
 
 ```json
 {
@@ -972,7 +977,10 @@ Response **200**: Replay of an earlier request with the same reference.
   "reference": "dep-2026-11-18-001",
   "balance": 1,
   "created_at": "2026-11-18T09:00:00Z",
-  "replayed": true
+  "replayed": true,
+  "source": "source",
+  "request_id": 1,
+  "mpesa_receipt": "mpesa_receipt"
 }
 ```
 
@@ -986,7 +994,7 @@ Error statuses: 400, 401, 403, 404, 409, 423, 429
 
 **Rate limit:** 20 per minute.
 
-Insufficient funds is 409 `Insufficient funds.`. `reference` is required. A new entry answers **201**; repeating the same reference with the same request answers **200** with `replayed: true`; the same reference with a different request is 409. Holders of `savings.post` (admin, finance officer) post money, others cannot (403), and nobody may post on their own account (403). A withdrawal that would leave the savings below the loan cap of an open loan is 409 `LOAN_OVER_CAP` (SACCOs with published rules). Amounts are integers in minor units.
+Insufficient funds is 409 `Insufficient funds.`. `reference` is required. A new entry answers **201**; repeating the same reference with the same request answers **200** with `replayed: true`; the same reference with a different request is 409. Holders of `savings.post` (admin, finance officer) post money, others cannot (403), and nobody may post on their own account (403). A withdrawal that is **flagged** (large, the same amount again and again, or soon after a deposit; see `deposit-controls`) is 409 `NEEDS_SECOND_APPROVAL`: it goes through the member's withdrawal request, which two officers approve. A withdrawal that would leave the savings below the loan cap of an open loan is 409 `LOAN_OVER_CAP` (SACCOs with published rules). Amounts are integers in minor units.
 
 Parameters: `account_id` (path, integer)
 
@@ -1010,7 +1018,10 @@ Response **201**: New entry.
   "reference": "dep-2026-11-18-001",
   "balance": 1,
   "created_at": "2026-11-18T09:00:00Z",
-  "replayed": true
+  "replayed": true,
+  "source": "source",
+  "request_id": 1,
+  "mpesa_receipt": "mpesa_receipt"
 }
 ```
 
@@ -1025,7 +1036,10 @@ Response **200**: Replay of an earlier request with the same reference.
   "reference": "dep-2026-11-18-001",
   "balance": 1,
   "created_at": "2026-11-18T09:00:00Z",
-  "replayed": true
+  "replayed": true,
+  "source": "source",
+  "request_id": 1,
+  "mpesa_receipt": "mpesa_receipt"
 }
 ```
 
@@ -1065,15 +1079,13 @@ Error statuses: 400, 401, 403, 404, 423, 429
 
 ## POST /api/v1/savings/transactions/{transaction_id}/reversals
 
-**Reverse a ledger entry**
+**Ask for a reversal of a ledger entry (first of two officers)**
 
 **Who:** a member of this SACCO holding `savings.reverse` (SACCO admin or finance officer)
 
 **Rate limit:** 20 per minute.
 
-A reversal is a new opposite entry; nobody may reverse an entry on their own account (403). An entry can be reversed once, and a reversal cannot be reversed (409). `reference` is required. A new entry answers **201**; repeating the same reference with the same request answers **200** with `replayed: true`; the same reference with a different request is 409. Holders of `savings.reverse` (admin, finance officer) reverse entries, others cannot (403). Amounts are integers in minor units.
-
-**Loan cap:** reversing a deposit (or interest) takes money off the account. If that would leave the member's savings below what their open loan needs under the SACCO's cap multiple, it is refused (409 `LOAN_OVER_CAP`). A SACCO admin (`savings.reverse_override`) may force it by sending `override_reason` (10 to 140 characters, one line, no control characters); the reversal is then audited as `savings.reverse_override` with the reason. Anyone else who sends a reason for a blocked reversal gets 403. A reason sent when nothing blocks the reversal is ignored.
+Reversals take two officers (maker-checker). This call only **asks**: send `reason` (10 to 140 characters, one line). Nothing is posted; a different officer approves with `POST /savings/reversal-requests/{request_id}/approve`. Nobody may ask to reverse an entry on their own account (403). An entry that is itself a reversal, a loan entry, or one already reversed is 409. One request may be open per entry: the same officer asking again gets the same request (**200**); another officer gets 409.
 
 Parameters: `transaction_id` (path, integer)
 
@@ -1081,7 +1093,48 @@ Request body:
 
 ```json
 {
-  "reference": "dep-2026-11-18-001"
+  "reason": "reason"
+}
+```
+
+Response **201**: The request: `{id, sacco_id, transaction_id, account_id, type, amount, requested_by, reason, status: pending, ...}`.
+
+Response **200**: The same officer already has this request open.
+
+Error statuses: 400, 401, 403, 404, 409
+
+## GET /api/v1/savings/saccos/{sacco_id}/reversal-requests
+
+**This SACCO's reversal requests**
+
+**Who:** a member holding `savings.reverse`. Newest first, at most 100. `?status=` is `pending`, `approved` or `rejected`.
+
+**Rate limit:** read limit.
+
+Parameters: `sacco_id` (path, integer)
+
+Response **200**: `{items: [request]}`.
+
+Error statuses: 400, 401, 403, 404
+
+## POST /api/v1/savings/reversal-requests/{request_id}/approve
+
+**Approve a reversal request (the second officer) and append the entry**
+
+**Who:** a member holding `savings.reverse`, never the officer who asked (403 `SECOND_OFFICER_REQUIRED`).
+
+**Rate limit:** 20 per minute.
+
+Send `reference` (the idempotency key). The opposite entry is appended now, with the same rules as before: nobody reverses an entry on their own account, a reversal that would take the balance below zero is 409, and one that would leave savings below an open loan's cap is 409 `LOAN_OVER_CAP`. A SACCO admin (`savings.reverse_override`) may force that one by sending `override_reason` (10 to 140 characters, one line); it is audited as `savings.reverse_override`. A retried approval with the same `reference` answers **200** with `replayed: true`.
+
+Parameters: `request_id` (path, integer)
+
+Request body:
+
+```json
+{
+  "reference": "dep-2026-11-18-001",
+  "override_reason": "override_reason"
 }
 ```
 
@@ -1101,7 +1154,7 @@ Response **201**: The new opposite entry.
 }
 ```
 
-Response **200**: Replay of an earlier request with the same reference.
+Response **200**: Replay of an approval that already went through.
 
 ```json
 {
@@ -1117,7 +1170,29 @@ Response **200**: Replay of an earlier request with the same reference.
 }
 ```
 
-Error statuses: 400, 401, 403, 404, 409, 423, 429
+Error statuses: 400, 401, 403, 404, 409
+
+## POST /api/v1/savings/reversal-requests/{request_id}/reject
+
+**Reject a reversal request (a different officer)**
+
+**Who:** a member holding `savings.reverse`, never the officer who asked (403 `SECOND_OFFICER_REQUIRED`). Send `reason` (10 to 140 characters). Nothing is posted.
+
+**Rate limit:** 30 per minute.
+
+Parameters: `request_id` (path, integer)
+
+Request body:
+
+```json
+{
+  "reason": "reason"
+}
+```
+
+Response **200**: The request with `status: rejected`.
+
+Error statuses: 400, 401, 403, 404, 409
 
 ## GET /api/v1/admin/saccos/{sacco_id}/reports/summary
 
@@ -1300,7 +1375,10 @@ Response **201**: New entry.
   "reference": "dep-2026-11-18-001",
   "balance": 1,
   "created_at": "2026-11-18T09:00:00Z",
-  "replayed": true
+  "replayed": true,
+  "source": "source",
+  "request_id": 1,
+  "mpesa_receipt": "mpesa_receipt"
 }
 ```
 
@@ -1315,7 +1393,10 @@ Response **200**: Replay of the same request.
   "reference": "dep-2026-11-18-001",
   "balance": 1,
   "created_at": "2026-11-18T09:00:00Z",
-  "replayed": true
+  "replayed": true,
+  "source": "source",
+  "request_id": 1,
+  "mpesa_receipt": "mpesa_receipt"
 }
 ```
 
@@ -1349,7 +1430,10 @@ Response **201**: New entry.
   "reference": "dep-2026-11-18-001",
   "balance": 1,
   "created_at": "2026-11-18T09:00:00Z",
-  "replayed": true
+  "replayed": true,
+  "source": "source",
+  "request_id": 1,
+  "mpesa_receipt": "mpesa_receipt"
 }
 ```
 
@@ -1364,7 +1448,10 @@ Response **200**: Replay of the same request.
   "reference": "dep-2026-11-18-001",
   "balance": 1,
   "created_at": "2026-11-18T09:00:00Z",
-  "replayed": true
+  "replayed": true,
+  "source": "source",
+  "request_id": 1,
+  "mpesa_receipt": "mpesa_receipt"
 }
 ```
 
@@ -1752,6 +1839,75 @@ Request body:
 Response **200**: The updated profile (same shape as GET).
 
 Error statuses: 400, 409, 401, 403, 404, 423
+
+## GET /api/v1/saccos/{sacco_id}/deposit-controls
+
+**The SACCO's deposit-control thresholds**
+
+**Who:** `sacco.update` or `report.view`. Returns the thresholds in force (the defaults when none are saved) and `defaults`. Amounts are minor units.
+
+**Rate limit:** read limit.
+
+Parameters: `sacco_id` (path, integer)
+
+Response **200**: `{auto_confirm_limit, large_amount_limit, manual_flag_limit, repeat_count, repeat_window_hours, quick_withdrawal_hours, defaults}`.
+
+Error statuses: 401, 403, 404
+
+## PUT /api/v1/saccos/{sacco_id}/deposit-controls
+
+**Change the deposit-control thresholds**
+
+**Who:** `sacco.update` (the SACCO admin). Send any of the settings; the rest keep their value. `auto_confirm_limit` (0 to 500000, default 0: every deposit waits for an officer; a deposit at or under it, with no flag, posts at once after a paid M-Pesa prompt), `large_amount_limit` (default 10000000), `manual_flag_limit` (default 2000000), `repeat_count` (2 to 20, default 3), `repeat_window_hours` (1 to 720, default 24), `quick_withdrawal_hours` (0 to 720, default 24; 0 switches that flag off). Audited as `deposit_controls.set`, and the officers are emailed.
+
+**Rate limit:** write limit.
+
+Parameters: `sacco_id` (path, integer)
+
+Request body:
+
+```json
+{
+  "auto_confirm_limit": 1,
+  "large_amount_limit": 1,
+  "manual_flag_limit": 1,
+  "repeat_count": 1,
+  "repeat_window_hours": 1,
+  "quick_withdrawal_hours": 1
+}
+```
+
+Response **200**: The thresholds now in force.
+
+Error statuses: 400, 401, 403, 404
+
+## GET /api/v1/saccos/{sacco_id}/flagged-payments
+
+**The audit report of flagged payments**
+
+**Who:** `report.view` (SACCO admin, finance officer, secretary). The newest 200 payment requests that carry a flag, with who gave the first and the second approval. `labels` maps a flag code to its plain-language name.
+
+**Rate limit:** read limit.
+
+Parameters: `sacco_id` (path, integer)
+
+Response **200**: `{items: [{id, member, kind, source, amount_minor, mpesa_receipt, flags, status, first_approved_by, second_approved_by, decided_by, ledger_transaction_id, created_at}], labels}`.
+
+Error statuses: 401, 403, 404
+
+## GET /api/v1/saccos/{sacco_id}/reconciliation
+
+**The ledger against the STK records**
+
+**Who:** `report.view`. Compares every paid STK push with the deposit it produced and lists what does not match (`mismatches`, each with a `kind`: `paid_not_recorded`, `amount_differs`, `paid_but_rejected`, `paid_not_credited` (paid over a day ago, still unconfirmed), `ledger_missing`, `ledger_amount_differs`, `credit_reversed`, `no_paid_push`). `unverified_manual` lists manual receipts no callback has matched: not a mismatch, because a member may pay the paybill directly. Nothing is changed; the ledger is never edited. Audited as `ledger.reconcile_mpesa`.
+
+**Rate limit:** read limit.
+
+Parameters: `sacco_id` (path, integer)
+
+Response **200**: `{checked, ok, mismatches, unverified_manual}`.
+
+Error statuses: 401, 403, 404
 
 ## GET /api/v1/saccos/{sacco_id}/daraja-settings
 

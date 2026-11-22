@@ -179,12 +179,21 @@ servers:
       description: '**Who:** a member holding `savings.post`, never the requester.
 
 
-        **Rate limit:** 20 per minute.'
+        **Rate limit:** 20 per minute.
+
+
+        `reference` is required, except for a payment that carries an M-Pesa receipt (`source` `stk` or
+        `manual`): that posts under `mpesa-<receipt>` whatever is sent, so one receipt can reach the
+        ledger once. A **flagged** request (`flags` not empty) needs two different officers: the first
+        confirm records the first approval and answers the request still `pending` with
+        `awaiting_second_approval: true`; a second officer''s confirm posts it. The first approver
+        confirming again is 403 `SECOND_OFFICER_REQUIRED`. Flags are `large_amount`,
+        `manual_over_limit`, `repeated_amount`, `quick_withdrawal`.'
       responses:
         '200':
-          description: 'The request with `status: confirmed` and `ledger_transaction_id`.'
+          description: 'The request with `status: confirmed` and `ledger_transaction_id`, or, for the first approval of a flagged one, still `pending`.'
         '403':
-          description: '`forbidden`, or `OWN_REQUEST` when the officer asked for it.'
+          description: '`forbidden`, `OWN_REQUEST` when the officer asked for it, or `SECOND_OFFICER_REQUIRED`.'
           content:
             application/json:
               schema:
@@ -659,6 +668,13 @@ components:
           format: date-time
         replayed:
           type: boolean
+        source:
+          type: string
+          description: 'Present on a manual deposit: `manual`.'
+        request_id:
+          type: integer
+        mpesa_receipt:
+          type: string
     Reversal:
       type: object
       properties:
@@ -2374,26 +2390,34 @@ paths:
     parameters:
     - $ref: '#/components/parameters/account_id'
     post:
-      summary: Post a deposit
+      summary: Record a manual deposit from an M-Pesa receipt
       description: '**Who:** a member of this SACCO holding `savings.post` (SACCO admin or finance officer)
 
 
         **Rate limit:** 20 per minute.
 
 
-        `reference` is required. A new entry answers **201**; repeating the same reference with the same
-        request answers **200** with `replayed: true`; the same reference with a different request is
-        409. Holders of `savings.post` (admin, finance officer) post money, others cannot (403), and nobody may post on their own account
-        (403). Amounts are integers in minor units.'
+        A manual deposit needs `amount` (minor units), `mpesa_receipt` (the code from the M-Pesa message,
+        8 to 12 capital letters and digits) and `phone` (the payer). The ledger row is marked `source:
+        manual`. One receipt is one payment per SACCO: recording it again with the same amount is a retry
+        (**200**, `replayed: true`); any other repeat, or a receipt an M-Pesa callback already recorded,
+        is 409 `DUPLICATE_RECEIPT`. A later callback for a receipt entered here is linked to it, not
+        added. A **flagged** deposit (a manual entry at or over the SACCO''s limit, a large amount, or
+        the same amount again and again) is not posted: it answers **202** `{queued: true, request}` with
+        this officer''s first approval, and a different officer confirms it in the request queue. Holders
+        of `savings.post` post money, others cannot (403), and nobody may post on their own account (403).
+        Amounts are integers in minor units.'
       responses:
         '201':
-          description: New entry.
+          description: 'New entry (`source: manual`, with `request_id` and `mpesa_receipt`).'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Posted'
+        '202':
+          description: 'Flagged: `{queued: true, request}`. Nothing is posted yet.'
         '200':
-          description: Replay of an earlier request with the same reference.
+          description: Retry of the same receipt entered earlier.
           content:
             application/json:
               schema:
@@ -2476,7 +2500,7 @@ paths:
         Insufficient funds is 409 `Insufficient funds.`. `reference` is required. A new entry answers
         **201**; repeating the same reference with the same request answers **200** with `replayed: true`;
         the same reference with a different request is 409. Holders of `savings.post` (admin, finance officer) post money, others cannot
-        (403), and nobody may post on their own account (403). A withdrawal that would leave the savings below the loan cap of an open loan is 409 `LOAN_OVER_CAP` (SACCOs with published rules). Amounts are integers in minor units.'
+        (403), and nobody may post on their own account (403). A withdrawal that is **flagged** (large, the same amount again and again, or soon after a deposit; see `deposit-controls`) is 409 `NEEDS_SECOND_APPROVAL`: it goes through the member''s withdrawal request, which two officers approve. A withdrawal that would leave the savings below the loan cap of an open loan is 409 `LOAN_OVER_CAP` (SACCOs with published rules). Amounts are integers in minor units.'
       responses:
         '201':
           description: New entry.
@@ -2627,27 +2651,98 @@ paths:
     parameters:
     - $ref: '#/components/parameters/transaction_id'
     post:
-      summary: Reverse a ledger entry
+      summary: Ask for a reversal of a ledger entry (first of two officers)
       description: '**Who:** a member of this SACCO holding `savings.reverse` (SACCO admin or finance officer)
 
 
         **Rate limit:** 20 per minute.
 
 
-        A reversal is a new opposite entry; nobody may reverse an entry on their own account (403). An
-        entry can be reversed once, and a reversal cannot be reversed (409). `reference` is required.
-        A new entry answers **201**; repeating the same reference with the same request answers **200**
-        with `replayed: true`; the same reference with a different request is 409. Holders of
-        `savings.reverse` (admin, finance officer) reverse entries, others cannot (403). Amounts are
-        integers in minor units.
+        Reversals take two officers (maker-checker). This call only **asks**: send `reason` (10 to 140
+        characters, one line). Nothing is posted; a different officer approves with
+        `POST /savings/reversal-requests/{request_id}/approve`. Nobody may ask to reverse an entry on their
+        own account (403). An entry that is itself a reversal, a loan entry, or one already reversed is
+        409. One request may be open per entry: the same officer asking again gets the same request
+        (**200**); another officer gets 409.'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reason: {type: string, minLength: 10, maxLength: 140}
+              required: [reason]
+      responses:
+        '201':
+          description: 'The request: `{id, sacco_id, transaction_id, account_id, type, amount, requested_by, reason, status: pending, ...}`.'
+        '200':
+          description: The same officer already has this request open.
+        '400':
+          description: A missing or malformed reason (`validation_error`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Already reversed, a reversal, a loan entry, or another officer's request is open.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      security:
+      - bearerAuth: []
+  /api/v1/savings/saccos/{sacco_id}/reversal-requests:
+    parameters:
+    - $ref: '#/components/parameters/sacco_id'
+    get:
+      summary: This SACCO's reversal requests
+      description: '**Who:** a member holding `savings.reverse`. Newest first, at most 100. `?status=` is
+        `pending`, `approved` or `rejected`.
 
 
-        **Loan cap:** reversing a deposit (or interest) takes money off the account. If that would leave the
-        member''s savings below what their open loan needs under the SACCO''s cap multiple, it is refused
-        (409 `LOAN_OVER_CAP`). A SACCO admin (`savings.reverse_override`) may force it by sending
-        `override_reason` (10 to 140 characters, one line, no control characters); the reversal is then audited as
-        `savings.reverse_override` with the reason. Anyone else who sends a reason for a blocked reversal
-        gets 403. A reason sent when nothing blocks the reversal is ignored.'
+        **Rate limit:** read limit.'
+      responses:
+        '200':
+          description: '`{items: [request]}`.'
+        '400':
+          description: Unknown status.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      security:
+      - bearerAuth: []
+  /api/v1/savings/reversal-requests/{request_id}/approve:
+    parameters:
+    - $ref: '#/components/parameters/request_id'
+    post:
+      summary: Approve a reversal request (the second officer) and append the entry
+      description: '**Who:** a member holding `savings.reverse`, never the officer who asked (403
+        `SECOND_OFFICER_REQUIRED`).
+
+
+        **Rate limit:** 20 per minute.
+
+
+        Send `reference` (the idempotency key). The opposite entry is appended now, with the same rules as
+        before: nobody reverses an entry on their own account, a reversal that would take the balance below
+        zero is 409, and one that would leave savings below an open loan''s cap is 409 `LOAN_OVER_CAP`. A
+        SACCO admin (`savings.reverse_override`) may force that one by sending `override_reason` (10 to 140
+        characters, one line); it is audited as `savings.reverse_override`. A retried approval with the same
+        `reference` answers **200** with `replayed: true`.'
       requestBody:
         required: true
         content:
@@ -2666,56 +2761,45 @@ paths:
               schema:
                 $ref: '#/components/schemas/Reversal'
         '200':
-          description: Replay of an earlier request with the same reference.
+          description: Replay of an approval that already went through.
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Reversal'
         '400':
-          description: Validation error (`validation_error`). Also bad paging or dates.
+          description: Validation error (`validation_error`).
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
         '401':
-          description: Missing, invalid or expired access token, or wrong credentials (`unauthorized`).
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
+          $ref: '#/components/responses/Unauthorized'
         '403':
-          description: 'Signed in but not allowed: wrong role or inactive membership (`forbidden`).'
+          description: '`forbidden`, `SECOND_OFFICER_REQUIRED`, or an override without `savings.reverse_override`.'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
         '404':
-          description: Not found, **including another SACCO's record** (`not_found`). Never 403 for tenant
-            isolation.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
+          $ref: '#/components/responses/NotFound'
         '409':
-          description: Conflicts with current state (`conflict`).
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-        '423':
-          description: The user's SACCO is suspended, or the account is locked (`locked`).
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-        '429':
-          description: Rate limit exceeded (`rate_limited`).
+          description: '`REQUEST_ALREADY_DECIDED`, `LOAN_OVER_CAP`, `INSUFFICIENT_FUNDS`, or the entry was reversed meanwhile.'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
       security:
       - bearerAuth: []
+  /api/v1/savings/reversal-requests/{request_id}/reject:
+    parameters:
+    - $ref: '#/components/parameters/request_id'
+    post:
+      summary: Reject a reversal request (a different officer)
+      description: '**Who:** a member holding `savings.reverse`, never the officer who asked (403
+        `SECOND_OFFICER_REQUIRED`). Send `reason` (10 to 140 characters). Nothing is posted.
+
+
+        **Rate limit:** 30 per minute.'
       requestBody:
         required: true
         content:
@@ -2723,12 +2807,31 @@ paths:
             schema:
               type: object
               properties:
-                reference:
-                  type: string
-                  pattern: ^[A-Za-z0-9._:-]{1,64}$
-                  description: Required idempotency key, unique per SACCO.
-              required:
-              - reference
+                reason: {type: string, minLength: 10, maxLength: 140}
+              required: [reason]
+      responses:
+        '200':
+          description: 'The request with `status: rejected`.'
+        '400':
+          description: A missing or malformed reason.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: '`REQUEST_ALREADY_DECIDED`.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      security:
+      - bearerAuth: []
   /api/v1/admin/saccos/{sacco_id}/reports/summary:
     parameters:
     - $ref: '#/components/parameters/sacco_id'
@@ -3771,6 +3874,117 @@ paths:
           $ref: '#/components/responses/NotFound'
         '423':
           $ref: '#/components/responses/Locked'
+      security:
+      - bearerAuth: []
+  /api/v1/saccos/{sacco_id}/deposit-controls:
+    parameters:
+    - $ref: '#/components/parameters/sacco_id'
+    get:
+      summary: The SACCO's deposit-control thresholds
+      description: '**Who:** `sacco.update` or `report.view`. Returns the thresholds in force (the defaults
+        when none are saved) and `defaults`. Amounts are minor units.
+
+
+        **Rate limit:** read limit.'
+      responses:
+        '200':
+          description: '`{auto_confirm_limit, large_amount_limit, manual_flag_limit, repeat_count, repeat_window_hours, quick_withdrawal_hours, defaults}`.'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      security:
+      - bearerAuth: []
+    put:
+      summary: Change the deposit-control thresholds
+      description: '**Who:** `sacco.update` (the SACCO admin). Send any of the settings; the rest keep their
+        value. `auto_confirm_limit` (0 to 500000, default 0: every deposit waits for an officer; a
+        deposit at or under it, with no flag, posts at once after a paid M-Pesa prompt),
+        `large_amount_limit` (default 10000000), `manual_flag_limit` (default 2000000),
+        `repeat_count` (2 to 20, default 3), `repeat_window_hours` (1 to 720, default 24),
+        `quick_withdrawal_hours` (0 to 720, default 24; 0 switches that flag off). Audited as
+        `deposit_controls.set`, and the officers are emailed.
+
+
+        **Rate limit:** write limit.'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                auto_confirm_limit: {type: integer}
+                large_amount_limit: {type: integer}
+                manual_flag_limit: {type: integer}
+                repeat_count: {type: integer}
+                repeat_window_hours: {type: integer}
+                quick_withdrawal_hours: {type: integer}
+      responses:
+        '200':
+          description: The thresholds now in force.
+        '400':
+          description: An unknown key, or a value out of range.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      security:
+      - bearerAuth: []
+  /api/v1/saccos/{sacco_id}/flagged-payments:
+    parameters:
+    - $ref: '#/components/parameters/sacco_id'
+    get:
+      summary: The audit report of flagged payments
+      description: '**Who:** `report.view` (SACCO admin, finance officer, secretary). The newest 200 payment
+        requests that carry a flag, with who gave the first and the second approval. `labels` maps a flag
+        code to its plain-language name.
+
+
+        **Rate limit:** read limit.'
+      responses:
+        '200':
+          description: '`{items: [{id, member, kind, source, amount_minor, mpesa_receipt, flags, status, first_approved_by, second_approved_by, decided_by, ledger_transaction_id, created_at}], labels}`.'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      security:
+      - bearerAuth: []
+  /api/v1/saccos/{sacco_id}/reconciliation:
+    parameters:
+    - $ref: '#/components/parameters/sacco_id'
+    get:
+      summary: The ledger against the STK records
+      description: '**Who:** `report.view`. Compares every paid STK push with the deposit it produced and
+        lists what does not match (`mismatches`, each with a `kind`: `paid_not_recorded`,
+        `amount_differs`, `paid_but_rejected`, `paid_not_credited` (paid over a day ago, still
+        unconfirmed), `ledger_missing`, `ledger_amount_differs`, `credit_reversed`, `no_paid_push`).
+        `unverified_manual` lists manual receipts no callback has matched: not a mismatch, because a
+        member may pay the paybill directly. Nothing is changed; the ledger is never edited. Audited as
+        `ledger.reconcile_mpesa`.
+
+
+        **Rate limit:** read limit.'
+      responses:
+        '200':
+          description: '`{checked, ok, mismatches, unverified_manual}`.'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
       security:
       - bearerAuth: []
   /api/v1/saccos/{sacco_id}/daraja-settings:

@@ -10,7 +10,13 @@ from app.ledger import reversals
 from app.models.audit import AuditLog
 from app.savings import service
 from app.savings.balance import ledger_balance, verify_balance
-from savings_support import Setup, release_session, schema_app  # noqa: F401
+from savings_support import (  # noqa: F401
+    Setup,
+    add_officer,
+    approve_reversal,
+    release_session,
+    schema_app,
+)
 
 pytestmark = pytest.mark.schema
 
@@ -133,17 +139,18 @@ def test_route_happy_and_failure(schema_app):
     s = Setup()
     tx = deposit(s, 250, "d1")
     url = f"/api/v1/savings/transactions/{tx.id}/reversals"
+    why = {"reason": "Posted to the wrong member"}
 
-    assert client.post(url, json={"reference": "r1"}).status_code == 401
-    assert client.post(url, json={"reference": "r1"},
-                       headers=auth(s.member)).status_code == 403
-    ok = client.post(url, json={"reference": "r1"}, headers=auth(s.admin))
+    assert client.post(url, json=why).status_code == 401
+    assert client.post(url, json=why, headers=auth(s.member)).status_code == 403
+    asked = client.post(url, json=why, headers=auth(s.admin))
+    assert asked.status_code == 201 and asked.json["status"] == "pending"
+    second = add_officer(s)
+    ok = approve_reversal(client, second, asked.json["id"], "r1")
     assert ok.status_code == 201
     assert ok.json["type"] == "withdrawal" and ok.json["balance"] == 0
-    assert client.post(url, json={"reference": "r2"},
-                       headers=auth(s.admin)).status_code == 409
-    assert client.post(url, json={"reference": "bad ref!"},
+    assert client.post(url, json=why, headers=auth(s.admin)).status_code == 409
+    assert client.post(url, json={"reason": "short"},
                        headers=auth(s.admin)).status_code == 400
     other = Setup()
-    assert client.post(url, json={"reference": "r3"},
-                       headers=auth(other.admin)).status_code == 404
+    assert client.post(url, json=why, headers=auth(other.admin)).status_code == 404
