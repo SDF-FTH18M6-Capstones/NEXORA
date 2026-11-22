@@ -1523,7 +1523,7 @@ Error statuses: 401, 403, 404, 423, 429
 
 **Propose new pay-in details**
 
-**Who:** holders of `payin.manage` (the SACCO admin and the finance officer). Changes nothing members see: the change waits until a different officer approves it. A newer proposal replaces the one waiting. Give M-Pesa details, bank details or both. M-Pesa: `mpesa_type` (`paybill` or `till`), `mpesa_number` (5 to 7 digits), `display_name`, optional `account_reference_hint` (paybill only). Bank: `bank_name`, `bank_account_name`, `bank_account_number` (6 to 20 digits), optional `bank_branch`. Shared bank paybill: `bank_uses_shared_paybill` true with `bank_paybill_number` (5 to 7 digits). Every proposal is audited (`payin.propose`, `payin.supersede`) and every officer is emailed. Text fields take Latin letters, ASCII digits and ordinary punctuation on one line (invisible, look-alike and non-Latin letters are refused). A SACCO may send 10 proposals an hour (429).
+**Who:** holders of `payin.manage` (the SACCO admin and the finance officer). Changes nothing members see: the change waits until a different officer approves it. A newer proposal replaces the one waiting. Give M-Pesa details, bank details or both. M-Pesa: `mpesa_type` (`paybill`, `till` or `pochi`), `mpesa_number` (5 to 7 digits; for `pochi` a Safaricom phone number, shown to members but never prompted), `display_name`, optional `account_reference_hint` (paybill only). Bank: `bank_name`, `bank_account_name`, `bank_account_number` (6 to 20 digits), optional `bank_branch`. Shared bank paybill: `bank_uses_shared_paybill` true with `bank_paybill_number` (5 to 7 digits). Every proposal is audited (`payin.propose`, `payin.supersede`) and every officer is emailed. Text fields take Latin letters, ASCII digits and ordinary punctuation on one line (invisible, look-alike and non-Latin letters are refused). A SACCO may send 10 proposals an hour (429).
 
 **Rate limit:** 30 per minute.
 
@@ -1753,11 +1753,52 @@ Response **200**: The updated profile (same shape as GET).
 
 Error statuses: 400, 409, 401, 403, 404, 423
 
+## GET /api/v1/saccos/{sacco_id}/daraja-settings
+
+**Whether this SACCO has its own Daraja credentials saved**
+
+**Who:** `sacco.update` (the SACCO admin). Off by default: with `DARAJA_ENABLED` unset this route answers 404. Returns `{configured: false}` or `{configured: true, shortcode, updated_at}`. The secrets are never returned.
+
+**Rate limit:** read limit.
+
+Parameters: `sacco_id` (path, integer)
+
+Response **200**: `{configured, shortcode?, updated_at?}`.
+
+Error statuses: 401, 403, 404
+
+## PUT /api/v1/saccos/{sacco_id}/daraja-settings
+
+**Save this SACCO's own Daraja credentials (encrypted at rest)**
+
+**Who:** `sacco.update` (the SACCO admin). Off by default (404). Send `shortcode` (5 to 7 digits: the paybill, or the head-office number of a till), `consumer_key`, `consumer_secret` and `passkey` (printable, no spaces). They are stored encrypted with `DARAJA_ENCRYPTION_KEY` and never returned or logged; the audit row (`daraja.credentials_set`) names the fields, not the values. Saving again replaces them. Answers 503 if the encryption key is not set. Sandbox only.
+
+**Rate limit:** write limit.
+
+Parameters: `sacco_id` (path, integer)
+
+Request body:
+
+```json
+{
+  "shortcode": "shortcode",
+  "consumer_key": "consumer_key",
+  "consumer_secret": "consumer_secret",
+  "passkey": "passkey"
+}
+```
+
+Response **200**: `{configured: true, shortcode}`.
+
+Error statuses: 400, 503, 401, 403, 404
+
 ## POST /api/v1/saccos/{sacco_id}/stk-push
 
 **Ask M-Pesa to prompt my phone (sandbox)**
 
 **Who:** an active member (`savings.request`). **Sandbox only and off by default:** with `DARAJA_ENABLED` unset this route answers 404 as if it did not exist, and the app refuses to start with it on in production. Send `amount` (minor units, whole shillings, KES 1 to KES 150,000) and `phone` (07.., 01.. or 254..). At most 3 prompts may wait per member (429). The member then enters their M-Pesa PIN on the phone. Nexora holds no funds and credits nothing: an officer still confirms the deposit through the payment requests.
+
+The prompt uses the SACCO's own saved Daraja credentials (see `daraja-settings`), else the environment's sandbox ones. If the live pay-in is a till (`mpesa_type` `till`) the request is `CustomerBuyGoodsOnline` to that till; a paybill is `CustomerPayBillOnline`. A SACCO that takes Pochi la Biashara (`pochi`) is record only: the route answers 409. A SACCO with no usable credentials also answers 409.
 
 **Rate limit:** money limit.
 
@@ -1774,7 +1815,7 @@ Request body:
 
 Response **201**: `{id, status: pending, amount, phone_last3, message, created_at}`.
 
-Error statuses: 400, 502, 401, 403, 404
+Error statuses: 400, 409, 502, 401, 403, 404
 
 ## GET /api/v1/saccos/{sacco_id}/stk-push/{push_id}
 

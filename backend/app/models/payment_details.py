@@ -25,7 +25,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from app.extensions import db
 
-MPESA_TYPES = ("paybill", "till")
+MPESA_TYPES = ("paybill", "till", "pochi")
 CHANGE_STATUSES = ("pending", "approved", "superseded", "cancelled")
 
 
@@ -33,14 +33,16 @@ def value_checks(table: str) -> list[CheckConstraint]:
     """The rules both tables share; the application validates the same things."""
     return [
         CheckConstraint(
-            "mpesa_type IN ('paybill', 'till')", name=f"ck_{table}_mpesa_type"
+            "mpesa_type IN ('paybill', 'till', 'pochi')", name=f"ck_{table}_mpesa_type"
         ),
         CheckConstraint(
             "(mpesa_type IS NULL) = (mpesa_number IS NULL)",
             name=f"ck_{table}_mpesa_pair",
         ),
         CheckConstraint(
-            "mpesa_number ~ '^[0-9]{5,7}$'", name=f"ck_{table}_mpesa_number"
+            "(mpesa_type = 'pochi' AND mpesa_number ~ '^254[17][0-9]{8}$') OR "
+            "(mpesa_type IN ('paybill', 'till') AND mpesa_number ~ '^[0-9]{5,7}$')",
+            name=f"ck_{table}_mpesa_number",
         ),
         CheckConstraint(
             "mpesa_number IS NULL OR display_name IS NOT NULL",
@@ -86,7 +88,7 @@ class _Values:
     """The pay-in columns, identical on the live row and on a proposed change."""
 
     mpesa_type: Mapped[str | None] = mapped_column(String(10))
-    mpesa_number: Mapped[str | None] = mapped_column(String(7))
+    mpesa_number: Mapped[str | None] = mapped_column(String(12))
     account_reference_hint: Mapped[str | None] = mapped_column(String(60))
     display_name: Mapped[str | None] = mapped_column(String(60))
     bank_name: Mapped[str | None] = mapped_column(String(60))

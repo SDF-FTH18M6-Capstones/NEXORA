@@ -54,6 +54,8 @@ class Config:
     DARAJA_CONSUMER_SECRET = os.environ.get("DARAJA_CONSUMER_SECRET", "")
     DARAJA_PASSKEY = os.environ.get("DARAJA_PASSKEY", "")
     DARAJA_SHORTCODE = os.environ.get("DARAJA_SHORTCODE", "")
+    # Encrypts each SACCO's own Daraja credentials (see .env.example).
+    DARAJA_ENCRYPTION_KEY = os.environ.get("DARAJA_ENCRYPTION_KEY", "")
     # The public URL Safaricom posts to, ending in /api/v1/daraja/callback/<token>.
     DARAJA_CALLBACK_URL = os.environ.get("DARAJA_CALLBACK_URL", "")
     DARAJA_CALLBACK_TOKEN = os.environ.get("DARAJA_CALLBACK_TOKEN", "")
@@ -68,6 +70,9 @@ class TestConfig(Config):
     RATELIMIT_ENABLED = False  # tests make many logins from one address
     SECRET_KEY = "test-only-not-a-real-secret-0123456789"
     DARAJA_ENABLED = False  # a test turns it on for itself; the default stays off
+    # A developer's .env may hold real mail settings: tests must never send mail.
+    MAIL_BACKEND = "log"
+    MAIL_USERNAME = MAIL_PASSWORD = ""
     SQLALCHEMY_DATABASE_URI = os.environ.get("TEST_DATABASE_URL", "")
     # A test that waits on a database lock for more than 15s fails with an error
     # instead of hanging forever (e.g. a stale connection left on the test database).

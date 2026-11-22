@@ -22,6 +22,7 @@ from app.models.payment_details import (
 )
 from app.models.sacco import Sacco
 from app.models.user import User
+from app.payments.daraja import msisdn
 from app.security.permissions import holders
 
 log = logging.getLogger(__name__)
@@ -135,15 +136,24 @@ def validate(body) -> tuple[dict, dict]:
     if mpesa_type in (None, "") and mpesa_number in (None, ""):
         values["mpesa_type"] = values["mpesa_number"] = None
     else:
-        if mpesa_type in ("paybill", "till"):
+        if mpesa_type in ("paybill", "till", "pochi"):
             values["mpesa_type"] = mpesa_type
         else:
             values["mpesa_type"] = None
             errors["mpesa_type"] = (
-                "M-Pesa type must be paybill or till, so members know which "
+                "M-Pesa type must be paybill, till or pochi, so members know which "
                 "M-Pesa menu to use. Example: paybill."
             )
-        if isinstance(mpesa_number, str) and MPESA_NUMBER.fullmatch(mpesa_number):
+        if mpesa_type == "pochi":
+            # Pochi la Biashara is a Safaricom phone number; it is shown to
+            # members and never prompted (record only).
+            values["mpesa_number"] = msisdn(mpesa_number)
+            if values["mpesa_number"] is None:
+                errors["mpesa_number"] = (
+                    "A Pochi la Biashara number is a Safaricom phone number. "
+                    "Example: 0712345678."
+                )
+        elif isinstance(mpesa_number, str) and MPESA_NUMBER.fullmatch(mpesa_number):
             values["mpesa_number"] = mpesa_number
         else:
             values["mpesa_number"] = None
@@ -161,7 +171,8 @@ def validate(body) -> tuple[dict, dict]:
     if values["account_reference_hint"] and values["mpesa_type"] != "paybill":
         errors.setdefault(
             "account_reference_hint",
-            "Only a paybill has an account number. Leave this empty for a till.",
+            "Only a paybill has an account number. Leave this empty for a till "
+            "or Pochi.",
         )
 
     account = body.get("bank_account_number")

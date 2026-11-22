@@ -9,22 +9,26 @@ confirms the deposit through the payment requests.
 """
 
 import hmac
+import re
 from datetime import UTC, datetime, timedelta
 from functools import wraps
 
 from flask import current_app, g, jsonify, request
 from sqlalchemy import func, select, update
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.exc import IntegrityError
 
 from app import daraja_bp, saccos_bp
 from app.audit import log as audit_log
-from app.auth.limits import money_limit, read_limit
+from app.auth.limits import money_limit, read_limit, write_limit
 from app.auth.routes import _body
 from app.errors import error_response
 from app.extensions import db
+from app.models.daraja_settings import SaccoDarajaSettings
 from app.models.membership import SaccoMembership
 from app.models.stk_push import StkPush
-from app.payments import daraja
+from app.payments import credentials, daraja
+from app.saccos import payment_details as pay_in
 from app.security.permissions import can
 from app.security.tenant import permission_scoped
 
@@ -86,6 +90,33 @@ def start_stk_push(sacco_id):
         )
     if phone is None:
         return error_response(400, "Send a Safaricom number like 0712345678.")
+    pay_in.apply_due(sacco_id)  # commits, so it comes before the lock
+    details = pay_in.live_details(sacco_id)
+    if details is not None and details.mpesa_type == "pochi":
+        return error_response(
+            409,
+            "This SACCO takes Pochi la Biashara, which cannot be prompted. "
+            "Send the money to the number shown, then ask for the deposit.",
+        )
+    try:
+        creds = credentials.for_sacco(sacco_id)
+    except credentials.CredentialsError as exc:
+        return error_response(409, str(exc))
+    if creds is None:
+        return error_response(
+            409, "This SACCO has not set up M-Pesa prompts yet. Pay as shown."
+        )
+    if creds.own and (
+        details is None
+        or (details.mpesa_type == "paybill" and creds.shortcode != details.mpesa_number)
+    ):
+        # An admin alone must not aim prompts at a number the officers did not approve.
+        return error_response(
+            409,
+            "These M-Pesa credentials are not for the paybill the officers "
+            "approved. Ask the officers to approve matching pay-in details.",
+        )
+    till = details.mpesa_number if details and details.mpesa_type == "till" else None
     # One request at a time per member, so the count below cannot be raced past.
     db.session.execute(
         select(SaccoMembership.id).where(SaccoMembership.id == me.id).with_for_update()
@@ -113,9 +144,9 @@ def start_stk_push(sacco_id):
     # Safaricom answers, and a failed call is still on record.
     db.session.commit()
     try:
-        row.checkout_request_id = daraja.stk_push(phone, amount // 100, f"NX{row.id}")[
-            "CheckoutRequestID"
-        ]
+        row.checkout_request_id = daraja.stk_push(
+            phone, amount // 100, f"NX{row.id}", creds, till
+        )["CheckoutRequestID"]
     except Exception as exc:  # whatever went wrong, the row must not stay pending
         said = (
             str(exc)
@@ -168,7 +199,7 @@ def stk_callback(token):
     )
     row = db.session.execute(
         select(StkPush)
-        .where(StkPush.checkout_request_id == str(data.get("CheckoutRequestID")))
+        .where(StkPush.checkout_request_id == _text(data.get("CheckoutRequestID"), 64))
         .with_for_update()
     ).scalar_one_or_none()
     # A push the 15-minute rule closed may still be answered; any other answered
@@ -191,10 +222,13 @@ def stk_callback(token):
         or sent != row.amount // 100
     ):
         paid, data["ResultDesc"] = False, "Paid amount did not match the request."
+    receipt = items.get("MpesaReceiptNumber")
+    receipt = _text(receipt, 20).strip() if isinstance(receipt, str) else ""
+    if paid and not receipt:  # no receipt number: nothing for an officer to match
+        paid, data["ResultDesc"] = False, "No receipt number."
     row.status = "succeeded" if paid else "failed"
     row.result_desc = _text(data.get("ResultDesc") or "", 255)
-    receipt = items.get("MpesaReceiptNumber")
-    row.mpesa_receipt = _text(receipt, 20) or None if paid and receipt else None
+    row.mpesa_receipt = receipt if paid else None
     row.completed_at = datetime.now(UTC)
     audit_log.record(
         row.sacco_id, None, "payment.stk_result", f"stk:{row.id} {row.status}"
@@ -212,3 +246,79 @@ def stk_callback(token):
         audit_log.record(sacco_id, None, "payment.stk_result", f"stk:{row_id} failed")
         db.session.commit()
     return jsonify(ACK)
+
+
+def _secret(value, limit: int) -> str | None:
+    clean = value.strip() if isinstance(value, str) else ""
+    # Bytes, not characters: the encrypted column is sized for `limit` bytes.
+    ok = clean.isprintable() and " " not in clean and 0 < len(clean.encode()) <= limit
+    return clean if ok else None
+
+
+@saccos_bp.get("/<int:sacco_id>/daraja-settings")
+@_feature
+@read_limit
+@permission_scoped("sacco.update")
+def get_daraja_settings(sacco_id):
+    row = db.session.execute(
+        select(SaccoDarajaSettings).where(SaccoDarajaSettings.sacco_id == sacco_id)
+    ).scalar_one_or_none()
+    if row is None:
+        return jsonify(configured=False)
+    return jsonify(
+        configured=True, shortcode=row.shortcode, updated_at=row.updated_at.isoformat()
+    )
+
+
+@saccos_bp.put("/<int:sacco_id>/daraja-settings")
+@_feature
+@write_limit
+@permission_scoped("sacco.update")
+def put_daraja_settings(sacco_id):
+    """The SACCO's own Daraja shortcode and credentials. Never echoed back."""
+    body = _body()
+    code = body.get("shortcode")
+    fields = {
+        "consumer_key": _secret(body.get("consumer_key"), 200),
+        "consumer_secret": _secret(body.get("consumer_secret"), 200),
+        "passkey": _secret(body.get("passkey"), 300),
+    }
+    bad = [k for k, v in fields.items() if v is None]
+    if not (isinstance(code, str) and re.fullmatch(r"[0-9]{5,7}", code)):
+        bad.insert(0, "shortcode")
+    if bad:
+        return error_response(
+            400, f"Send {', '.join(bad)}: the shortcode is 5 to 7 digits."
+        )
+    try:
+        sealed = {f"{k}_enc": credentials.encrypt(v) for k, v in fields.items()}
+    except credentials.CredentialsError as exc:
+        return error_response(503, str(exc))
+    values = {
+        "shortcode": code,
+        "updated_by": g.access.user.id,
+        "updated_at": datetime.now(UTC),
+        **sealed,
+    }
+    # One statement, so two first saves cannot collide on the unique SACCO.
+    db.session.execute(
+        pg_insert(SaccoDarajaSettings)
+        .values(sacco_id=sacco_id, **values)
+        .on_conflict_do_update(index_elements=["sacco_id"], set_=values)
+    )
+    audit_log.record(
+        sacco_id,
+        g.access.user.id,
+        "daraja.credentials_set",
+        "fields:shortcode,consumer_key,consumer_secret,passkey",
+    )
+    actor = g.access.user.email
+    db.session.commit()
+    pay_in.notify_officers(
+        sacco_id,
+        "NEXORA: the SACCO's M-Pesa prompt credentials were changed",
+        f"{actor} saved new M-Pesa (Daraja) credentials for {g.access.sacco.name}.\n\n"
+        "Members' prompts now use them. If you did not expect this, tell your "
+        "SACCO admin.",
+    )
+    return jsonify(configured=True, shortcode=code)

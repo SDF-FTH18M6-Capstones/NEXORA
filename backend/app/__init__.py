@@ -1,8 +1,10 @@
 """NEXORA application factory."""
+
 import os
 import re
 
 import psycopg
+from cryptography.fernet import Fernet
 from flask import Blueprint, Flask, current_app, jsonify, request
 from sqlalchemy.engine import make_url
 from sqlalchemy.exc import ArgumentError
@@ -133,6 +135,7 @@ def create_app(config_class=Config):
         access,
         audit,
         consent,
+        daraja_settings,
         identity,
         ledger,
         loan,
@@ -157,6 +160,7 @@ def create_app(config_class=Config):
     from app.savings import requests_routes as savings_requests_routes  # noqa: F401
     from app.savings import routes as savings_routes  # noqa: F401
     from app.support import routes as support_routes  # noqa: F401
+
     init_limiter(app)
     init_cors(app)
     _install_security_headers(app)
@@ -250,6 +254,14 @@ def _check_daraja_settings(app, app_env):
         raise RuntimeError(
             "DARAJA_CALLBACK_TOKEN must be 32 or more random letters, digits, - or _."
         )
+    key = app.config.get("DARAJA_ENCRYPTION_KEY")
+    if key:
+        try:
+            Fernet(key.encode())
+        except ValueError as exc:
+            raise RuntimeError(
+                "DARAJA_ENCRYPTION_KEY must be a Fernet key (see .env.example)."
+            ) from exc
     url = app.config["DARAJA_CALLBACK_URL"]
     if not (url.startswith("https://") and url.endswith("/daraja/callback/" + token)):
         raise RuntimeError(

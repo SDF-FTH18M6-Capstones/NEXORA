@@ -95,7 +95,7 @@ staff: secretary, member: member).
 | savings.reverse_override (reverse past an open loan's cap, with a reason; audited) | yes | | | | |
 | report.view | yes | yes | yes | yes | |
 | sacco.view (SACCO name, status, settings) | yes | yes | yes | yes | yes |
-| sacco.update (rename the SACCO) | yes | | | | |
+| sacco.update (rename the SACCO; save its own Daraja credentials) | yes | | | | |
 | support.approve (approve, deny or revoke a platform owner's support access) | yes | | | | |
 | payin.manage (propose, approve or cancel the SACCO's pay-in details; a different officer must approve, any one may cancel before it goes live) | yes | | yes | | |
 | audit.view (SACCO audit log) | **never** | yes | | | |

@@ -1,6 +1,7 @@
 """STK push: sandbox only, off by default, records answers, never moves money."""
 
 import base64
+from pathlib import Path
 
 import pytest
 from sqlalchemy import text
@@ -11,11 +12,12 @@ from app.models.savings import SavingsAccount
 from app.models.stk_push import StkPush
 from app.payments import daraja
 from app.payments import routes as stk_routes
-from config import Config, TestConfig
+from config import TestConfig
 from test_member_profile import P
 from test_sacco_detail import ADMIN, MEMBER, make_sacco
 
 TOKEN = "cb-secret-token"
+ROOT = Path(__file__).resolve().parents[1]
 CALLBACK = f"/api/v1/daraja/callback/{TOKEN}"
 
 
@@ -47,7 +49,7 @@ def on(app):
         DARAJA_SHORTCODE="174379",
         DARAJA_CALLBACK_URL="https://example.test" + CALLBACK,
     )
-    daraja._token.update(value="", until=0.0)
+    daraja._tokens.clear()
 
     def fake(path, payload=None, headers=None):
         if "oauth" in path:
@@ -98,7 +100,9 @@ def answer(client, checkout, code=0, amount=100, receipt="QWE123ABCD", token=TOK
 
 
 def test_it_is_off_by_default_and_the_routes_do_not_exist(client):
-    assert Config.DARAJA_ENABLED is False and TestConfig.DARAJA_ENABLED is False
+    # Config reads the developer's own .env, so the shipped default is checked.
+    assert TestConfig.DARAJA_ENABLED is False
+    assert "DARAJA_ENABLED=0" in (ROOT / "backend/.env.example").read_text()
     p = P(make_sacco(), MEMBER)
     assert push(client, p).status_code == 404
     assert client.post(CALLBACK, json={}).status_code == 404
@@ -120,8 +124,13 @@ def test_it_refuses_production_and_a_half_configured_setup(app):
 
     with pytest.raises(RuntimeError, match="sandbox only"):
         _check_daraja_settings(app, "production")
-    with pytest.raises(RuntimeError, match="DARAJA_CONSUMER_KEY"):
-        _check_daraja_settings(app, "development")
+    old = app.config["DARAJA_CONSUMER_KEY"]
+    app.config["DARAJA_CONSUMER_KEY"] = ""  # a developer's .env may set it
+    try:
+        with pytest.raises(RuntimeError, match="DARAJA_CONSUMER_KEY"):
+            _check_daraja_settings(app, "development")
+    finally:
+        app.config["DARAJA_CONSUMER_KEY"] = old
     assert not daraja.enabled()  # off in the test config
 
 

@@ -16,9 +16,13 @@ from datetime import UTC, datetime
 
 from flask import current_app
 
+from app.payments.credentials import Credentials
+
 BASE = "https://sandbox.safaricom.co.ke"
 PHONE = re.compile(r"254[17][0-9]{8}")
-_token = {"value": "", "until": 0.0}
+_tokens: dict[
+    tuple[str, str], tuple[str, float]
+] = {}  # (key, secret) -> (token, expiry)
 
 
 class DarajaError(Exception):
@@ -54,45 +58,60 @@ def _call(path: str, payload=None, headers=None) -> dict:
     return body
 
 
-def _bearer() -> dict:
-    if time.time() >= _token["until"]:
-        cfg = current_app.config
-        basic = base64.b64encode(
-            f"{cfg['DARAJA_CONSUMER_KEY']}:{cfg['DARAJA_CONSUMER_SECRET']}".encode()
-        ).decode()
+def _bearer(key: str, secret: str) -> dict:
+    cached = _tokens.get((key, secret))
+    if cached is None or time.time() >= cached[1]:
+        basic = base64.b64encode(f"{key}:{secret}".encode()).decode()
         reply = _call(
             "/oauth/v1/generate?grant_type=client_credentials",
             headers={"Authorization": f"Basic {basic}"},
         )
         if not reply.get("access_token"):
             raise DarajaError("M-Pesa refused the sign-in.")
-        _token["value"] = reply["access_token"]
-        _token["until"] = time.time() + max(int(reply.get("expires_in", 3599)) - 60, 0)
-    return {"Authorization": f"Bearer {_token['value']}"}
+        expires = max(int(reply.get("expires_in", 3599)) - 60, 0)
+        cached = _tokens[key, secret] = (reply["access_token"], time.time() + expires)
+    return {"Authorization": f"Bearer {cached[0]}"}
 
 
-def stk_push(phone: str, shillings: int, reference: str) -> dict:
-    """Ask M-Pesa to prompt `phone` for `shillings`. Returns Daraja's reply."""
+def stk_push(
+    phone: str,
+    shillings: int,
+    reference: str,
+    creds: Credentials | None = None,
+    till: str | None = None,
+) -> dict:
+    """Ask M-Pesa to prompt `phone` for `shillings`. Returns Daraja's reply.
+
+    `creds` are the SACCO's own (default: the environment's sandbox ones). A
+    `till` number pays a Buy Goods till; its shortcode is the head-office number.
+    """
     cfg = current_app.config
+    creds = creds or Credentials(
+        cfg["DARAJA_SHORTCODE"],
+        cfg["DARAJA_CONSUMER_KEY"],
+        cfg["DARAJA_CONSUMER_SECRET"],
+        cfg["DARAJA_PASSKEY"],
+    )
     stamp = datetime.now(UTC).strftime("%Y%m%d%H%M%S")
-    code = cfg["DARAJA_SHORTCODE"]
-    password = base64.b64encode(f"{code}{cfg['DARAJA_PASSKEY']}{stamp}".encode())
+    password = base64.b64encode(f"{creds.shortcode}{creds.passkey}{stamp}".encode())
     reply = _call(
         "/mpesa/stkpush/v1/processrequest",
         {
-            "BusinessShortCode": code,
+            "BusinessShortCode": creds.shortcode,
             "Password": password.decode(),
             "Timestamp": stamp,
-            "TransactionType": "CustomerPayBillOnline",
+            "TransactionType": "CustomerBuyGoodsOnline"
+            if till
+            else "CustomerPayBillOnline",
             "Amount": shillings,
             "PartyA": phone,
-            "PartyB": code,
+            "PartyB": till or creds.shortcode,
             "PhoneNumber": phone,
             "CallBackURL": cfg["DARAJA_CALLBACK_URL"],
             "AccountReference": reference,
             "TransactionDesc": "SACCO deposit",
         },
-        _bearer(),
+        _bearer(creds.key, creds.secret),
     )
     if reply.get("ResponseCode") != "0" or not reply.get("CheckoutRequestID"):
         raise DarajaError("M-Pesa could not start the payment.")
