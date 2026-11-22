@@ -19,11 +19,16 @@ from app import saccos_bp
 from app.audit import log as audit_log
 from app.auth.limits import read_limit, write_limit
 from app.auth.routes import _body
-from app.errors import PAYIN_SAME_OFFICER, error_response, interface_error
+from app.errors import (
+    PAYIN_NEW_OFFICER,
+    PAYIN_SAME_OFFICER,
+    error_response,
+    interface_error,
+)
 from app.extensions import db
 from app.models.payment_details import CirclePaymentDetailsChange
 from app.saccos import payment_details as logic
-from app.security.permissions import can
+from app.security.permissions import can, holders, holding_since
 from app.security.tenant import permission_scoped
 
 ALREADY_LIVE = (
@@ -76,6 +81,13 @@ def propose_payment_details(sacco_id):
         return _invalid(errors)
     user = g.access.user
     logic.lock_sacco(sacco_id)
+    if logic.too_many_proposals(sacco_id):
+        db.session.rollback()
+        return error_response(
+            429,
+            "This circle has sent too many pay-in proposals in the last hour. "
+            "Wait, and agree the right numbers with the other officers first.",
+        )
     fields = logic.changed_fields(logic.live_details(sacco_id), values)
     if not fields:
         db.session.rollback()
@@ -139,6 +151,22 @@ def approve_payment_details(sacco_id, change_id):
         return interface_error(
             PAYIN_SAME_OFFICER,
             "A different officer must approve this change. You proposed it.",
+        )
+
+    if change.proposed_by not in holders(sacco_id, logic.PERMISSION):
+        db.session.rollback()
+        return error_response(
+            409,
+            "The officer who proposed this is no longer an officer of this circle. "
+            "Ask a current officer to send a new proposal.",
+        )
+    since = holding_since(sacco_id, user.id, logic.PERMISSION)
+    if since is None or since > change.proposed_at:
+        db.session.rollback()
+        return interface_error(
+            PAYIN_NEW_OFFICER,
+            "You became an officer after this change was proposed. Ask for a new "
+            "proposal, so the officers the circle already had stand behind it.",
         )
 
     change.status = "approved"

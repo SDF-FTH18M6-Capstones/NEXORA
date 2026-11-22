@@ -25,6 +25,7 @@ from app.models.audit import AuditLog
 from app.models.loan import SaccoSettings
 from app.models.membership import MembershipStatus, SaccoMembership
 from app.models.sacco import Sacco
+from app.saccos import payment_details as payin
 from app.security.permissions import (
     ROLE_NAMES,
     _role_codes,
@@ -153,6 +154,7 @@ def set_roles(sacco_id, membership_id):
             "with PATCH /saccos/<id>/members/<membership_id> instead.",
         )
 
+    officers_before = payin.officer_ids(sacco_id)
     if wanted != current:
         role_ids = dict(
             db.session.execute(
@@ -180,6 +182,7 @@ def set_roles(sacco_id, membership_id):
             f" -> {','.join(sorted(wanted))}",
         )
     db.session.commit()
+    payin.announce_new_officers(sacco_id, officers_before, g.access.user.email)
     return jsonify(membership_id=membership.id, roles=sorted(wanted))
 
 

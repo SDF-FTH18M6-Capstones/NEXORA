@@ -85,6 +85,13 @@ BAD = [
     ("display_name", {"display_name": 12}),
     ("display_name", {"display_name": "Umoja\nCircle"}),
     ("display_name", {"display_name": "bad\ud800"}),
+    ("display_name", {"display_name": "Umoja\u202ecircle"}),  # right-to-left override
+    ("display_name", {"display_name": "Umoja\u200bCircle"}),  # zero-width space
+    ("display_name", {"display_name": "Umoja\u2028Circle"}),  # line separator
+    ("display_name", {"display_name": "Umoja\u00a0Circle"}),  # no-break space
+    ("display_name", {"display_name": "Um\u043eja Circle"}),  # Cyrillic o
+    ("display_name", {"display_name": "Umoja\U000e0041"}),  # tag character
+    ("display_name", {"display_name": "Umoja\ufeff"}),  # byte-order mark
     ("account_reference_hint", {"mpesa_type": "till", "account_reference_hint": "x"}),
     ("bank_account_number", {"bank_account_number": "12345"}),
     ("bank_account_number", {"bank_account_number": "1" * 21}),
@@ -525,3 +532,168 @@ def test_a_failure_listing_the_officers_does_not_fail_the_change(
     monkeypatch.setattr(logic, "officers", broken)
     s = circle()
     assert propose(schema_app.test_client(), s.admin, s).status_code == 201
+
+
+# ---- review findings: second officer minted by the proposer, unicode, mail, cap ----
+
+
+def test_an_officer_made_after_the_proposal_cannot_approve_it(schema_app, mails):  # noqa: F811
+    s = Setup()  # the admin is the only officer
+    c = schema_app.test_client()
+    change = propose(c, s.admin, s).json["change"]
+    late = officer(s, "finance_officer")  # given the title after the proposal
+    blocked = approve(c, late, s, change["id"])
+    assert blocked.status_code == 403
+    assert blocked.json["error"]["code"] == "PAYIN_NEW_OFFICER"
+    assert read(c, s.member, s).json["details"] is None
+    # The same person can approve a proposal made after they became an officer.
+    fresh = propose(c, s.admin, s, mpesa_number="400300").json["change"]
+    assert approve(c, late, s, fresh["id"]).status_code == 200
+
+
+def test_granting_the_officer_title_tells_every_officer(schema_app, mails):  # noqa: F811
+    s = circle()
+    c = schema_app.test_client()
+    admin_email = db.session.get(User, s.admin.id).email
+    finance_email = db.session.get(User, s.finance.id).email
+    member_email = db.session.get(User, s.member.id).email
+    resp = c.put(
+        f"/api/v1/saccos/{s.sacco.id}/members/{s.member_membership.id}/roles",
+        json={"roles": ["finance_officer"]},
+        headers=auth(s.admin),
+    )
+    assert resp.status_code == 200, resp.json
+    assert sorted(to for to, _, _ in mails) == sorted(
+        [admin_email, finance_email, member_email]
+    )
+    subject, body = mails[0][1], mails[0][2]
+    assert "new officer" in subject
+    assert member_email in body and admin_email in body
+
+
+def test_giving_a_title_that_is_not_an_officer_title_sends_nothing(schema_app, mails):  # noqa: F811
+    s = circle()
+    resp = schema_app.test_client().put(
+        f"/api/v1/saccos/{s.sacco.id}/members/{s.member_membership.id}/roles",
+        json={"roles": ["secretary"]},
+        headers=auth(s.admin),
+    )
+    assert resp.status_code == 200, resp.json
+    assert mails == []
+
+
+def test_adding_an_admin_or_changing_a_role_tells_the_officers(schema_app, mails):  # noqa: F811
+    s = circle()
+    c = schema_app.test_client()
+    owner = make_user(owner=True)
+    newcomer = make_user()
+    added = c.post(
+        f"/api/v1/saccos/{s.sacco.id}/members",
+        json={
+            "email": db.session.get(User, newcomer.id).email,
+            "role": "sacco_admin",
+        },
+        headers=auth(owner),
+    )
+    assert added.status_code == 201, added.json
+    assert len(mails) == 3  # admin, finance officer and the new admin
+    mails.clear()
+    other = make_user()
+    created = c.post(
+        f"/api/v1/saccos/{s.sacco.id}/members",
+        json={"email": db.session.get(User, other.id).email, "role": "member"},
+        headers=auth(s.admin),
+    )
+    assert created.status_code == 201, created.json
+    assert mails == []  # a plain member gains nothing
+    patched = c.patch(
+        f"/api/v1/saccos/{s.sacco.id}/members/{created.json['id']}",
+        json={"role": "sacco_admin"},
+        headers=auth(owner),
+    )
+    assert patched.status_code == 200, patched.json
+    assert len(mails) == 4  # now the second admin is an officer too
+
+
+def test_a_proposal_from_someone_no_longer_an_officer_cannot_be_approved(
+    schema_app,  # noqa: F811
+    mails,
+):
+    s = circle()
+    c = schema_app.test_client()
+    change = propose(c, s.finance, s).json["change"]
+    membership = (
+        db.session.query(SaccoMembership)
+        .filter_by(user_id=s.finance.id, sacco_id=s.sacco.id)
+        .one()
+    )
+    membership.status = MembershipStatus.INACTIVE
+    db.session.commit()
+    db.session.remove()
+    stale = approve(c, s.admin, s, change["id"])
+    assert stale.status_code == 409
+    assert "no longer an officer" in stale.json["error"]["message"]
+    assert read(c, s.member, s).json["details"] is None
+
+
+def test_the_waiting_change_names_its_proposer(schema_app, mails):  # noqa: F811
+    s = circle()
+    c = schema_app.test_client()
+    propose(c, s.finance, s)
+    pending = read(c, s.admin, s).json["pending"]
+    assert pending["proposed_by_email"] == db.session.get(User, s.finance.id).email
+
+
+def test_text_is_normalised_and_accents_are_allowed(schema_app, mails):  # noqa: F811
+    s = circle()
+    made = propose(
+        schema_app.test_client(),
+        s.admin,
+        s,
+        display_name="Cafe\u0301 Umoja",
+        bank_branch=...,
+    )
+    assert made.status_code == 201, made.json
+    assert made.json["change"]["values"]["display_name"] == "Caf\u00e9 Umoja"
+
+
+def test_a_circle_cannot_flood_its_officers_with_proposals(schema_app, mails):  # noqa: F811
+    s = circle()
+    c = schema_app.test_client()
+    for n in range(logic.MAX_PROPOSALS_PER_HOUR):
+        ok = propose(c, s.admin, s, mpesa_number=f"4002{n:02d}")
+        assert ok.status_code == 201, ok.json
+    blocked = propose(c, s.admin, s, mpesa_number="499999")
+    assert blocked.status_code == 429
+    assert "too many" in blocked.json["error"]["message"]
+
+
+def test_smtp_mail_goes_out_on_a_background_thread(schema_app, monkeypatch):  # noqa: F811
+    import threading
+
+    seen = []
+    monkeypatch.setattr(
+        logic, "send_text_email", lambda *a: seen.append(threading.current_thread())
+    )
+    monkeypatch.setitem(schema_app.config, "MAIL_BACKEND", "smtp")
+    s = circle()
+    made = propose(schema_app.test_client(), s.admin, s)
+    assert made.status_code == 201
+    for thread in threading.enumerate():
+        if thread.daemon and thread is not threading.current_thread():
+            thread.join(timeout=5)
+    assert len(seen) == 2
+    assert all(t is not threading.main_thread() for t in seen)
+
+
+def test_holding_since_is_none_for_a_member_and_for_an_inactive_officer(schema_app):  # noqa: F811
+    from app.security.permissions import holding_since
+
+    s = circle()
+    assert holding_since(s.sacco.id, s.member.id, logic.PERMISSION) is None
+    assert holding_since(s.sacco.id, s.finance.id, logic.PERMISSION) is not None
+    # A legacy admin with no title rows counts from when the membership began.
+    assert holding_since(s.sacco.id, s.admin.id, logic.PERMISSION) is not None
+    secretary = officer(s, "secretary")
+    assert holding_since(s.sacco.id, secretary.id, logic.PERMISSION) is None
+    assert holding_since(s.sacco.id, make_user().id, logic.PERMISSION) is None

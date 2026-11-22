@@ -166,6 +166,18 @@ def upgrade():
         postgresql_where=sa.text("status = 'pending'"),
     )
 
+    # When a title was given, so a change can only be approved by someone who was
+    # already an officer when it was proposed. Existing rows get the migration time.
+    op.add_column(
+        "membership_roles",
+        sa.Column(
+            "granted_at",
+            sa.DateTime(timezone=True),
+            nullable=False,
+            server_default=sa.func.now(),
+        ),
+    )
+
     code, description = PERMISSION
     op.execute(
         sa.text(
@@ -184,6 +196,7 @@ def upgrade():
 
 
 def downgrade():
+    op.drop_column("membership_roles", "granted_at")
     code = PERMISSION[0]
     op.execute(
         sa.text(

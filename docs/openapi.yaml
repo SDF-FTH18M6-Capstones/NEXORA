@@ -3279,7 +3279,9 @@ paths:
         `mpesa_number` (5 to 7 digits), `display_name`, optional `account_reference_hint` (paybill only). Bank:
         `bank_name`, `bank_account_name`, `bank_account_number` (6 to 20 digits), optional `bank_branch`. Shared
         bank paybill: `bank_uses_shared_paybill` true with `bank_paybill_number` (5 to 7 digits). Every proposal
-        is audited (`payin.propose`, `payin.supersede`) and every officer is emailed.
+        is audited (`payin.propose`, `payin.supersede`) and every officer is emailed. Text fields take Latin
+        letters, ASCII digits and ordinary punctuation on one line (invisible, look-alike and
+        non-Latin letters are refused). A circle may send 10 proposals an hour (429).
 
 
         **Rate limit:** 30 per minute.'
@@ -3450,7 +3452,10 @@ paths:
       summary: Approve a waiting change so it goes live
       description: '**Who:** holders of `payin.manage`, never the officer who proposed the change
         (403 `PAYIN_SAME_OFFICER`). The change is named by id, so nobody approves values that changed
-        after they read them. Audited as `payin.approve`; every officer is emailed.
+        after they read them. The approver must have become an officer before the change was proposed
+        (403 `PAYIN_NEW_OFFICER`), and the proposer must still be an officer (409). Audited as
+        `payin.approve`; every officer is emailed. Everyone is also emailed when someone gains
+        `payin.manage` (member add, role or title change).
 
 
         **Rate limit:** 30 per minute.'
@@ -3460,7 +3465,7 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
-          description: Not allowed, or you proposed this change (`PAYIN_SAME_OFFICER`).
+          description: Not allowed, you proposed this change (`PAYIN_SAME_OFFICER`), or you became an officer after it was proposed (`PAYIN_NEW_OFFICER`).
           content:
             application/json:
               schema:
@@ -3468,7 +3473,7 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
         '409':
-          description: The change was already approved or replaced by a newer one (`conflict`).
+          description: The change was already approved or replaced, or its proposer is no longer an officer (`conflict`).
           content:
             application/json:
               schema:

@@ -85,6 +85,8 @@ export default function RequestPage({ kind }) {
   const pay = useAsync(() => (withdrawing ? Promise.resolve('skip') : getPayIn(saccoId)), [saccoId, kind], { isEmpty: () => false });
   const details = !withdrawing && pay.status === 'ready' ? pay.data.details : null;
   const notSet = !withdrawing && pay.status === 'ready' && !details;
+  /* until the details have loaded, a deposit cannot say where to pay */
+  const payUnready = !withdrawing && pay.status !== 'ready';
   /* a deposit by a method the circle does not offer cannot be paid anywhere */
   const methodOff = !withdrawing && !!details && (method === 'mpesa' ? !details.mpesa_number : !details.bank_name);
 
@@ -111,7 +113,7 @@ export default function RequestPage({ kind }) {
 
   async function submit(ev) {
     ev.preventDefault();
-    if (busy.current || noBalance || notSet || methodOff) return;
+    if (busy.current || noBalance || notSet || methodOff || payUnready) return;
     const e = validate();
     setErrors(e);
     const first = ['amount', 'phone', 'bank', 'ref'].find(k => e[k]);
@@ -173,7 +175,7 @@ export default function RequestPage({ kind }) {
           {banner && banner.kind !== 'ok' && <ErrorBanner kind={banner.kind}>{banner.text}</ErrorBanner>}
           {notSet && <ErrorBanner kind="warn">Pay-in details not set. Ask an officer of your circle to set them.</ErrorBanner>}
           {methodOff && <ErrorBanner kind="warn">This circle does not take {method === 'mpesa' ? 'M-Pesa' : 'bank'} payments. Choose the other way to pay.</ErrorBanner>}
-          <button type="submit" className="btn" disabled={sending || noBalance || notSet || methodOff}>{sending ? 'Sending...' : t.button}</button>
+          <button type="submit" className="btn" disabled={sending || noBalance || notSet || methodOff || payUnready}>{sending ? 'Sending...' : t.button}</button>
           <p className="sam-note">This sends a request only. Your balance changes after an officer confirms it. Each request has its own reference, so a retry never sends it twice.</p>
         </form>
 

@@ -75,6 +75,11 @@ class MembershipRoleLink(db.Model):
     granted_by_user_id: Mapped[int | None] = mapped_column(
         ForeignKey("users.id", name="fk_membership_roles_granted_by"), nullable=True
     )
+    # When the title was given. A pay-in change can only be approved by someone
+    # who already held an officer title when it was proposed (migration 0027).
+    granted_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
 
 
 class PlatformGrant(db.Model):

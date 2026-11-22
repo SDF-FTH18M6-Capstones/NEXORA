@@ -6,8 +6,12 @@ different officer approves that exact proposal. Nothing here moves money.
 
 import logging
 import re
+import threading
+import unicodedata
+from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import select
+from flask import current_app
+from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from app.extensions import db
@@ -23,6 +27,7 @@ from app.security.permissions import holders
 log = logging.getLogger(__name__)
 
 PERMISSION = "payin.manage"
+MAX_PROPOSALS_PER_HOUR = 10
 FIELDS = (
     "mpesa_type",
     "mpesa_number",
@@ -47,20 +52,51 @@ def lock_sacco(sacco_id: int) -> None:
     ).scalar_one_or_none()
 
 
+# Hidden, joining, line-breaking, private or unassigned characters, and combining
+# marks that survive normalisation: none of them can be seen, so an approver or a
+# member could be shown a name that looks identical to a different one.
+_REFUSED = {"Cc", "Cf", "Cs", "Co", "Cn", "Zl", "Zp", "Zs", "Mn", "Mc", "Me", "Sk"}
+
+
+def _looks_plain(value: str) -> bool:
+    """Latin letters, ASCII digits, ordinary spaces and punctuation, one line.
+
+    A Cyrillic or Greek letter that looks Latin is refused: the name is what
+    members are told to match against what M-Pesa shows.
+    """
+    for ch in value:
+        category = unicodedata.category(ch)
+        if ch == " ":
+            continue
+        if category in _REFUSED:
+            return False
+        if category.startswith("L") and not unicodedata.name(ch, "").startswith(
+            "LATIN"
+        ):
+            return False
+        if category == "Nd" and not ch.isascii():
+            return False
+    return True
+
+
 def _text(value, limit: int, label: str, example: str):
     """(clean value or None, reason or None). Blank means "not given"."""
     if value is None or value == "":
         return None, None
-    plain = f"{label} must be plain text on one line. Example: {example}."
-    if not isinstance(value, str) or any(
-        ord(ch) < 32 or ord(ch) == 127 for ch in value
-    ):
+    plain = (
+        f"{label} must be one line of Latin letters, digits and ordinary "
+        f"punctuation, because members compare it with what M-Pesa shows. "
+        f"Example: {example}."
+    )
+    if not isinstance(value, str):
         return None, plain
     try:
         value.encode("utf-8")  # a lone surrogate would fail later, in the database
     except UnicodeEncodeError:
         return None, plain
-    value = value.strip()
+    value = unicodedata.normalize("NFC", value).strip()
+    if not _looks_plain(value):
+        return None, plain
     if len(value) > limit:
         return None, f"{label} can be at most {limit} characters. Example: {example}."
     return (value or None), None
@@ -213,10 +249,12 @@ def live_json(row: CirclePaymentDetails) -> dict:
 
 
 def change_json(row: CirclePaymentDetailsChange) -> dict:
+    proposer = db.session.get(User, row.proposed_by)
     return {
         "id": row.id,
         "status": row.status,
         "proposed_by": row.proposed_by,
+        "proposed_by_email": proposer.email if proposer else None,
         "proposed_at": row.proposed_at.isoformat(),
         "approved_by": row.approved_by,
         "approved_at": row.approved_at.isoformat() if row.approved_at else None,
@@ -253,19 +291,85 @@ def officers(sacco_id: int) -> list[User]:
     return list(db.session.execute(select(User).where(User.id.in_(ids))).scalars())
 
 
+def _send_all(emails: list[str], subject: str, body: str) -> None:
+    for email in emails:
+        try:
+            send_text_email(email, subject, body)
+        except Exception:
+            log.exception("Could not email an officer")
+
+
 def notify_officers(sacco_id: int, subject: str, body: str) -> None:
     """Email every officer. Call after the commit: a mail outage never fails the
-    request and never leaves a half-saved change."""
+    request and never leaves a half-saved change. SMTP goes out on a background
+    thread so a slow mail server cannot hold a worker (same reason as
+    `mail.send_safely`); the log backend sends inline."""
     try:
         recipients = [user.email for user in officers(sacco_id)]
     except Exception:
         log.exception("Could not list the officers of circle %s", sacco_id)
         return
-    for email in recipients:
-        try:
-            send_text_email(email, subject, body)
-        except Exception:
-            log.exception("Could not email an officer of circle %s", sacco_id)
+    if current_app.config["MAIL_BACKEND"] != "smtp":
+        _send_all(recipients, subject, body)
+        return
+    app = current_app._get_current_object()
+
+    def work():
+        with app.app_context():
+            _send_all(recipients, subject, body)
+
+    threading.Thread(target=work, daemon=True).start()
+
+
+def officer_ids(sacco_id: int) -> set[int]:
+    """Who holds `payin.manage` now; take one before a role change and compare."""
+    return set(holders(sacco_id, PERMISSION))
+
+
+def announce_new_officers(sacco_id: int, before: set[int], actor_email: str) -> None:
+    """Tell every officer when someone gains the power to propose or approve.
+
+    A second officer is the control on pay-in details, so anyone who can make a
+    second officer (add a member, set titles, change a role) must be visible.
+    Call after the commit, with `officer_ids()` taken before the change.
+    """
+    try:
+        gained = officer_ids(sacco_id) - before
+        if not gained:
+            return
+        names = ", ".join(
+            sorted(
+                db.session.execute(
+                    select(User.email).where(User.id.in_(gained))
+                ).scalars()
+            )
+        )
+        circle = db.session.get(Sacco, sacco_id).name
+    except Exception:
+        log.exception("Could not announce new officers of circle %s", sacco_id)
+        return
+    notify_officers(
+        sacco_id,
+        "NEXORA: a new officer can change pay-in details",
+        f"Circle: {circle}\nNew officer: {names}\nGiven by: {actor_email}\n\n"
+        "This person can now propose and approve changes to where members pay "
+        "in. If you did not expect this, tell your circle admin straight away.",
+    )
+
+
+def too_many_proposals(sacco_id: int) -> bool:
+    """A circle may send a handful of proposals an hour: each one emails every
+    officer, and a hostile officer could otherwise bury the honest ones."""
+    since = datetime.now(UTC) - timedelta(hours=1)
+    recent = db.session.execute(
+        select(func.count())
+        .select_from(CirclePaymentDetailsChange)
+        .where(
+            CirclePaymentDetailsChange.sacco_id == sacco_id,
+            CirclePaymentDetailsChange.proposed_at > since,
+        )
+    ).scalar_one()
+    return recent >= MAX_PROPOSALS_PER_HOUR
 
 
 def go_live(change: CirclePaymentDetailsChange) -> None:

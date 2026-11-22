@@ -27,12 +27,13 @@ export default function PayInPage() {
     try {
       await action();
       toast(done);
-      payIn.reload();
     } catch (e) {
       if (e.fields) setErrors(e.fields);
-      setNotice(e.status === 403 && e.code === 'PAYIN_SAME_OFFICER' ? e.message : describe(e).text);
+      /* the server's own sentence for the two-officer rules (403) and for a change that is gone or replaced (409) */
+      setNotice((e.status === 403 && String(e.code).startsWith('PAYIN_')) || e.status === 409 ? e.message : describe(e).text);
     } finally {
       setBusy(false);
+      payIn.reload();   /* also after a refusal, so a replaced or approved change is not left on screen */
     }
   }
 
@@ -55,13 +56,13 @@ export default function PayInPage() {
       </div>
       {notice && <ErrorBanner>{notice}</ErrorBanner>}
       <Body status={payIn.status} error={payIn.error} reload={payIn.reload}>
-        {live ? <PayInView details={live} /> : <ErrorBanner kind="info">Pay-in details not set. Members cannot send deposit or withdrawal requests until two officers set them.</ErrorBanner>}
+        {live ? <PayInView details={live} /> : <ErrorBanner kind="info">Pay-in details not set. Members cannot send deposit requests until two officers set them. Withdrawals are never blocked.</ErrorBanner>}
 
         {pending && (
           <div className="neo-stack">
             <h3 className="font-serif text-lg">A change is waiting for approval</h3>
             <PayInView details={pending.values} showDate={false} />
-            <p className="muted text-sm">Proposed {dTime(pending.proposed_at)}.</p>
+            <p className="muted text-sm">Proposed by {pending.proposed_by_email || 'a former officer'} on {dTime(pending.proposed_at)}.</p>
             {mine ? (
               <p className="muted text-sm">You proposed this change. A different officer must approve it. Until then members still see the details above.</p>
             ) : (

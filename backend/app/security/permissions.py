@@ -354,6 +354,46 @@ def holders(sacco_id: int, permission: str) -> list[int]:
     return found
 
 
+def holding_since(sacco_id: int, user_id: int, permission: str):
+    """When this user began holding `permission` in this SACCO, or None.
+
+    The earliest time a title that carries it was given. A membership with no
+    title rows (the legacy fallback) counts from when it was created.
+    """
+    membership = _membership_for(user_id, sacco_id)
+    if membership is None or membership.status is not MembershipStatus.ACTIVE:
+        return None
+    given = db.session.execute(
+        select(func.min(MembershipRoleLink.granted_at))
+        .join(RolePermission, RolePermission.role_id == MembershipRoleLink.role_id)
+        .join(Permission, Permission.id == RolePermission.permission_id)
+        .where(
+            MembershipRoleLink.membership_id == membership.id,
+            Permission.code == permission,
+        )
+    ).scalar_one()
+    if given is not None:
+        return given
+    if _titles_exist(membership.id):
+        return None  # titles exist and none carries it
+    legacy = LEGACY_ROLE_CODES.get(membership.role)
+    carries = legacy is not None and permission in ROLE_PERMISSIONS.get(
+        legacy, frozenset()
+    )
+    return membership.created_at if carries else None
+
+
+def _titles_exist(membership_id: int) -> bool:
+    return (
+        db.session.execute(
+            select(MembershipRoleLink.membership_id)
+            .where(MembershipRoleLink.membership_id == membership_id)
+            .limit(1)
+        ).first()
+        is not None
+    )
+
+
 def permissions_for(user, sacco) -> frozenset[str]:
     """Every permission the user holds in this SACCO, computed the same way.
 

@@ -25,7 +25,7 @@ export async function proposePayIn(saccoId, body) {
   if (MOCK) {
     await mockDelay();
     mock.pending = {
-      id: mock.next++, status: 'pending', proposed_by: MY_ID, proposed_at: new Date().toISOString(),
+      id: mock.next++, status: 'pending', proposed_by: MY_ID, proposed_by_email: 'you@example.com', proposed_at: new Date().toISOString(),
       values: { ...body, bank_manual_confirm_only: body.bank_uses_shared_paybill },
     };
     return structuredClone(mock.pending);
