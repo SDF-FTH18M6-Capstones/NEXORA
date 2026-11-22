@@ -245,9 +245,15 @@ def _check_daraja_settings(app, app_env):
     if missing:
         raise RuntimeError(f"DARAJA_ENABLED needs: {', '.join(missing)}.")
     # The path token is the only thing that proves a callback came from Safaricom.
-    if not re.fullmatch(r"[A-Za-z0-9_-]{32,}", app.config["DARAJA_CALLBACK_TOKEN"]):
+    token = app.config["DARAJA_CALLBACK_TOKEN"]
+    if not re.fullmatch(r"[A-Za-z0-9_-]{32,}", token) or len(set(token)) < 10:
         raise RuntimeError(
-            "DARAJA_CALLBACK_TOKEN must be 32 or more letters, digits, - or _."
+            "DARAJA_CALLBACK_TOKEN must be 32 or more random letters, digits, - or _."
+        )
+    url = app.config["DARAJA_CALLBACK_URL"]
+    if not (url.startswith("https://") and url.endswith("/daraja/callback/" + token)):
+        raise RuntimeError(
+            "DARAJA_CALLBACK_URL must be https and end in /daraja/callback/<token>."
         )
 
 

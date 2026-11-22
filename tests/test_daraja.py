@@ -372,7 +372,69 @@ def test_a_weak_callback_token_is_refused_at_startup(app, token):
     try:
         with pytest.raises(RuntimeError, match="32 or more"):
             _check_daraja_settings(app, "development")
-        app.config["DARAJA_CALLBACK_TOKEN"] = "a" * 32
+        good = "Zk3_x9QvLm2-Pw8RtYb7NcHd5JfGs1Aa"
+        app.config.update(
+            DARAJA_CALLBACK_TOKEN=good,
+            DARAJA_CALLBACK_URL=f"https://x.test/api/v1/daraja/callback/{good}",
+        )
         _check_daraja_settings(app, "development")  # a good one passes
     finally:
         app.config.update(old)
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "http://x.test/api/v1/daraja/callback/Zk3_x9QvLm2-Pw8RtYb7NcHd5JfGs1Aa",
+        "https://x.test/api/v1/daraja/callback/another-token-value-here-0123456",
+        "https://x.test/",
+    ],
+)
+def test_a_callback_url_without_the_token_or_https_is_refused(app, url):
+    from app import _check_daraja_settings
+
+    old = app.config.get("DARAJA_CALLBACK_TOKEN")
+    app.config.update(
+        DARAJA_CONSUMER_KEY="k",
+        DARAJA_CONSUMER_SECRET="s",
+        DARAJA_PASSKEY="p",
+        DARAJA_SHORTCODE="1",
+        DARAJA_CALLBACK_URL=url,
+        DARAJA_CALLBACK_TOKEN="Zk3_x9QvLm2-Pw8RtYb7NcHd5JfGs1Aa",
+    )
+    try:
+        with pytest.raises(RuntimeError, match="DARAJA_CALLBACK_URL"):
+            _check_daraja_settings(app, "development")
+    finally:
+        app.config["DARAJA_CALLBACK_TOKEN"] = old
+
+
+def test_a_boolean_amount_does_not_count_as_one_shilling(client, on):
+    push(client, P(make_sacco(), MEMBER), amount=100)
+    answer(client, "ws_CO_1", amount=True)
+    db.session.expire_all()
+    assert db.session.query(StkPush).one().status == "failed"
+
+
+def test_a_push_with_no_answer_stops_being_pending_after_15_minutes(client, on):
+    p = P(make_sacco(), MEMBER)
+    push(client, p)
+    url = f"/api/v1/saccos/{p.sacco_id}/stk-push/1"
+    assert client.get(url, headers=p.headers).json["status"] == "pending"
+    db.session.execute(
+        text("UPDATE stk_pushes SET created_at = now() - interval '16 minutes'")
+    )
+    db.session.commit()
+    got = client.get(url, headers=p.headers).json
+    assert got["status"] == "failed" and "did not answer" in got["message"]
+    # A late answer for a push already closed changes nothing.
+    answer(client, "ws_CO_1")
+    db.session.expire_all()
+    assert db.session.query(StkPush).one().status == "failed"
+
+
+def test_sacco_login_is_registered_once(app):
+    rules = [
+        r for r in app.url_map.iter_rules() if r.rule.endswith("/auth/sacco-login")
+    ]
+    assert len(rules) == 1

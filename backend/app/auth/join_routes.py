@@ -208,7 +208,6 @@ def join_pin():
 
 
 @auth_bp.post("/sacco-login")
-@auth_bp.post("/sacco-login")
 @write_limit
 def sacco_login():
     if error := _signed_in():

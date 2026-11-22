@@ -28,6 +28,7 @@ from app.payments import daraja
 from app.security.permissions import can
 from app.security.tenant import permission_scoped
 
+STALE = timedelta(minutes=15)  # a push with no answer after this has failed
 MAX_PENDING = 3  # prompts a member may have waiting at once
 MAX_MINOR = 15_000_000  # KES 150,000, under M-Pesa's per-transaction limit
 ACK = {"ResultCode": 0, "ResultDesc": "Accepted"}
@@ -87,7 +88,7 @@ def start_stk_push(sacco_id):
         select(func.count()).where(
             StkPush.membership_id == me.id,
             StkPush.status == "pending",
-            StkPush.created_at > datetime.now(UTC) - timedelta(minutes=15),
+            StkPush.created_at > datetime.now(UTC) - STALE,
         )
     )
     if recent >= MAX_PENDING:
@@ -137,6 +138,10 @@ def get_stk_push(sacco_id, push_id):
     )
     if row is None or not (mine or can(g.access.user, g.access.sacco, "member.manage")):
         return error_response(404, "Not found.")
+    if row.status == "pending" and row.created_at < datetime.now(UTC) - STALE:
+        # No answer from M-Pesa in time (a lost callback): stop showing "pending".
+        row.status, row.result_desc = "failed", "M-Pesa did not answer in time."
+        db.session.commit()
     return jsonify(_json(row))
 
 
@@ -164,7 +169,12 @@ def stk_callback(token):
         if isinstance(i, dict)
     }
     paid = data.get("ResultCode") == 0
-    if paid and items.get("Amount") != row.amount // 100:
+    sent = items.get("Amount")
+    if paid and (
+        isinstance(sent, bool)
+        or not isinstance(sent, int | float)
+        or sent != row.amount // 100
+    ):
         paid, data["ResultDesc"] = False, "Paid amount did not match the request."
     row.status = "succeeded" if paid else "failed"
     row.result_desc = str(data.get("ResultDesc") or "")[:255]
