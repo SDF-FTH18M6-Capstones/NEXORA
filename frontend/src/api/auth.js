@@ -292,7 +292,7 @@ export async function forgotPasswordRequest(email) {
 
 export async function resetPasswordRequest(token, password) {
   if (!MOCK) {
-    return http.post('/auth/reset-password', { body: { token, password }, auth: false });
+    return http.post('/auth/reset-password', { body: { token, new_password: password }, auth: false });
   }
   await mockDelay(250);
   if (token === 'expired') {

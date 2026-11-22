@@ -4,6 +4,7 @@ import { useSession } from '../../lib/session.jsx';
 import { useAsync } from '../../lib/useAsync.js';
 import { getMember, setRoles, updateMember, addMember } from '../../api/people.js';
 import ErrorBanner from '../../components/ErrorBanner.jsx';
+import MemberDetails from '../../components/MemberDetails.jsx';
 import StatusChip from '../../components/StatusChip.jsx';
 import { Body, Confirm } from './shared.jsx';
 import { ROLE_LABEL, when } from './data.js';
@@ -156,6 +157,7 @@ export default function MemberProfile({ membershipId, onBack }) {
             )}
           </>
         )}
+        {can('member.manage') && <MemberDetails membershipId={membershipId} />}
       </Body>
     </section>
   );

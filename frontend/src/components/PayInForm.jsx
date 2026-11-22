@@ -15,12 +15,13 @@ export default function PayInForm({ value, onChange, errors = {}, disabled = fal
         <select {...input('mpesaType')}>
           <option value="paybill">Paybill</option>
           <option value="till">Till (Buy Goods)</option>
+          <option value="pochi">Pochi la Biashara (phone number, shown only)</option>
         </select>
       </Field>
-      <Field id="payin-number" label="Paybill or till number" error={errors.mpesa_number}>
-        <input {...input('mpesaNumber', { inputMode: 'numeric', placeholder: '400200', maxLength: 7 })} />
+      <Field id="payin-number" label="Paybill, till or Pochi number" error={errors.mpesa_number}>
+        <input {...input('mpesaNumber', { inputMode: 'numeric', placeholder: '400200', maxLength: 16 })} />
       </Field>
-      <Hint>5 to 7 digits, no spaces or letters. Example: 400200.</Hint>
+      <Hint>Paybill or till: 5 to 7 digits, no spaces or letters. Example: 400200. Pochi la Biashara: the Safaricom phone number. Example: 0712345678. Members are shown a Pochi number but never prompted for it.</Hint>
       <Field id="payin-name" label="Name members will see" error={errors.display_name}>
         <input {...input('displayName', { maxLength: 60, placeholder: 'Umoja SACCO Savings' })} />
       </Field>

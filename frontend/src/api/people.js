@@ -104,3 +104,16 @@ export async function listAudit(saccoId, { action, page = 1 } = {}) {
   }
   return http.get(`/admin/saccos/${saccoId}/audit`, { params: { action, page } });
 }
+
+/* Personal details and the member's consent (DPA 2019). Real server only: no mock twin. */
+const mine = id => `/saccos/${id}/members/me/data-consent`;
+export const getConsent = saccoId => http.get(mine(saccoId));
+export const giveConsent = (saccoId, version) => http.post(mine(saccoId), { body: { notice_version: version } });
+export const withdrawConsent = saccoId => http.post(`${mine(saccoId)}/withdraw`, { body: {} });
+export const getProfile = (saccoId, membershipId) => http.get(`/saccos/${saccoId}/members/${membershipId}/profile`);
+export const saveProfile = (saccoId, membershipId, body) => http.patch(`/saccos/${saccoId}/members/${membershipId}/profile`, { body });
+
+/* This SACCO's own Daraja credentials. The server never sends the secrets back; a 404 means the feature is off. */
+const daraja = id => `/saccos/${id}/daraja-settings`;
+export const getDarajaSettings = saccoId => http.get(daraja(saccoId)).catch(e => (e.status === 404 ? null : Promise.reject(e)));
+export const saveDarajaSettings = (saccoId, body) => http.put(daraja(saccoId), { body });
