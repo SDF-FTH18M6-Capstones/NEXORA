@@ -211,8 +211,15 @@ def proposal_expired(proposal) -> bool:
 
 
 def lock_sacco(sacco_id: int) -> None:
-    """Serialise rule changes and loan checks for one circle."""
-    db.session.execute(select(Sacco.id).where(Sacco.id == sacco_id).with_for_update())
+    """Serialise rule changes, loan checks, payouts and withdrawals for one circle.
+
+    FOR NO KEY UPDATE, not FOR UPDATE: every ledger insert takes a KEY SHARE lock
+    on the circle's row (the foreign key), and a plain FOR UPDATE here would make a
+    reversal or deposit that holds an account lock wait on a withdrawal that holds
+    this one and waits for that account: a deadlock."""
+    db.session.execute(
+        select(Sacco.id).where(Sacco.id == sacco_id).with_for_update(key_share=True)
+    )
 
 
 def electorate(sacco_id: int, rules_id: int) -> list[int]:
@@ -378,6 +385,60 @@ def pool_cash(sacco_id: int) -> int:
     )
     outstanding = int(lent) - int(paid)
     return int(total) - 2 * outstanding - int(reserved)
+
+
+OPEN_LOAN_STATUSES = (LoanStatus.REQUESTED, LoanStatus.APPROVED, LoanStatus.DISBURSED)
+
+
+def check_loan_disburse(loan, savings: int) -> None:
+    """Run the cap and pool checks again at payout. A loan is approved days after
+    it was asked for: savings may have dropped and the pool may have been spent
+    since. The caller holds the circle lock. A circle without rules is not checked."""
+    rules = current_rules(loan.sacco_id)
+    if rules is None:
+        return
+    most = rules.loan_cap_multiple * savings
+    if loan.principal > most:
+        raise Conflict(
+            f"This loan is now above {rules.loan_cap_multiple} times the member's "
+            f"savings. Their savings are {kes(savings)}, so the most is {kes(most)} "
+            f"and the loan is {kes(loan.principal)}.",
+            code=LOAN_OVER_CAP,
+        )
+    # This loan is APPROVED, so pool_cash already reserved it for itself.
+    available = pool_cash(loan.sacco_id) + loan.principal
+    if loan.principal > available:
+        raise Conflict(
+            f"The circle does not have enough cash for this loan now. It holds "
+            f"{kes(max(available, 0))} and the loan is {kes(loan.principal)}.",
+            code=LOAN_POOL_SHORT,
+        )
+
+
+def check_withdrawal(account, amount: int) -> None:
+    """Refuse a withdrawal that would leave the member's savings too small for
+    the cap on a loan they still have open. The caller holds the circle lock."""
+    rules = current_rules(account.sacco_id)
+    if rules is None:
+        return
+    principal = db.session.scalar(
+        select(func.max(Loan.principal)).where(
+            Loan.membership_id == account.membership_id,
+            Loan.status.in_(OPEN_LOAN_STATUSES),
+        )
+    )
+    if principal is None:
+        return
+    multiple = rules.loan_cap_multiple
+    keep = -(-principal // multiple)  # savings must stay at or above principal / cap
+    if account.balance - amount < keep:
+        raise Conflict(
+            f"You have an open loan of {kes(principal)}. This circle lets you borrow "
+            f"{multiple} times your savings, so your savings must stay at "
+            f"{kes(keep)} or more while it is open. You can withdraw up to "
+            f"{kes(max(account.balance - keep, 0))}.",
+            code=LOAN_OVER_CAP,
+        )
 
 
 def check_loan_request(membership, savings: int, principal: int, term_months) -> None:

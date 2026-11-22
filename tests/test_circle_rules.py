@@ -361,3 +361,91 @@ def test_adopting_a_new_version_keeps_earlier_acceptances_for_loans(schema_app):
         loan_service.request_loan(s.member.id, s.sacco.id, 10_000, 3).principal
         == 10_000
     )
+
+
+# ---- payout re-checks the cap and the pool; withdrawals keep the loan's cap ----
+
+
+def _approved_loan(s, principal, multiple=None):
+    """Rules v1 published and accepted, a loan asked for and approved by a loans
+    officer, with a finance officer ready to pay it out. Returns (loan, finance)."""
+    from app.models.loan import LoanDecisionKind
+    from test_loans_and_ledger import _add_officer
+
+    values, _ = circle_rules.validate_rules(
+        {**RULES, **({"loan_cap_multiple": multiple} if multiple else {})}
+    )
+    rules = circle_rules.publish_rules(s.sacco.id, values, s.admin.id)
+    circle_rules.accept(s.member_membership.id, rules.id)
+    db.session.commit()
+    loan = loan_service.request_loan(s.member.id, s.sacco.id, principal, 3)
+    for n in range(1, loan.required_approvals + 1):
+        approver = _add_officer(
+            s.sacco.id, f"lo{n}-{uuid.uuid4().hex[:6]}@example.com", "loans_officer"
+        )
+        loan_service.decide_loan(approver.id, loan.id, n, LoanDecisionKind.APPROVE)
+    finance = _add_officer(
+        s.sacco.id, f"fo-{uuid.uuid4().hex[:6]}@example.com", "finance_officer"
+    )
+    return loan, finance
+
+
+def test_payout_checks_the_pool_again(schema_app):  # noqa: F811
+    from app.savings import service as savings
+
+    s = Setup(balance=10_000)  # savings of KES 100.00; the pool is KES 100.00
+    loan, finance = _approved_loan(s, 10_000)
+    # Savings can drop after approval (here a fee, which no loan guard covers).
+    savings.post_fee(s.admin.id, s.account.id, 6_000, f"fee-{uuid.uuid4().hex[:6]}")
+    with pytest.raises(Conflict) as short:
+        loan_service.disburse_loan(finance.id, loan.id, f"d-{uuid.uuid4().hex[:6]}")
+    # 3 x KES 40.00 = KES 120.00 still covers the loan; the pool does not.
+    assert short.value.code == "LOAN_POOL_SHORT", short.value.message
+
+
+def test_payout_checks_the_cap_again(schema_app):  # noqa: F811
+    from app.savings import service as savings
+
+    s = Setup(balance=30_000)
+    loan, finance = _approved_loan(
+        s, 60_000 // 2, multiple=1
+    )  # KES 300.00 = 1 x savings
+    savings.post_fee(s.admin.id, s.account.id, 10_000, f"fee-{uuid.uuid4().hex[:6]}")
+    with pytest.raises(Conflict) as over:
+        loan_service.disburse_loan(finance.id, loan.id, f"d-{uuid.uuid4().hex[:6]}")
+    assert over.value.code == "LOAN_OVER_CAP", over.value.message
+    assert "KES 200.00" in over.value.message  # the most, now
+
+
+def test_payout_still_works_when_nothing_changed(schema_app):  # noqa: F811
+    s = Setup(balance=10_000)
+    loan, finance = _approved_loan(s, 10_000)
+    paid = loan_service.disburse_loan(finance.id, loan.id, f"d-{uuid.uuid4().hex[:6]}")
+    assert paid.status == "disbursed"
+
+
+def test_a_withdrawal_that_breaks_an_open_loans_cap_is_refused(schema_app):  # noqa: F811
+    from app.savings import service as savings
+
+    s = Setup(balance=10_000)
+    _approved_loan(s, 10_000)  # needs savings of at least KES 33.34 (10,000 / 3)
+    ref = lambda: f"w-{uuid.uuid4().hex[:6]}"  # noqa: E731
+    with pytest.raises(Conflict) as blocked:
+        savings.withdraw(s.admin.id, s.account.id, 7_000, ref())  # leaves KES 30.00
+    assert blocked.value.code == "LOAN_OVER_CAP"
+    assert "KES 33.34" in blocked.value.message
+    assert "up to KES 66.66" in blocked.value.message
+    # Up to the line is fine, and the balance is untouched by the refusal.
+    assert savings.withdraw(s.admin.id, s.account.id, 6_666, ref()).balance == 3_334
+
+
+def test_withdrawals_are_free_without_an_open_loan_or_without_rules(schema_app):  # noqa: F811
+    from app.savings import service as savings
+
+    s = Setup(balance=10_000)  # no rules at all
+    assert savings.withdraw(s.admin.id, s.account.id, 10_000, "w-a").balance == 0
+    s = Setup(balance=10_000)
+    values, _ = circle_rules.validate_rules(RULES)
+    circle_rules.publish_rules(s.sacco.id, values, s.admin.id)
+    db.session.commit()  # rules, but the member has no loan
+    assert savings.withdraw(s.admin.id, s.account.id, 10_000, "w-b").balance == 0

@@ -190,6 +190,12 @@ def _post(
         raise NotFound("Not found.")
     actor = _actor(user_id, account.sacco_id)
 
+    if kind is TransactionType.WITHDRAWAL:
+        # Circle lock before the account lock, the order a loan payout uses too.
+        from app.saccos.rules import lock_sacco  # rules imports this module
+
+        lock_sacco(account.sacco_id)
+
     # Lock the account row. A second request for this account waits here until
     # the first commits, then reads the new balance, so two withdrawals that
     # together exceed the balance cannot both succeed.
@@ -237,6 +243,10 @@ def _post(
 
     if kind in DEBIT_TYPES and amount > account.balance:
         raise Conflict("Insufficient funds.", code=INSUFFICIENT_FUNDS)
+    if kind is TransactionType.WITHDRAWAL:
+        from app.saccos.rules import check_withdrawal  # rules imports this module
+
+        check_withdrawal(account, amount)
 
     tx = Transaction(
         sacco_id=account.sacco_id,

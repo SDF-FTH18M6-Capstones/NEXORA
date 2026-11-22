@@ -26,7 +26,7 @@ from app.models.loan import (
 from app.models.membership import MembershipStatus, SaccoMembership
 from app.models.savings import SavingsAccount
 from app.models.user import User
-from app.saccos.rules import check_loan_request
+from app.saccos.rules import check_loan_disburse, check_loan_request, lock_sacco
 from app.savings.service import (
     Conflict,
     Forbidden,
@@ -319,11 +319,17 @@ def disburse_loan(user_id: int, loan_id: int, reference: str) -> LoanView:
             "That reference has already been used.", code=DUPLICATE_REFERENCE
         )
 
+    # Circle lock first, then the account (withdrawals take them in the same
+    # order): a withdrawal or another payout cannot slip in between the checks
+    # and the credit.
+    lock_sacco(loan.sacco_id)
     account = db.session.execute(
         select(SavingsAccount)
         .where(SavingsAccount.membership_id == loan.membership_id)
         .with_for_update()
+        .execution_options(populate_existing=True)
     ).scalar_one()
+    check_loan_disburse(loan, account.balance)
 
     tx = Transaction(
         sacco_id=loan.sacco_id,

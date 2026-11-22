@@ -980,7 +980,7 @@ Error statuses: 400, 401, 403, 404, 409, 423, 429
 
 **Rate limit:** 20 per minute.
 
-Insufficient funds is 409 `Insufficient funds.`. `reference` is required. A new entry answers **201**; repeating the same reference with the same request answers **200** with `replayed: true`; the same reference with a different request is 409. Holders of `savings.post` (admin, finance officer) post money, others cannot (403), and nobody may post on their own account (403). Amounts are integers in minor units.
+Insufficient funds is 409 `Insufficient funds.`. `reference` is required. A new entry answers **201**; repeating the same reference with the same request answers **200** with `replayed: true`; the same reference with a different request is 409. Holders of `savings.post` (admin, finance officer) post money, others cannot (403), and nobody may post on their own account (403). A withdrawal that would leave the savings below the loan cap of an open loan is 409 `LOAN_OVER_CAP` (circles with published rules). Amounts are integers in minor units.
 
 Parameters: `account_id` (path, integer)
 
@@ -1784,7 +1784,7 @@ Error statuses: 400, 401, 403, 404, 409, 423
 
 **Pay out an approved loan**
 
-**Who:** finance officer (`loan.disburse`) who approved no step (`LOAN_SAME_OFFICER`). Credits the principal to the borrower's savings account. The ledger row cannot be reversed.
+**Who:** finance officer (`loan.disburse`) who approved no step (`LOAN_SAME_OFFICER`). Credits the principal to the borrower's savings account. The ledger row cannot be reversed. In a circle with published rules the cap and the pool are checked again at payout under the circle lock (409 `LOAN_OVER_CAP`, `LOAN_POOL_SHORT`).
 
 Parameters: `loan_id` (path, integer)
 
