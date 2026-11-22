@@ -16,7 +16,6 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from app.extensions import db
 from app.mail import send_text_email
-from app.models.membership import MembershipStatus, SaccoMembership
 from app.models.payment_details import (
     CirclePaymentDetails,
     CirclePaymentDetailsChange,
@@ -355,34 +354,13 @@ def _send_all(
             log.exception("Could not email officer %s of circle %s", user_id, sacco_id)
 
 
-def members_and_officers(sacco_id: int) -> list[User]:
-    """Everyone who pays in or runs the SACCO: active members with an account."""
-    users = list(
-        db.session.execute(
-            select(User)
-            .join(SaccoMembership, SaccoMembership.user_id == User.id)
-            .where(
-                SaccoMembership.sacco_id == sacco_id,
-                SaccoMembership.status == MembershipStatus.ACTIVE,
-            )
-        ).scalars()
-    )
-    seen = {user.id for user in users}
-    return users + [user for user in officers(sacco_id) if user.id not in seen]
-
-
-def notify_officers(
-    sacco_id: int, subject: str, body: str, *, everyone: bool = False
-) -> None:
-    """Email every officer (or, with `everyone`, every active member too).
-
-    Call after the commit: a mail outage never fails the
+def notify_officers(sacco_id: int, subject: str, body: str) -> None:
+    """Email every officer. Call after the commit: a mail outage never fails the
     request and never leaves a half-saved change. SMTP goes out on a background
     thread so a slow mail server cannot hold a worker (same reason as
     `mail.send_safely`); the log backend sends inline."""
     try:
-        found = members_and_officers(sacco_id) if everyone else officers(sacco_id)
-        recipients = [(user.id, user.email) for user in found]
+        recipients = [(user.id, user.email) for user in officers(sacco_id)]
     except Exception:
         log.exception("Could not list the officers of circle %s", sacco_id)
         return

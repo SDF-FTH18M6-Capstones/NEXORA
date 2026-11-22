@@ -3408,7 +3408,8 @@ paths:
         earliest `granted_at` of a title that carries `payin.manage` (editing other titles keeps it);
         an admin with no title rows counts from when the membership was created. Audited as
         `payin.approve`. The change goes live 24 hours after approval (`go_live_at`), not at once; every
-        officer and every active member is emailed at approval, without the numbers. Approving while another
+        officer (the admin included) is emailed at approval, without the numbers; members get no email
+        and see `scheduled.go_live_at` in the app. Approving while another
         approved change still waits replaces it (`payin.supersede`). Everyone is also emailed when someone gains
         `payin.manage` (member add, role or title change).
 

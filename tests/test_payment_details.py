@@ -608,13 +608,9 @@ def test_every_officer_and_only_officers_are_emailed(schema_app, mails):  # noqa
 
     mails.clear()
     approve(c, s.finance, s, change["id"])
-    # The approval alerts every active member too, because the delay is the
-    # window in which a change nobody expected can be questioned.
-    everyone = {
-        db.session.get(User, u.id).email
-        for u in (s.admin, s.finance, secretary, s.member)
-    }
-    assert sorted(to for to, _, _ in mails) == sorted(everyone)
+    # Officers (the admin included) only: members see the in-app notice, and a
+    # secretary or a member is not emailed.
+    assert sorted(to for to, _, _ in mails) == sorted([admin_email, finance_email])
     assert "24 hours" in mails[0][1]
     assert "400200" not in mails[0][2] and "0123456789" not in mails[0][2]
 

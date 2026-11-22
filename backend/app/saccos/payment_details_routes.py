@@ -7,8 +7,9 @@ POST .../payment-details/changes/<cid>/approve a different officer: go live
 
 A proposal changes nothing members see. An approval by someone other than the
 proposer schedules it: it goes live 24 hours later (`GO_LIVE_DELAY`), and
-members and officers are emailed at once so a change nobody expected can be
-questioned. Every proposal and approval is audited in the same transaction.
+officers (the admin included) are emailed at once and members see a notice in
+the app, so a change nobody expected can be questioned. Every proposal and
+approval is audited in the same transaction.
 """
 
 from datetime import UTC, datetime
@@ -212,6 +213,5 @@ def approve_payment_details(sacco_id, change_id):
             "seeing the current details.",
             actor,
         ),
-        everyone=True,
     )
     return jsonify(change=body)
