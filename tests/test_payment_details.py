@@ -834,3 +834,45 @@ def test_a_legacy_admin_created_after_the_proposal_is_still_a_new_officer(
     blocked = approve(c, late, s, change["id"])
     assert blocked.status_code == 403
     assert blocked.json["error"]["code"] == "PAYIN_NEW_OFFICER"
+
+
+TEXT_FIELDS = (
+    "display_name",
+    "account_reference_hint",
+    "bank_name",
+    "bank_account_name",
+    "bank_branch",
+)
+
+
+def test_apostrophes_ampersands_full_stops_and_brackets_are_accepted(schema_app, mails):  # noqa: F811
+    s = circle()
+    made = propose(
+        schema_app.test_client(),
+        s.admin,
+        s,
+        display_name="St. Mary's Teachers' Circle & Co.",
+        bank_account_name="Nyeri Women's Group (2026)",
+    )
+    assert made.status_code == 201, made.json
+    values = made.json["change"]["values"]
+    assert values["display_name"] == "St. Mary's Teachers' Circle & Co."
+    assert values["bank_account_name"] == "Nyeri Women's Group (2026)"
+
+
+@pytest.mark.parametrize("field", TEXT_FIELDS)
+@pytest.mark.parametrize(
+    "bad",
+    ["Umoja \u0421ircle", "Umoja\u202ecircle", "\u202eUmoja"],
+    ids=["cyrillic", "bidi", "bidi-lead"],
+)
+def test_cyrillic_and_bidi_characters_are_refused_in_every_text_field(
+    schema_app,  # noqa: F811
+    mails,
+    field,
+    bad,
+):
+    s = circle()
+    resp = propose(schema_app.test_client(), s.admin, s, **{field: bad})
+    assert resp.status_code == 400, resp.json
+    assert field in resp.json["error"]["fields"]
