@@ -1073,7 +1073,7 @@ Error statuses: 400, 401, 403, 404, 423, 429
 
 A reversal is a new opposite entry; nobody may reverse an entry on their own account (403). An entry can be reversed once, and a reversal cannot be reversed (409). `reference` is required. A new entry answers **201**; repeating the same reference with the same request answers **200** with `replayed: true`; the same reference with a different request is 409. Holders of `savings.reverse` (admin, finance officer) reverse entries, others cannot (403). Amounts are integers in minor units.
 
-**Loan cap:** reversing a deposit (or interest) takes money off the account. If that would leave the member's savings below what their open loan needs under the SACCO's cap multiple, it is refused (409 `LOAN_OVER_CAP`). A SACCO admin (`savings.reverse_override`) may force it by sending `override_reason` (10 to 140 characters); the reversal is then audited as `savings.reverse_override` with the reason. Anyone else who sends a reason for a blocked reversal gets 403. A reason sent when nothing blocks the reversal is ignored.
+**Loan cap:** reversing a deposit (or interest) takes money off the account. If that would leave the member's savings below what their open loan needs under the SACCO's cap multiple, it is refused (409 `LOAN_OVER_CAP`). A SACCO admin (`savings.reverse_override`) may force it by sending `override_reason` (10 to 140 characters, one line, no control characters); the reversal is then audited as `savings.reverse_override` with the reason. Anyone else who sends a reason for a blocked reversal gets 403. A reason sent when nothing blocks the reversal is ignored.
 
 Parameters: `transaction_id` (path, integer)
 
@@ -1703,7 +1703,7 @@ Error statuses: 400, 409, 401, 403, 404, 423
 
 **Withdraw consent; my personal details are erased**
 
-**Who:** the member. Ends the consent and erases full name, national ID, gender and date of birth at once. Savings, loans, share capital and the audit trail stay. Audited as `consent.withdraw` with the names of the erased fields, never the values.
+**Who:** the member. Works for the member's own membership whatever its status, even after deactivation or suspension. Ends the consent and erases full name, national ID, gender and date of birth at once. Savings, loans, share capital and the audit trail stay. Audited as `consent.withdraw` with the names of the erased fields, never the values.
 
 **Rate limit:** 30 per minute.
 
@@ -1731,7 +1731,7 @@ Error statuses: 401, 403, 404, 423
 
 **Set a member's personal details or share capital**
 
-**Who:** the member themself or a holder of `member.manage`; `share_capital` only by a holder of `member.manage` (403 otherwise). Send any of `full_name` (2 to 120 letters, spaces, `'` `.` `-`), `national_id` (7 or 8 digits, unique within the SACCO), `gender` (`female`, `male`, `other`), `date_of_birth` (`YYYY-MM-DD`, 1900 to today), `share_capital` (whole minor units, zero or more). `null` or an empty string clears a field. Every field is optional. Setting a personal detail needs the member's own active consent (409 `CONSENT_REQUIRED`); clearing one and `share_capital` do not. Audited as `member.profile_update` with the field names only.
+**Who:** the member themself or a holder of `member.manage`; `national_id` and `share_capital` only by a holder of `member.manage` (403 otherwise: a member who could set their own ID could probe which numbers other members hold). Send any of `full_name` (2 to 120 letters, spaces, `'` `.` `-`), `national_id` (7 or 8 digits, unique within the SACCO), `gender` (`female`, `male`, `other`), `date_of_birth` (`YYYY-MM-DD`, 1900 to today), `share_capital` (whole minor units, zero or more). `null` or an empty string clears a field. Every field is optional. Setting a personal detail needs the member's own active consent (409 `CONSENT_REQUIRED`); clearing one and `share_capital` do not. Audited as `member.profile_update` with the field names only.
 
 **Rate limit:** 30 per minute.
 
@@ -1757,7 +1757,7 @@ Error statuses: 400, 409, 401, 403, 404, 423
 
 **Ask M-Pesa to prompt my phone (sandbox)**
 
-**Who:** an active member (`savings.request`). **Sandbox only and off by default:** with `DARAJA_ENABLED` unset this route answers 404 as if it did not exist, and the app refuses to start with it on in production. Send `amount` (minor units, whole shillings, KES 1 to KES 150,000) and `phone` (07.., 01.. or 254..). The member then enters their M-Pesa PIN on the phone. Nexora holds no funds and credits nothing: an officer still confirms the deposit through the payment requests.
+**Who:** an active member (`savings.request`). **Sandbox only and off by default:** with `DARAJA_ENABLED` unset this route answers 404 as if it did not exist, and the app refuses to start with it on in production. Send `amount` (minor units, whole shillings, KES 1 to KES 150,000) and `phone` (07.., 01.. or 254..). At most 3 prompts may wait per member (429). The member then enters their M-Pesa PIN on the phone. Nexora holds no funds and credits nothing: an officer still confirms the deposit through the payment requests.
 
 **Rate limit:** money limit.
 

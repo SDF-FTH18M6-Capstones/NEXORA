@@ -3669,7 +3669,7 @@ paths:
     - $ref: '#/components/parameters/sacco_id'
     post:
       summary: Withdraw consent; my personal details are erased
-      description: '**Who:** the member. Works for the member's own membership whatever its status, even after deactivation or suspension. Ends the consent and erases full name, national ID, gender and date of
+      description: '**Who:** the member. Works for the member''s own membership whatever its status, even after deactivation or suspension. Ends the consent and erases full name, national ID, gender and date of
         birth at once. Savings, loans, share capital and the audit trail stay. Audited as
         `consent.withdraw` with the names of the erased fields, never the values.
 
