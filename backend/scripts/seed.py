@@ -248,6 +248,16 @@ def seed(app, require_dev=True):
                 admin_id, original.id, f"seed-{slug}-m1-rev-1"
             )
 
+        # One person in both SACCOs (the first SACCO's m1, also a member of the
+        # second), so the SACCO switcher has something to switch between.
+        if len(SACCOS) > 1:
+            first_slug = SACCOS[0][1]
+            (second_name, second_slug) = SACCOS[1]
+            both_id = get_user(f"{first_slug}-m1@{DOMAIN}")
+            second_id = get_sacco(second_name)
+            both_membership = get_membership(both_id, second_id, MembershipRole.MEMBER)
+            get_account(get_user(f"{second_slug}-admin@{DOMAIN}"), both_membership)
+
         db.session.remove()
     return seeded
 
