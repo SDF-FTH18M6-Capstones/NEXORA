@@ -520,6 +520,56 @@ Response **200**: Updated profile. The new address is unverified, a link is emai
 
 Error statuses: 400, 401, 403, 409, 423, 429
 
+## GET /api/v1/members/me/photo
+
+**Read the caller's profile photo**
+
+**Who:** the signed-in account owner. The photo is private to that account.
+
+**Rate limit:** 120 per minute.
+
+Response **200**: The caller's saved profile photo.
+
+Response **204**: No profile photo has been saved.
+
+Error statuses: 401, 429
+
+## PUT /api/v1/members/me/photo
+
+**Save the caller's profile photo**
+
+**Who:** the signed-in account owner. Send a `photo` file using `multipart/form-data`. JPEG, PNG and WebP images are accepted, up to 1.5 MB.
+
+**Rate limit:** 30 per minute.
+
+Response **200**: The photo was saved to the caller's account.
+
+```json
+{
+  "saved": true
+}
+```
+
+Error statuses: 400, 401, 413, 429
+
+## DELETE /api/v1/members/me/photo
+
+**Remove the caller's profile photo**
+
+**Who:** the signed-in account owner.
+
+**Rate limit:** 30 per minute.
+
+Response **200**: The photo was removed from the caller's account.
+
+```json
+{
+  "deleted": true
+}
+```
+
+Error statuses: 401, 429
+
 ## GET /api/v1/saccos
 
 **List SACCOs**

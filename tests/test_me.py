@@ -7,6 +7,7 @@ response never holds another member's data.
 """
 
 from datetime import UTC, datetime
+from io import BytesIO
 
 import pytest
 from sqlalchemy import text
@@ -132,9 +133,7 @@ def test_a_suspension_blocks_the_sacco_not_the_members_own_profile(client, world
     suspend(world["sacco"])
     # The profile is the user's own, not the SACCO's.
     assert client.get(ME, headers=headers).status_code == 200
-    scoped = client.get(
-        f"/api/v1/saccos/{world['sacco'].id}/settings", headers=headers
-    )
+    scoped = client.get(f"/api/v1/saccos/{world['sacco'].id}/settings", headers=headers)
     assert scoped.status_code == 423
     assert scoped.get_json()["error"]["message"] == SUSPENDED_MESSAGE
 
@@ -148,6 +147,53 @@ def test_a_member_of_a_suspended_sacco_can_still_change_their_email(client, worl
     )
     assert resp.status_code == 200
     assert fresh(world["sam"]).email == "new@example.com"
+
+
+def test_profile_photo_is_saved_for_its_owner_only(client, world):
+    photo = b"\x89PNG\r\n\x1a\nprofile-photo"
+    response = client.put(
+        f"{ME}/photo",
+        headers=auth(world["sam"]),
+        data={"photo": (BytesIO(photo), "avatar.png")},
+    )
+    assert response.status_code == 200
+    assert response.get_json() == {"saved": True}
+
+    saved = client.get(f"{ME}/photo", headers=auth(world["sam"]))
+    assert saved.status_code == 200
+    assert saved.mimetype == "image/png"
+    assert saved.data == photo
+    assert client.get(f"{ME}/photo", headers=auth(world["wanjiru"])).status_code == 204
+
+
+def test_profile_photo_rejects_invalid_and_oversized_images(client, world):
+    headers = auth(world["sam"])
+    invalid = client.put(
+        f"{ME}/photo",
+        headers=headers,
+        data={"photo": (BytesIO(b"<svg></svg>"), "avatar.svg")},
+    )
+    assert invalid.status_code == 400
+
+    oversized = client.put(
+        f"{ME}/photo",
+        headers=headers,
+        data={"photo": (BytesIO(b"\x89PNG\r\n\x1a\n" + b"x" * 1_500_000), "large.png")},
+    )
+    assert oversized.status_code == 413
+
+
+def test_deleting_profile_photo_removes_it(client, world):
+    headers = auth(world["sam"])
+    client.put(
+        f"{ME}/photo",
+        headers=headers,
+        data={"photo": (BytesIO(b"\xff\xd8\xffavatar"), "avatar.jpg")},
+    )
+    removed = client.delete(f"{ME}/photo", headers=headers)
+    assert removed.status_code == 200
+    assert removed.get_json() == {"deleted": True}
+    assert client.get(f"{ME}/photo", headers=headers).status_code == 204
 
 
 def test_the_message_does_not_name_the_sacco(client, world):
