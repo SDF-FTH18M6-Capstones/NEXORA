@@ -44,6 +44,9 @@ PERMISSIONS: dict[str, str] = {
     "savings.view": "Read savings accounts and their history",
     "savings.post": "Post deposits, withdrawals, interest and fees",
     "savings.reverse": "Reverse a posted ledger entry",
+    # Reverse an entry even when it would leave savings below an open loan's cap.
+    # Needs a written reason and is audited.
+    "savings.reverse_override": "Override the loan-cap block on a reversal",
     "savings.request": "Send a deposit or withdrawal request for my own account",
     "loan.view": "Read loan requests and their decisions",
     "loan.request": "Request a loan",
@@ -61,13 +64,16 @@ PERMISSIONS: dict[str, str] = {
     # The SACCO's consent to a platform owner reading its records: its admin
     # approves, denies or revokes a support-access request.
     "support.approve": "Approve or revoke a platform owner's support access",
+    # Where members pay in. Never held by the platform owner: a second officer of
+    # the SACCO must approve every change.
+    "payin.manage": "Set or approve where members pay in",
 }
 
 # The five job titles, each with the permissions it holds (docs/roles-permissions.md):
 # a SACCO admin never approves loans and cannot read the audit log; the
 # secretary is read-only and the only SACCO role that reads the audit log.
 ROLE_PERMISSIONS: dict[str, frozenset[str]] = {
-    "circle_admin": frozenset(
+    "sacco_admin": frozenset(
         {
             "sacco.view",
             "member.view",
@@ -75,11 +81,13 @@ ROLE_PERMISSIONS: dict[str, frozenset[str]] = {
             "savings.view",
             "savings.post",
             "savings.reverse",
+            "savings.reverse_override",
             "loan.view",
             "report.view",
             "savings.view_all",
             "sacco.update",
             "support.approve",
+            "payin.manage",
             "dashboard.view",
         }
     ),
@@ -106,6 +114,7 @@ ROLE_PERMISSIONS: dict[str, frozenset[str]] = {
             "loan.repay",
             "report.view",
             "savings.view_all",
+            "payin.manage",
             "dashboard.view",
         }
     ),
@@ -136,7 +145,7 @@ ROLE_PERMISSIONS: dict[str, frozenset[str]] = {
 ADMIN_NEVER = frozenset({"loan.approve", "loan.disburse", "audit.view"})
 
 ROLE_NAMES = {
-    "circle_admin": "Circle administrator",
+    "sacco_admin": "SACCO administrator",
     "secretary": "Secretary",
     "finance_officer": "Finance officer",
     "loans_officer": "Loans officer",
@@ -146,7 +155,7 @@ ROLE_NAMES = {
 # Bridge for rows written before `membership_roles` existed (and for databases
 # built with create_all, where the migration's backfill never ran).
 LEGACY_ROLE_CODES = {
-    MembershipRole.SACCO_ADMIN: "circle_admin",
+    MembershipRole.SACCO_ADMIN: "sacco_admin",
     MembershipRole.STAFF: "secretary",
     MembershipRole.MEMBER: "member",
 }
@@ -244,7 +253,7 @@ def _role_codes(membership: SaccoMembership) -> set[str]:
 
 def is_admin_membership(membership: SaccoMembership) -> bool:
     """Is this membership the SACCO admin? (The role column says so; migration
-    0010 and the role routes keep the circle_admin title in step with it.)"""
+    0010 and the role routes keep the sacco_admin title in step with it.)"""
     return membership.role is MembershipRole.SACCO_ADMIN
 
 
@@ -304,6 +313,94 @@ def _membership_permissions(user, sacco_id: int) -> frozenset[str]:
         # audit log, whatever other titles the membership holds.
         held -= ADMIN_NEVER
     return held
+
+
+def holders(sacco_id: int, permission: str) -> list[int]:
+    """User ids of the active members of one SACCO who hold `permission`.
+
+    Decided the way `_membership_permissions` decides, in three queries instead
+    of three per member: title rows first, the legacy role column only for a
+    membership with no title rows. Platform owners are not members, so they are
+    never listed. Used to tell every officer about a change.
+    """
+    codes_with = set(
+        db.session.execute(
+            select(Role.code)
+            .join(RolePermission, RolePermission.role_id == Role.id)
+            .join(Permission, Permission.id == RolePermission.permission_id)
+            .where(Permission.code == permission)
+        ).scalars()
+    )
+    members = db.session.execute(
+        select(SaccoMembership.id, SaccoMembership.user_id, SaccoMembership.role).where(
+            SaccoMembership.sacco_id == sacco_id,
+            SaccoMembership.status == MembershipStatus.ACTIVE,
+        )
+    ).all()
+    titles: dict[int, set[str]] = {}
+    for membership_id, code in db.session.execute(
+        select(MembershipRoleLink.membership_id, Role.code)
+        .join(Role, Role.id == MembershipRoleLink.role_id)
+        .where(MembershipRoleLink.membership_id.in_([m.id for m in members]))
+    ):
+        titles.setdefault(membership_id, set()).add(code)
+
+    found = []
+    for membership_id, user_id, role in members:
+        codes = titles.get(membership_id)
+        if not codes:
+            legacy = LEGACY_ROLE_CODES.get(role)
+            codes = {legacy} if legacy else set()
+        if role is MembershipRole.SACCO_ADMIN and permission in ADMIN_NEVER:
+            continue
+        if codes & codes_with:
+            found.append(user_id)
+    return found
+
+
+def holding_since(sacco_id: int, user_id: int, permission: str):
+    """When this user began holding `permission` in this SACCO, or None.
+
+    The earliest time a title that carries it was given. A membership with no
+    title rows (the legacy fallback: the role column alone grants the power)
+    counts from when the membership was created. The API writes a title row on
+    every add, invite and role change, so a membership without rows has had the
+    same role since it began: a legacy admin is not a new officer. It gets no
+    shortcut either: the same comparison with a proposal applies, so a legacy
+    membership created after a proposal still cannot approve it.
+    """
+    membership = _membership_for(user_id, sacco_id)
+    if membership is None or membership.status is not MembershipStatus.ACTIVE:
+        return None
+    given = db.session.execute(
+        select(func.min(MembershipRoleLink.granted_at))
+        .join(RolePermission, RolePermission.role_id == MembershipRoleLink.role_id)
+        .join(Permission, Permission.id == RolePermission.permission_id)
+        .where(
+            MembershipRoleLink.membership_id == membership.id,
+            Permission.code == permission,
+        )
+    ).scalar_one()
+    if given is not None:
+        return given
+    if _titles_exist(membership.id):
+        return None  # titles exist and none carries it
+    legacy = LEGACY_ROLE_CODES.get(membership.role)
+    carries = legacy is not None and permission in ROLE_PERMISSIONS.get(
+        legacy, frozenset()
+    )
+    return membership.created_at if carries else None
+
+
+def _titles_exist(membership_id: int) -> bool:
+    return (
+        db.session.execute(
+            select(MembershipRoleLink.membership_id)
+            .where(MembershipRoleLink.membership_id == membership_id)
+            .limit(1)
+        ).first()
+        is not None
+    )
 
 
 def permissions_for(user, sacco) -> frozenset[str]:

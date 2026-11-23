@@ -1,8 +1,12 @@
 """NEXORA application factory."""
+
 import os
+import re
 
 import psycopg
+from cryptography.fernet import Fernet
 from flask import Blueprint, Flask, current_app, jsonify, request
+from sqlalchemy import text
 from sqlalchemy.engine import make_url
 from sqlalchemy.exc import ArgumentError
 from werkzeug.exceptions import HTTPException
@@ -25,6 +29,7 @@ admin_bp = Blueprint("admin", __name__, url_prefix="/admin")
 members_bp = Blueprint("members", __name__, url_prefix="/members")
 loans_bp = Blueprint("loans", __name__, url_prefix="/loans")
 support_bp = Blueprint("support", __name__, url_prefix="/support-access")
+daraja_bp = Blueprint("daraja", __name__, url_prefix="/daraja")
 
 BLUEPRINTS = (
     auth_bp,
@@ -34,6 +39,7 @@ BLUEPRINTS = (
     members_bp,
     loans_bp,
     support_bp,
+    daraja_bp,
 )
 MAX_ID = 2**31 - 1  # ids are 32-bit integers in Postgres
 
@@ -124,30 +130,41 @@ def create_app(config_class=Config):
     from app.ledger.reconcile import reconcile_command
     from app.ledger.status import eod_status_command
     from app.loans import routes as loans_routes  # noqa: F401
+    from app.members import profile_routes  # noqa: F401
     from app.members import routes as members_routes  # noqa: F401
     from app.models import (  # noqa: F401
         access,
         audit,
+        consent,
+        daraja_settings,
+        deposit_controls,
         identity,
         ledger,
         loan,
         membership,
+        payment_details,
         payment_request,
         refresh_token,
+        reversal_request,
         rules,
         sacco,
         savings,
+        stk_push,
         support,
         user,
     )
+    from app.payments import routes as payments_routes  # noqa: F401
     from app.saccos import access_routes as saccos_access_routes  # noqa: F401
+    from app.saccos import payment_details_routes  # noqa: F401
     from app.saccos import routes as saccos_routes  # noqa: F401
     from app.saccos import rules_routes as saccos_rules_routes  # noqa: F401
     from app.savings import accounts as savings_accounts  # noqa: F401
+    from app.savings import controls_routes  # noqa: F401
     from app.savings import history as savings_history  # noqa: F401
     from app.savings import requests_routes as savings_requests_routes  # noqa: F401
     from app.savings import routes as savings_routes  # noqa: F401
     from app.support import routes as support_routes  # noqa: F401
+
     init_limiter(app)
     init_cors(app)
     _install_security_headers(app)
@@ -164,6 +181,16 @@ def create_app(config_class=Config):
 
 
 def _register_health(app):
+    @app.get("/health")
+    def host_health():
+        """For the host's health check: up or not, nothing about the database."""
+        try:
+            db.session.execute(text("SELECT 1"))
+        except Exception:
+            db.session.rollback()
+            return jsonify(status="unavailable"), 503
+        return jsonify(status="ok")
+
     @app.get("/api/health")
     @read_limit  # each call opens a database connection
     def health():
@@ -209,8 +236,70 @@ def _check_required_settings(app):
         raise RuntimeError(
             f'APP_ENV must be "development" or "production", not {app_env!r}.'
         )
+    daraja_env = str(app.config.get("DARAJA_ENV") or "sandbox").strip().lower()
+    if daraja_env not in DARAJA_ENVS:
+        raise RuntimeError(
+            f'DARAJA_ENV must be "sandbox" or "production", not {daraja_env!r}.'
+        )
+    app.config["DARAJA_ENV"] = daraja_env
     if app_env == PRODUCTION:
         _check_production_settings(app)
+    if app.config.get("DARAJA_ENABLED"):
+        _check_daraja_settings(app, app_env)
+
+
+DARAJA_ENVS = ("sandbox", "production")
+# The shared keys are sandbox keys. Live Daraja never reads them: every SACCO
+# brings its own, so only the callback is needed here.
+DARAJA_SETTINGS = (
+    "DARAJA_CONSUMER_KEY",
+    "DARAJA_CONSUMER_SECRET",
+    "DARAJA_PASSKEY",
+    "DARAJA_SHORTCODE",
+    "DARAJA_CALLBACK_URL",
+    "DARAJA_CALLBACK_TOKEN",
+)
+LIVE_DARAJA_SETTINGS = ("DARAJA_CALLBACK_URL", "DARAJA_CALLBACK_TOKEN")
+
+
+def _check_daraja_settings(app, app_env):
+    """Never half configured. In a production app only the live API is allowed,
+    and live Daraja needs https, the token in the callback URL and the key that
+    encrypts each SACCO's credentials."""
+    live = app.config.get("DARAJA_ENV") == "production"
+    if app_env == PRODUCTION and not live:
+        raise RuntimeError(
+            "DARAJA_ENABLED with APP_ENV=production needs DARAJA_ENV=production: "
+            "sandbox Daraja never runs in a production app."
+        )
+    needed = LIVE_DARAJA_SETTINGS if live else DARAJA_SETTINGS
+    missing = [k for k in needed if not app.config.get(k)]
+    if missing:
+        raise RuntimeError(f"DARAJA_ENABLED needs: {', '.join(missing)}.")
+    # The path token is the only thing that proves a callback came from Safaricom.
+    token = app.config["DARAJA_CALLBACK_TOKEN"]
+    if not re.fullmatch(r"[A-Za-z0-9_-]{32,}", token) or len(set(token)) < 10:
+        raise RuntimeError(
+            "DARAJA_CALLBACK_TOKEN must be 32 or more random letters, digits, - or _."
+        )
+    key = app.config.get("DARAJA_ENCRYPTION_KEY")
+    if live and not key:
+        raise RuntimeError(
+            "DARAJA_ENCRYPTION_KEY is required when DARAJA_ENV=production: live "
+            "prompts use each SACCO's saved credentials (see .env.example)."
+        )
+    if key:
+        try:
+            Fernet(key.encode())
+        except ValueError as exc:
+            raise RuntimeError(
+                "DARAJA_ENCRYPTION_KEY must be a Fernet key (see .env.example)."
+            ) from exc
+    url = app.config["DARAJA_CALLBACK_URL"]
+    if not (url.startswith("https://") and url.endswith("/daraja/callback/" + token)):
+        raise RuntimeError(
+            "DARAJA_CALLBACK_URL must be https and end in /daraja/callback/<token>."
+        )
 
 
 def _check_production_settings(app):

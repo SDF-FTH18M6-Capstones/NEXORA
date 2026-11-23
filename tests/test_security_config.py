@@ -168,3 +168,66 @@ def test_a_short_secret_key_is_refused_in_every_environment(secret):
 
     with pytest.raises(RuntimeError, match="at least 32"):
         create_app(Dev)
+
+
+# ---------- hosting: health check, proxy count, database URL ----------
+
+
+def test_the_host_health_check_answers_ok_and_leaks_nothing(client):
+    resp = client.get("/health")
+    assert resp.status_code == 200 and resp.get_json() == {"status": "ok"}
+
+
+def test_the_host_health_check_is_503_without_a_database_and_says_nothing(
+    client, monkeypatch
+):
+    from app.extensions import db
+
+    def down(*a, **k):
+        raise RuntimeError("password authentication failed for user nexora_user")
+
+    monkeypatch.setattr(db.session, "execute", down)
+    resp = client.get("/health")
+    assert resp.status_code == 503 and resp.get_json() == {"status": "unavailable"}
+    assert "nexora" not in resp.get_data(as_text=True)
+
+
+def _address_probe(proxies):
+    cfg = type("Proxied", (TestConfig,), {"TRUSTED_PROXIES": proxies})
+    app = create_app(cfg)
+    from flask import request
+
+    app.add_url_rule("/probe", "probe", lambda: request.remote_addr or "")
+    return app.test_client()
+
+
+def test_behind_one_proxy_the_client_is_the_address_the_proxy_appended():
+    # A caller can send its own X-Forwarded-For; the proxy appends the real one.
+    client = _address_probe("1")
+    seen = client.get(
+        "/probe", headers={"X-Forwarded-For": "6.6.6.6, 203.0.113.9"}
+    ).get_data(as_text=True)
+    assert seen == "203.0.113.9"
+
+
+def test_with_no_proxy_a_forwarded_header_is_ignored():
+    client = _address_probe("0")
+    seen = client.get("/probe", headers={"X-Forwarded-For": "6.6.6.6"}).get_data(
+        as_text=True
+    )
+    assert seen != "6.6.6.6"
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        ("postgres://u:p@h:5432/d", "postgresql+psycopg://u:p@h:5432/d"),
+        ("postgresql://u:p@h:5432/d", "postgresql+psycopg://u:p@h:5432/d"),
+        ("postgresql+psycopg://u:p@h/d", "postgresql+psycopg://u:p@h/d"),
+        ("", ""),
+    ],
+)
+def test_a_plain_postgres_url_is_given_the_psycopg_driver(raw, expected):
+    from config import database_url
+
+    assert database_url(raw) == expected

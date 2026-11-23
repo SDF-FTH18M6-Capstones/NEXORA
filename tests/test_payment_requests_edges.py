@@ -191,7 +191,7 @@ def test_confirming_for_a_member_with_no_account_is_a_conflict(schema_app):  # n
 def test_an_officer_cannot_reject_their_own_request(schema_app):  # noqa: F811
     s = Setup()
     client = schema_app.test_client()
-    for code in ("member", "circle_admin"):
+    for code in ("member", "sacco_admin"):
         role = db.session.query(Role).filter_by(code=code).one()
         db.session.add(
             MembershipRoleLink(membership_id=s.member_membership.id, role_id=role.id)

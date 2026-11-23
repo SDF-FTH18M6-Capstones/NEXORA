@@ -71,7 +71,7 @@ Error statuses: 400, 409, 429
 
 **Who:** a signed-in user holding a join code.
 
-The code is six digits, valid for the SACCO's `join_code_ttl_minutes` (15 by default) and usable once. Five wrong entries burn it. Only a membership that is currently `invited` can be joined; a cancelled invite answers like a wrong code. A phone may be invited to several SACCOs: the code decides which one is joined, and a wrong code counts against every live code for that phone. On success the phone is linked to the user and a setup token (valid 10 minutes, tied to this code) is returned for setting the circle PIN; a re-invite makes older setup tokens invalid.
+The code is six digits, valid for the SACCO's `join_code_ttl_minutes` (15 by default) and usable once. Five wrong entries burn it. Only a membership that is currently `invited` can be joined; a cancelled invite answers like a wrong code. A phone may be invited to several SACCOs: the code decides which one is joined, and a wrong code counts against every live code for that phone. On success the phone is linked to the user and a setup token (valid 10 minutes, tied to this code) is returned for setting the SACCO PIN; a re-invite makes older setup tokens invalid.
 
 Request body:
 
@@ -95,7 +95,7 @@ Error statuses: 400, 401, 409, 410, 429
 
 ## POST /api/v1/auth/join/pin
 
-**Set the circle PIN and activate the membership**
+**Set the SACCO PIN and activate the membership**
 
 **Who:** the signed-in user who just joined.
 
@@ -123,11 +123,11 @@ Error statuses: 400, 401, 403, 409, 429
 
 ## POST /api/v1/auth/join/rules
 
-**The circle's rules, before the PIN step**
+**The SACCO's rules, before the PIN step**
 
 **Who:** the signed-in user who just joined (send the `setup_token` from `/auth/join`).
 
-Returns every rule of the circle being joined, so the member can read them before accepting.
+Returns every rule of the SACCO being joined, so the member can read them before accepting.
 
 Request body:
 
@@ -137,7 +137,7 @@ Request body:
 }
 ```
 
-Response **200**: The current rules and whether this member accepted them (`rules` is null if the circle has none).
+Response **200**: The current rules and whether this member accepted them (`rules` is null if the SACCO has none).
 
 ```json
 {
@@ -149,7 +149,7 @@ Error statuses: 401, 403
 
 ## POST /api/v1/auth/join/rules/accept
 
-**Accept the circle's rules before joining**
+**Accept the SACCO's rules before joining**
 
 **Who:** the signed-in user who just joined.
 
@@ -176,19 +176,7 @@ Error statuses: 401, 403, 404, 409
 
 ## POST /api/v1/auth/sacco-login
 
-**Enter your circle with its PIN (the new name)**
-
-The same endpoint as `/auth/circle-login`, kept under both names for one release so older clients keep working.
-
-**Rate limit:** 30 per minute.
-
-Response **200**: `{ok, membership_id, role}`; no new tokens are issued.
-
-Error statuses: 401, 423
-
-## POST /api/v1/auth/circle-login
-
-**Check the circle PIN**
+**Check the SACCO PIN**
 
 **Who:** a signed-in user with an active membership in the SACCO.
 
@@ -551,7 +539,10 @@ Response **200**: All SACCOs.
       "currency": "currency",
       "status": "active",
       "member_count": 1,
-      "created_at": "2026-11-18T09:00:00Z"
+      "created_at": "2026-11-18T09:00:00Z",
+      "registration_number": "registration_number",
+      "sasra_licence_number": "sasra_licence_number",
+      "registration_date": "2026-11-18"
     }
   ]
 }
@@ -567,7 +558,7 @@ Error statuses: 401, 403, 429
 
 **Rate limit:** 30 per minute.
 
-`currency` defaults to KES. The name is unique, up to 255 characters, with no control or zero-width characters.
+`currency` defaults to KES. The name is unique, up to 255 characters, with no control or zero-width characters. Optional: `registration_number`, `sasra_licence_number`, `registration_date` (see the Sacco schema); a bad value is 400 with the field named, a number already used by another SACCO is 409.
 
 Request body:
 
@@ -587,7 +578,10 @@ Response **201**: Created.
   "currency": "currency",
   "status": "active",
   "member_count": 1,
-  "created_at": "2026-11-18T09:00:00Z"
+  "created_at": "2026-11-18T09:00:00Z",
+  "registration_number": "registration_number",
+  "sasra_licence_number": "sasra_licence_number",
+  "registration_date": "2026-11-18"
 }
 ```
 
@@ -612,7 +606,10 @@ Response **200**: The SACCO.
   "currency": "currency",
   "status": "active",
   "member_count": 1,
-  "created_at": "2026-11-18T09:00:00Z"
+  "created_at": "2026-11-18T09:00:00Z",
+  "registration_number": "registration_number",
+  "sasra_licence_number": "sasra_licence_number",
+  "registration_date": "2026-11-18"
 }
 ```
 
@@ -620,13 +617,13 @@ Error statuses: 401, 403, 404, 423, 429
 
 ## PATCH /api/v1/saccos/{sacco_id}
 
-**Rename a SACCO**
+**Rename a SACCO or record its registration details**
 
 **Who:** holders of `sacco.update` (the SACCO admin), or the platform owner
 
 **Rate limit:** 30 per minute.
 
-Only `name` can be sent.
+Send any of `name`, `registration_number`, `sasra_licence_number`, `registration_date`; nothing else (400). `null` or an empty string clears a registration field. A bad value is 400 with `error.fields`; a number another SACCO already uses is 409. Audited as `sacco.rename` and `sacco.registration_update` (field names only, never the numbers).
 
 Parameters: `sacco_id` (path, integer)
 
@@ -647,7 +644,10 @@ Response **200**: Updated.
   "currency": "currency",
   "status": "active",
   "member_count": 1,
-  "created_at": "2026-11-18T09:00:00Z"
+  "created_at": "2026-11-18T09:00:00Z",
+  "registration_number": "registration_number",
+  "sasra_licence_number": "sasra_licence_number",
+  "registration_date": "2026-11-18"
 }
 ```
 
@@ -674,7 +674,10 @@ Response **200**: The SACCO, now active.
   "currency": "currency",
   "status": "active",
   "member_count": 1,
-  "created_at": "2026-11-18T09:00:00Z"
+  "created_at": "2026-11-18T09:00:00Z",
+  "registration_number": "registration_number",
+  "sasra_licence_number": "sasra_licence_number",
+  "registration_date": "2026-11-18"
 }
 ```
 
@@ -701,7 +704,10 @@ Response **200**: The SACCO, now suspended.
   "currency": "currency",
   "status": "active",
   "member_count": 1,
-  "created_at": "2026-11-18T09:00:00Z"
+  "created_at": "2026-11-18T09:00:00Z",
+  "registration_number": "registration_number",
+  "sasra_licence_number": "sasra_licence_number",
+  "registration_date": "2026-11-18"
 }
 ```
 
@@ -807,7 +813,7 @@ Error statuses: 401, 403, 404, 423, 429
 
 **Rate limit:** 30 per minute.
 
-Send `role` and/or `status`. Writes an audit row. An active member never goes back to `invited`; an inactive phone member can be invited again (`status: invited`), which answers with a fresh `join_code` and kills the old ones. An invited or PIN-less phone member becomes active only by joining with their code (409). Setting `inactive` kills unused join codes. Making or removing an admin moves the `circle_admin` title with the role.
+Send `role` and/or `status`. Writes an audit row. An active member never goes back to `invited`; an inactive phone member can be invited again (`status: invited`), which answers with a fresh `join_code` and kills the old ones. An invited or PIN-less phone member becomes active only by joining with their code (409). Setting `inactive` kills unused join codes. Making or removing an admin moves the `sacco_admin` title with the role.
 
 Parameters: `sacco_id` (path, integer), `membership_id` (path, integer)
 
@@ -921,13 +927,13 @@ Error statuses: 401, 403, 404, 423, 429
 
 ## POST /api/v1/savings/accounts/{account_id}/deposits
 
-**Post a deposit**
+**Record a manual deposit from an M-Pesa receipt**
 
 **Who:** a member of this SACCO holding `savings.post` (SACCO admin or finance officer)
 
 **Rate limit:** 20 per minute.
 
-`reference` is required. A new entry answers **201**; repeating the same reference with the same request answers **200** with `replayed: true`; the same reference with a different request is 409. Holders of `savings.post` (admin, finance officer) post money, others cannot (403), and nobody may post on their own account (403). Amounts are integers in minor units.
+A manual deposit needs `amount` (minor units), `mpesa_receipt` (the code from the M-Pesa message, 8 to 12 capital letters and digits) and `phone` (the payer). The ledger row is marked `source: manual`. One receipt is one payment per SACCO: recording it again with the same amount is a retry (**200**, `replayed: true`); any other repeat, or a receipt an M-Pesa callback already recorded, is 409 `DUPLICATE_RECEIPT`. A later callback for a receipt entered here is linked to it, not added. A **flagged** deposit (a manual entry at or over the SACCO's limit, a large amount, or the same amount again and again) is not posted: it answers **202** `{queued: true, request}` with this officer's first approval, and a different officer confirms it in the request queue. Holders of `savings.post` post money, others cannot (403), and nobody may post on their own account (403). Amounts are integers in minor units.
 
 Parameters: `account_id` (path, integer)
 
@@ -940,7 +946,7 @@ Request body:
 }
 ```
 
-Response **201**: New entry.
+Response **201**: New entry (`source: manual`, with `request_id` and `mpesa_receipt`).
 
 ```json
 {
@@ -951,11 +957,16 @@ Response **201**: New entry.
   "reference": "dep-2026-11-18-001",
   "balance": 1,
   "created_at": "2026-11-18T09:00:00Z",
-  "replayed": true
+  "replayed": true,
+  "source": "source",
+  "request_id": 1,
+  "mpesa_receipt": "mpesa_receipt"
 }
 ```
 
-Response **200**: Replay of an earlier request with the same reference.
+Response **202**: Flagged: `{queued: true, request}`. Nothing is posted yet.
+
+Response **200**: Retry of the same receipt entered earlier.
 
 ```json
 {
@@ -966,7 +977,10 @@ Response **200**: Replay of an earlier request with the same reference.
   "reference": "dep-2026-11-18-001",
   "balance": 1,
   "created_at": "2026-11-18T09:00:00Z",
-  "replayed": true
+  "replayed": true,
+  "source": "source",
+  "request_id": 1,
+  "mpesa_receipt": "mpesa_receipt"
 }
 ```
 
@@ -980,7 +994,7 @@ Error statuses: 400, 401, 403, 404, 409, 423, 429
 
 **Rate limit:** 20 per minute.
 
-Insufficient funds is 409 `Insufficient funds.`. `reference` is required. A new entry answers **201**; repeating the same reference with the same request answers **200** with `replayed: true`; the same reference with a different request is 409. Holders of `savings.post` (admin, finance officer) post money, others cannot (403), and nobody may post on their own account (403). Amounts are integers in minor units.
+Insufficient funds is 409 `Insufficient funds.`. `reference` is required. A new entry answers **201**; repeating the same reference with the same request answers **200** with `replayed: true`; the same reference with a different request is 409. Holders of `savings.post` (admin, finance officer) post money, others cannot (403), and nobody may post on their own account (403). A withdrawal that is **flagged** (large, the same amount again and again, or soon after a deposit; see `deposit-controls`) is 409 `NEEDS_SECOND_APPROVAL`: it goes through the member's withdrawal request, which two officers approve. A withdrawal that would leave the savings below the loan cap of an open loan is 409 `LOAN_OVER_CAP` (SACCOs with published rules). Amounts are integers in minor units.
 
 Parameters: `account_id` (path, integer)
 
@@ -1004,7 +1018,10 @@ Response **201**: New entry.
   "reference": "dep-2026-11-18-001",
   "balance": 1,
   "created_at": "2026-11-18T09:00:00Z",
-  "replayed": true
+  "replayed": true,
+  "source": "source",
+  "request_id": 1,
+  "mpesa_receipt": "mpesa_receipt"
 }
 ```
 
@@ -1019,7 +1036,10 @@ Response **200**: Replay of an earlier request with the same reference.
   "reference": "dep-2026-11-18-001",
   "balance": 1,
   "created_at": "2026-11-18T09:00:00Z",
-  "replayed": true
+  "replayed": true,
+  "source": "source",
+  "request_id": 1,
+  "mpesa_receipt": "mpesa_receipt"
 }
 ```
 
@@ -1059,13 +1079,13 @@ Error statuses: 400, 401, 403, 404, 423, 429
 
 ## POST /api/v1/savings/transactions/{transaction_id}/reversals
 
-**Reverse a ledger entry**
+**Ask for a reversal of a ledger entry (first of two officers)**
 
 **Who:** a member of this SACCO holding `savings.reverse` (SACCO admin or finance officer)
 
 **Rate limit:** 20 per minute.
 
-A reversal is a new opposite entry; nobody may reverse an entry on their own account (403). An entry can be reversed once, and a reversal cannot be reversed (409). `reference` is required. A new entry answers **201**; repeating the same reference with the same request answers **200** with `replayed: true`; the same reference with a different request is 409. Holders of `savings.reverse` (admin, finance officer) reverse entries, others cannot (403). Amounts are integers in minor units.
+Reversals take two officers (maker-checker). This call only **asks**: send `reason` (10 to 140 characters, one line). Nothing is posted; a different officer approves with `POST /savings/reversal-requests/{request_id}/approve`. Nobody may ask to reverse an entry on their own account (403). An entry that is itself a reversal, a loan entry, or one already reversed is 409. One request may be open per entry: the same officer asking again gets the same request (**200**); another officer gets 409.
 
 Parameters: `transaction_id` (path, integer)
 
@@ -1073,7 +1093,48 @@ Request body:
 
 ```json
 {
-  "reference": "dep-2026-11-18-001"
+  "reason": "reason"
+}
+```
+
+Response **201**: The request: `{id, sacco_id, transaction_id, account_id, type, amount, requested_by, reason, status: pending, ...}`.
+
+Response **200**: The same officer already has this request open.
+
+Error statuses: 400, 401, 403, 404, 409
+
+## GET /api/v1/savings/saccos/{sacco_id}/reversal-requests
+
+**This SACCO's reversal requests**
+
+**Who:** a member holding `savings.reverse`. Newest first, at most 100. `?status=` is `pending`, `approved` or `rejected`.
+
+**Rate limit:** read limit.
+
+Parameters: `sacco_id` (path, integer)
+
+Response **200**: `{items: [request]}`.
+
+Error statuses: 400, 401, 403, 404
+
+## POST /api/v1/savings/reversal-requests/{request_id}/approve
+
+**Approve a reversal request (the second officer) and append the entry**
+
+**Who:** a member holding `savings.reverse`, never the officer who asked (403 `SECOND_OFFICER_REQUIRED`).
+
+**Rate limit:** 20 per minute.
+
+Send `reference` (the idempotency key). The opposite entry is appended now, with the same rules as before: nobody reverses an entry on their own account, a reversal that would take the balance below zero is 409, and one that would leave savings below an open loan's cap is 409 `LOAN_OVER_CAP`. A SACCO admin (`savings.reverse_override`) may force that one by sending `override_reason` (10 to 140 characters, one line); it is audited as `savings.reverse_override`. A retried approval with the same `reference` answers **200** with `replayed: true`.
+
+Parameters: `request_id` (path, integer)
+
+Request body:
+
+```json
+{
+  "reference": "dep-2026-11-18-001",
+  "override_reason": "override_reason"
 }
 ```
 
@@ -1093,7 +1154,7 @@ Response **201**: The new opposite entry.
 }
 ```
 
-Response **200**: Replay of an earlier request with the same reference.
+Response **200**: Replay of an approval that already went through.
 
 ```json
 {
@@ -1109,7 +1170,29 @@ Response **200**: Replay of an earlier request with the same reference.
 }
 ```
 
-Error statuses: 400, 401, 403, 404, 409, 423, 429
+Error statuses: 400, 401, 403, 404, 409
+
+## POST /api/v1/savings/reversal-requests/{request_id}/reject
+
+**Reject a reversal request (a different officer)**
+
+**Who:** a member holding `savings.reverse`, never the officer who asked (403 `SECOND_OFFICER_REQUIRED`). Send `reason` (10 to 140 characters). Nothing is posted.
+
+**Rate limit:** 30 per minute.
+
+Parameters: `request_id` (path, integer)
+
+Request body:
+
+```json
+{
+  "reason": "reason"
+}
+```
+
+Response **200**: The request with `status: rejected`.
+
+Error statuses: 400, 401, 403, 404, 409
 
 ## GET /api/v1/admin/saccos/{sacco_id}/reports/summary
 
@@ -1292,7 +1375,10 @@ Response **201**: New entry.
   "reference": "dep-2026-11-18-001",
   "balance": 1,
   "created_at": "2026-11-18T09:00:00Z",
-  "replayed": true
+  "replayed": true,
+  "source": "source",
+  "request_id": 1,
+  "mpesa_receipt": "mpesa_receipt"
 }
 ```
 
@@ -1307,7 +1393,10 @@ Response **200**: Replay of the same request.
   "reference": "dep-2026-11-18-001",
   "balance": 1,
   "created_at": "2026-11-18T09:00:00Z",
-  "replayed": true
+  "replayed": true,
+  "source": "source",
+  "request_id": 1,
+  "mpesa_receipt": "mpesa_receipt"
 }
 ```
 
@@ -1341,7 +1430,10 @@ Response **201**: New entry.
   "reference": "dep-2026-11-18-001",
   "balance": 1,
   "created_at": "2026-11-18T09:00:00Z",
-  "replayed": true
+  "replayed": true,
+  "source": "source",
+  "request_id": 1,
+  "mpesa_receipt": "mpesa_receipt"
 }
 ```
 
@@ -1356,7 +1448,10 @@ Response **200**: Replay of the same request.
   "reference": "dep-2026-11-18-001",
   "balance": 1,
   "created_at": "2026-11-18T09:00:00Z",
-  "replayed": true
+  "replayed": true,
+  "source": "source",
+  "request_id": 1,
+  "mpesa_receipt": "mpesa_receipt"
 }
 ```
 
@@ -1376,7 +1471,7 @@ Response **200**: The titles held.
 {
   "membership_id": 1,
   "roles": [
-    "circle_admin"
+    "sacco_admin"
   ]
 }
 ```
@@ -1387,7 +1482,7 @@ Error statuses: 401, 403, 404, 423
 
 **Set a member's job titles**
 
-**Who:** holders of `member.manage` (the SACCO admin), or the platform owner. Replaces the whole list. Only the platform owner edits an admin's titles; nobody changes their own titles; the membership must be active (409). `circle_admin` follows the SACCO admin role: keep it on an admin and leave it off everyone else (409), and make or remove admins with PATCH /saccos/{sacco_id}/members/{membership_id}, which moves the title with the role.
+**Who:** holders of `member.manage` (the SACCO admin), or the platform owner. Replaces the whole list. Only the platform owner edits an admin's titles; nobody changes their own titles; the membership must be active (409). `sacco_admin` follows the SACCO admin role: keep it on an admin and leave it off everyone else (409), and make or remove admins with PATCH /saccos/{sacco_id}/members/{membership_id}, which moves the title with the role.
 
 Parameters: `sacco_id` (path, integer), `membership_id` (path, integer)
 
@@ -1407,7 +1502,7 @@ Response **200**: The titles now held.
 {
   "membership_id": 1,
   "roles": [
-    "circle_admin"
+    "sacco_admin"
   ]
 }
 ```
@@ -1416,9 +1511,9 @@ Error statuses: 400, 401, 403, 404, 409, 423
 
 ## GET /api/v1/saccos/{sacco_id}/rules
 
-**The circle's rules**
+**The SACCO's rules**
 
-**Who:** any active member (`sacco.view`), or the platform owner. `rules` is null until a circle has published rules. `accepted` says whether the caller accepted the current version (null for a platform owner). The rules are locked while `locked` is true.
+**Who:** any active member (`sacco.view`), or the platform owner. `rules` is null until a SACCO has published rules. `accepted` says whether the caller accepted the current version (null for a platform owner). The rules are locked while `locked` is true.
 
 Parameters: `sacco_id` (path, integer)
 
@@ -1434,9 +1529,9 @@ Error statuses: 401, 403, 404
 
 ## POST /api/v1/saccos/{sacco_id}/rules
 
-**Publish the circle's first rules**
+**Publish the SACCO's first rules**
 
-**Who:** the circle admin (`sacco.update`) or the platform owner.
+**Who:** the SACCO admin (`sacco.update`) or the platform owner.
 
 Only the first version. After that the rules are locked until the cycle ends (409 `RULES_LOCKED`) and change only by member vote. Amounts are whole cents. `interest_percent` has no default and must be sent. `loan_cap_multiple` defaults to 3 and `cycle_months` to 12. Every 400 carries `error.fields`, a plain-words reason for each bad field.
 
@@ -1497,6 +1592,79 @@ Response **200**: Accepted.
 
 Error statuses: 401, 403, 404, 409
 
+## GET /api/v1/saccos/{sacco_id}/payment-details
+
+**Where members pay in**
+
+**Who:** any active member of the SACCO (`sacco.view`), or the platform owner. Returns `details` (the live values, or `null` when the SACCO has not set any) and `pending` (the change waiting for a second officer, or `null`). `pending` is only filled for holders of `payin.manage`; a member never sees a change before it is live. `scheduled` is the approved change still waiting for its go-live time (24 hours after approval): holders of `payin.manage` get the change with its values, everyone else only `{go_live_at}`, never the numbers. `updated_at` is when the live values went live (approval plus 24 hours). Reading applies a change whose time has come. `bank_manual_confirm_only` is true when the bank uses a shared paybill.
+
+**Rate limit:** 120 per minute.
+
+Parameters: `sacco_id` (path, integer)
+
+Response **200**: `{details, pending, scheduled}`. Members never get a pending change or the scheduled values.
+
+Error statuses: 401, 403, 404, 423, 429
+
+## POST /api/v1/saccos/{sacco_id}/payment-details/changes
+
+**Propose new pay-in details**
+
+**Who:** holders of `payin.manage` (the SACCO admin and the finance officer). Changes nothing members see: the change waits until a different officer approves it. A newer proposal replaces the one waiting. Give M-Pesa details, bank details or both. M-Pesa: `mpesa_type` (`paybill`, `till` or `pochi`), `mpesa_number` (5 to 7 digits; for `pochi` a Safaricom phone number, shown to members but never prompted), `display_name`, optional `account_reference_hint` (paybill only). Bank: `bank_name`, `bank_account_name`, `bank_account_number` (6 to 20 digits), optional `bank_branch`. Shared bank paybill: `bank_uses_shared_paybill` true with `bank_paybill_number` (5 to 7 digits). Every proposal is audited (`payin.propose`, `payin.supersede`) and every officer is emailed. Text fields take Latin letters, ASCII digits and ordinary punctuation on one line (invisible, look-alike and non-Latin letters are refused). A SACCO may send 10 proposals an hour (429).
+
+**Rate limit:** 30 per minute.
+
+Parameters: `sacco_id` (path, integer)
+
+Request body:
+
+```json
+{
+  "mpesa_type": "paybill",
+  "mpesa_number": "mpesa_number",
+  "display_name": "display_name",
+  "account_reference_hint": "account_reference_hint",
+  "bank_name": "bank_name",
+  "bank_account_name": "bank_account_name",
+  "bank_account_number": "bank_account_number",
+  "bank_branch": "bank_branch",
+  "bank_uses_shared_paybill": true,
+  "bank_paybill_number": "bank_paybill_number"
+}
+```
+
+Response **201**: `{change}` with `status: pending`.
+
+Error statuses: 400, 401, 403, 404, 409, 423, 429
+
+## POST /api/v1/saccos/{sacco_id}/payment-details/changes/{change_id}/approve
+
+**Approve a waiting change so it goes live in 24 hours**
+
+**Who:** holders of `payin.manage`, never the officer who proposed the change (403 `PAYIN_SAME_OFFICER`). The change is named by id, so nobody approves values that changed after they read them. The approver must have become an officer before the change was proposed (403 `PAYIN_NEW_OFFICER`), and the proposer must still be an officer (409). Officer since is the earliest `granted_at` of a title that carries `payin.manage` (editing other titles keeps it); an admin with no title rows counts from when the membership was created. Audited as `payin.approve`. The change goes live 24 hours after approval (`go_live_at`), not at once; every officer (the admin included) is emailed at approval, without the numbers; members get no email and see `scheduled.go_live_at` in the app. Approving while another approved change still waits replaces it (`payin.supersede`). Everyone is also emailed when someone gains `payin.manage` (member add, role or title change).
+
+**Rate limit:** 30 per minute.
+
+Parameters: `sacco_id` (path, integer), `change_id` (path, integer)
+
+Response **200**: `{change}` with `status: approved`, `approved_at` and `go_live_at`. Members keep seeing the current details until `go_live_at`.
+
+Error statuses: 401, 403, 404, 409, 423, 429
+
+## POST /api/v1/saccos/{sacco_id}/payment-details/changes/{change_id}/cancel
+
+**Cancel an approved change before it goes live**
+
+**Who:** any single holder of `payin.manage`, the proposer and the approver included. No second approval is needed: stopping is the safe direction. Only an approved change still inside its 24 hours can be cancelled; it becomes `cancelled`, never goes live, and the details members see stay as they are. Audited as `payin.cancel`; the other officers (the admin included) are emailed, without the numbers. A change that is live, replaced, already cancelled or still waiting for a second officer answers 409.
+
+**Rate limit:** 30 per minute.
+
+Parameters: `sacco_id` (path, integer), `change_id` (path, integer)
+
+Response **200**: `{change}` with `status: cancelled`.
+
+Error statuses: 401, 403, 404, 409, 423, 429
+
 ## GET /api/v1/saccos/{sacco_id}/rules/proposals
 
 **Proposed rule changes**
@@ -1521,7 +1689,7 @@ Error statuses: 401, 403, 404
 
 **Propose a rule change**
 
-**Who:** the circle admin or the platform owner, only after the cycle has ended (409 `RULES_LOCKED` before). Send the full set of rules. One open proposal at a time.
+**Who:** the SACCO admin or the platform owner, only after the cycle has ended (409 `RULES_LOCKED` before). Send the full set of rules. One open proposal at a time.
 
 Parameters: `sacco_id` (path, integer)
 
@@ -1558,7 +1726,7 @@ Error statuses: 400, 401, 403, 404, 409
 
 **Vote on a proposed change**
 
-**Who:** an active member. A strict majority of all active members adopts it as the next version and starts a new cycle; it is rejected once it can no longer win. A member may change their vote while it is open.
+**Who:** an active member. More than half of ALL active members counted when it was proposed (not only those who accepted the rules) must approve; then it is adopted as the next version and starts a new cycle. The acceptance of members who voted yes carries over to the new version; members who voted no, or did not vote, must accept it again before they can ask for a loan. It is rejected once it can no longer win. A member may change their vote while it is open.
 
 Parameters: `sacco_id` (path, integer), `proposal_id` (path, integer)
 
@@ -1579,6 +1747,257 @@ Response **200**: The proposal with its tally.
 ```
 
 Error statuses: 400, 401, 403, 404, 409
+
+## GET /api/v1/saccos/{sacco_id}/members/me/data-consent
+
+**The data-protection wording and my consent**
+
+**Who:** an active member of the SACCO. Returns `notice` (`version`, `purpose`, `text`) and `consent` (`purpose`, `notice_version`, `granted_at`, or `null`).
+
+**Rate limit:** 120 per minute.
+
+Parameters: `sacco_id` (path, integer)
+
+Response **200**: `{notice, consent}`.
+
+Error statuses: 401, 403, 404, 423
+
+## POST /api/v1/saccos/{sacco_id}/members/me/data-consent
+
+**Agree to NEXORA keeping my personal details**
+
+**Who:** the member, for themself only (nobody can consent for someone else). Send the `notice_version` you read; another version is 409. Personal details (full name, national ID, gender, date of birth) can be stored only while this consent is active. Repeating it returns the existing consent (200). Audited as `consent.grant`.
+
+**Rate limit:** 30 per minute.
+
+Parameters: `sacco_id` (path, integer)
+
+Request body:
+
+```json
+{
+  "notice_version": 1
+}
+```
+
+Response **201**: `{consent}`: new.
+
+Response **200**: `{consent}`: already given.
+
+Error statuses: 400, 409, 401, 403, 404, 423
+
+## POST /api/v1/saccos/{sacco_id}/members/me/data-consent/withdraw
+
+**Withdraw consent; my personal details are erased**
+
+**Who:** the member. Works for the member's own membership whatever its status, even after deactivation or suspension. Ends the consent and erases full name, national ID, gender and date of birth at once. Savings, loans, share capital and the audit trail stay. Audited as `consent.withdraw` with the names of the erased fields, never the values.
+
+**Rate limit:** 30 per minute.
+
+Parameters: `sacco_id` (path, integer)
+
+Response **200**: `{consent: null, erased: [field names]}`.
+
+Error statuses: 409, 401, 403, 404, 423
+
+## GET /api/v1/saccos/{sacco_id}/members/{membership_id}/profile
+
+**A member's personal details, share capital and consent**
+
+**Who:** the member themself, or a holder of `member.manage` (the SACCO admin). Nobody else, the platform owner included. Personal details never appear in the member list.
+
+**Rate limit:** 120 per minute.
+
+Parameters: `sacco_id` (path, integer), `membership_id` (path, integer)
+
+Response **200**: `{membership_id, full_name, national_id, gender, date_of_birth, share_capital, consent}`. Every field can be `null`.
+
+Error statuses: 401, 403, 404, 423
+
+## PATCH /api/v1/saccos/{sacco_id}/members/{membership_id}/profile
+
+**Set a member's personal details or share capital**
+
+**Who:** the member themself or a holder of `member.manage`; `national_id` and `share_capital` only by a holder of `member.manage` (403 otherwise: a member who could set their own ID could probe which numbers other members hold). Send any of `full_name` (2 to 120 letters, spaces, `'` `.` `-`), `national_id` (7 or 8 digits, unique within the SACCO), `gender` (`female`, `male`, `other`), `date_of_birth` (`YYYY-MM-DD`, 1900 to today), `share_capital` (whole minor units, zero or more). `null` or an empty string clears a field. Every field is optional. Setting a personal detail needs the member's own active consent (409 `CONSENT_REQUIRED`); clearing one and `share_capital` do not. Audited as `member.profile_update` with the field names only.
+
+**Rate limit:** 30 per minute.
+
+Parameters: `sacco_id` (path, integer), `membership_id` (path, integer)
+
+Request body:
+
+```json
+{
+  "full_name": "full_name",
+  "national_id": "national_id",
+  "gender": "female",
+  "date_of_birth": "2026-11-18",
+  "share_capital": 1
+}
+```
+
+Response **200**: The updated profile (same shape as GET).
+
+Error statuses: 400, 409, 401, 403, 404, 423
+
+## GET /api/v1/saccos/{sacco_id}/deposit-controls
+
+**The SACCO's deposit-control thresholds**
+
+**Who:** `sacco.update` or `report.view`. Returns the thresholds in force (the defaults when none are saved) and `defaults`. Amounts are minor units.
+
+**Rate limit:** read limit.
+
+Parameters: `sacco_id` (path, integer)
+
+Response **200**: `{auto_confirm_limit, large_amount_limit, manual_flag_limit, repeat_count, repeat_window_hours, quick_withdrawal_hours, defaults}`.
+
+Error statuses: 401, 403, 404
+
+## PUT /api/v1/saccos/{sacco_id}/deposit-controls
+
+**Change the deposit-control thresholds**
+
+**Who:** `sacco.update` (the SACCO admin). Send any of the settings; the rest keep their value. `auto_confirm_limit` (0 to 500000, default 0: every deposit waits for an officer; a deposit at or under it, with no flag, posts at once after a paid M-Pesa prompt), `large_amount_limit` (100 to 20000000, default 10000000), `manual_flag_limit` (100 to 5000000, default 2000000), `repeat_count` (2 to 20, default 3), `repeat_window_hours` (1 to 720, default 24), `quick_withdrawal_hours` (1 to 720, default 24). The large-amount flag also adds up a member's payments over `repeat_window_hours`, so splitting does not avoid it. Audited as `deposit_controls.set`, and the officers are emailed.
+
+**Rate limit:** write limit.
+
+Parameters: `sacco_id` (path, integer)
+
+Request body:
+
+```json
+{
+  "auto_confirm_limit": 1,
+  "large_amount_limit": 1,
+  "manual_flag_limit": 1,
+  "repeat_count": 1,
+  "repeat_window_hours": 1,
+  "quick_withdrawal_hours": 1
+}
+```
+
+Response **200**: The thresholds now in force.
+
+Error statuses: 400, 401, 403, 404
+
+## GET /api/v1/saccos/{sacco_id}/flagged-payments
+
+**The audit report of flagged payments**
+
+**Who:** `report.view` (SACCO admin, finance officer, secretary). The newest 200 payment requests that carry a flag, with who gave the first and the second approval. `labels` maps a flag code to its plain-language name.
+
+**Rate limit:** read limit.
+
+Parameters: `sacco_id` (path, integer)
+
+Response **200**: `{items: [{id, member, kind, source, amount_minor, mpesa_receipt, flags, status, first_approved_by, second_approved_by, decided_by, ledger_transaction_id, created_at}], labels}`.
+
+Error statuses: 401, 403, 404
+
+## GET /api/v1/saccos/{sacco_id}/reconciliation
+
+**The ledger against the STK records**
+
+**Who:** `report.view`. Compares every paid STK push with the deposit it produced and lists what does not match (`mismatches`, each with a `kind`: `paid_not_recorded`, `amount_differs`, `paid_but_rejected`, `paid_not_credited` (paid over a day ago, still unconfirmed), `ledger_missing`, `ledger_amount_differs`, `credit_reversed`, `no_paid_push`). `unverified_manual` lists manual receipts no callback has matched: not a mismatch, because a member may pay the paybill directly. Nothing is changed; the ledger is never edited. Audited as `ledger.reconcile_mpesa`.
+
+**Rate limit:** read limit.
+
+Parameters: `sacco_id` (path, integer)
+
+Response **200**: `{checked, ok, mismatches, unverified_manual}`.
+
+Error statuses: 401, 403, 404
+
+## GET /api/v1/saccos/{sacco_id}/daraja-settings
+
+**Whether this SACCO has its own Daraja credentials saved**
+
+**Who:** `sacco.update` (the SACCO admin). Off by default: with `DARAJA_ENABLED` unset this route answers 404. Returns `{configured: false}` or `{configured: true, shortcode, updated_at}`. The secrets are never returned.
+
+**Rate limit:** read limit.
+
+Parameters: `sacco_id` (path, integer)
+
+Response **200**: `{configured, shortcode?, updated_at?}`.
+
+Error statuses: 401, 403, 404
+
+## PUT /api/v1/saccos/{sacco_id}/daraja-settings
+
+**Save this SACCO's own Daraja credentials (encrypted at rest)**
+
+**Who:** `sacco.update` (the SACCO admin). Off by default (404). Send `shortcode` (5 to 7 digits: the paybill, or the head-office number of a till), `consumer_key`, `consumer_secret` and `passkey` (printable, no spaces). They are stored encrypted with `DARAJA_ENCRYPTION_KEY` and never returned or logged; the audit row (`daraja.credentials_set`) names the fields, not the values. Saving again replaces them. Answers 503 if the encryption key is not set. In production these are the only credentials a push can use.
+
+**Rate limit:** write limit.
+
+Parameters: `sacco_id` (path, integer)
+
+Request body:
+
+```json
+{
+  "shortcode": "shortcode",
+  "consumer_key": "consumer_key",
+  "consumer_secret": "consumer_secret",
+  "passkey": "passkey"
+}
+```
+
+Response **200**: `{configured: true, shortcode}`.
+
+Error statuses: 400, 503, 401, 403, 404
+
+## POST /api/v1/saccos/{sacco_id}/stk-push
+
+**Ask M-Pesa to prompt my phone**
+
+**Who:** an active member (`savings.request`). **Off by default:** with `DARAJA_ENABLED` unset this route answers 404 as if it did not exist. `DARAJA_ENV` picks Safaricom's sandbox (default) or live API; a production app starts with Daraja on only for `DARAJA_ENV=production` (see `docs/deployment-checklist.md`). Send `amount` (minor units, whole shillings, KES 1 to KES 150,000) and `phone` (07.., 01.. or 254..). At most 3 prompts may wait per member (429). The member then enters their M-Pesa PIN on the phone. Nexora holds no funds: a paid answer becomes a pending deposit that an officer confirms (or that posts at once under the SACCO's auto-confirm limit, if it set one).
+
+The prompt uses the SACCO's own saved Daraja credentials (see `daraja-settings`); in the sandbox, with none saved, the environment's shared sandbox keys. **In production there is no fallback:** a SACCO with no saved credentials answers 409, and the approved pay-in details must exist and, for a paybill, match the saved shortcode (409 otherwise). If the live pay-in is a till (`mpesa_type` `till`) the request is `CustomerBuyGoodsOnline` to that till; a paybill is `CustomerPayBillOnline`. A SACCO that takes Pochi la Biashara (`pochi`) is record only: the route answers 409. A SACCO with no usable credentials also answers 409.
+
+**Rate limit:** money limit.
+
+Parameters: `sacco_id` (path, integer)
+
+Request body:
+
+```json
+{
+  "amount": 1,
+  "phone": "+254700000000"
+}
+```
+
+Response **201**: `{id, status: pending, amount, phone_last3, message, created_at}`.
+
+Error statuses: 400, 409, 502, 401, 403, 404
+
+## GET /api/v1/saccos/{sacco_id}/stk-push/{push_id}
+
+**The answer to one STK push**
+
+**Who:** the member who asked, or a holder of `member.manage`; anyone else gets 404. `status` is `pending`, `succeeded` or `failed`. 404 while the feature is off.
+
+**Rate limit:** 120 per minute.
+
+Parameters: `sacco_id` (path, integer), `push_id` (path, integer)
+
+Response **200**: `{id, status, amount, phone_last3, message, created_at}`.
+
+Error statuses: 401, 403, 404
+
+## POST /api/v1/daraja/callback/{token}
+
+**Safaricom's answer to an STK push**
+
+Called by Safaricom, not by the app. The unguessable `token` in the path is the only secret (`DARAJA_CALLBACK_TOKEN`); a wrong token is 404. Always acknowledges with `{ResultCode: 0}`, even for an unknown or repeated answer, and changes nothing for those. A success whose amount differs from the request is recorded as `failed`; a paid one creates a pending deposit for an officer (see `deposit-controls`). 404 while the feature is off.
+
+Parameters: `token` (path, string)
+
+Response **200**: Acknowledged.
+
+Error statuses: 404
 
 ## GET /api/v1/saccos/{sacco_id}/settings
 
@@ -1661,7 +2080,9 @@ Response **200**: A page of loans.
       "disbursed_by_membership_id": 1,
       "disbursed_at": "2026-11-18T09:00:00Z",
       "disbursement_transaction_id": 1,
-      "created_at": "2026-11-18T09:00:00Z"
+      "created_at": "2026-11-18T09:00:00Z",
+      "sector": "agriculture",
+      "disclosure_acknowledged_at": "2026-11-18T09:00:00Z"
     }
   ],
   "page": 1,
@@ -1675,7 +2096,7 @@ Error statuses: 400, 401, 403, 404, 423
 
 **Request a loan**
 
-**Who:** an active member with a savings account (`loan.request`). One open loan per member (409). Within both the SACCO cap and the savings multiple the loan needs 1 approval; above either it needs the SACCO's `required_approvals` (a cap of 0 sends every loan there). The count is frozen on the loan.
+**Who:** an active member with a savings account (`loan.request`). One open loan per member (409). Within both the SACCO cap and the savings multiple the loan needs 1 approval; above either it needs the SACCO's `required_approvals` (a cap of 0 sends every loan there). The count is frozen on the loan. Optional `sector` (one of the Loan `sector` values; null or empty means not given) and `disclosure_acknowledged` (true records `disclosure_acknowledged_at`); anything else is 400. Neither is required.
 
 Parameters: `sacco_id` (path, integer)
 
@@ -1704,7 +2125,9 @@ Response **201**: The new loan, status `requested`.
   "disbursed_by_membership_id": 1,
   "disbursed_at": "2026-11-18T09:00:00Z",
   "disbursement_transaction_id": 1,
-  "created_at": "2026-11-18T09:00:00Z"
+  "created_at": "2026-11-18T09:00:00Z",
+  "sector": "agriculture",
+  "disclosure_acknowledged_at": "2026-11-18T09:00:00Z"
 }
 ```
 
@@ -1734,7 +2157,9 @@ Response **200**: The loan, plus a `decisions` list.
   "disbursed_by_membership_id": 1,
   "disbursed_at": "2026-11-18T09:00:00Z",
   "disbursement_transaction_id": 1,
-  "created_at": "2026-11-18T09:00:00Z"
+  "created_at": "2026-11-18T09:00:00Z",
+  "sector": "agriculture",
+  "disclosure_acknowledged_at": "2026-11-18T09:00:00Z"
 }
 ```
 
@@ -1774,7 +2199,9 @@ Response **201**: The loan after the decision.
   "disbursed_by_membership_id": 1,
   "disbursed_at": "2026-11-18T09:00:00Z",
   "disbursement_transaction_id": 1,
-  "created_at": "2026-11-18T09:00:00Z"
+  "created_at": "2026-11-18T09:00:00Z",
+  "sector": "agriculture",
+  "disclosure_acknowledged_at": "2026-11-18T09:00:00Z"
 }
 ```
 
@@ -1784,7 +2211,7 @@ Error statuses: 400, 401, 403, 404, 409, 423
 
 **Pay out an approved loan**
 
-**Who:** finance officer (`loan.disburse`) who approved no step (`LOAN_SAME_OFFICER`). Credits the principal to the borrower's savings account. The ledger row cannot be reversed.
+**Who:** finance officer (`loan.disburse`) who approved no step (`LOAN_SAME_OFFICER`). Credits the principal to the borrower's savings account. The ledger row cannot be reversed. In a SACCO with published rules the cap and the pool are checked again at payout under the SACCO lock (409 `LOAN_OVER_CAP`, `LOAN_POOL_SHORT`).
 
 Parameters: `loan_id` (path, integer)
 
@@ -1812,7 +2239,9 @@ Response **201**: The loan, status `disbursed`.
   "disbursed_by_membership_id": 1,
   "disbursed_at": "2026-11-18T09:00:00Z",
   "disbursement_transaction_id": 1,
-  "created_at": "2026-11-18T09:00:00Z"
+  "created_at": "2026-11-18T09:00:00Z",
+  "sector": "agriculture",
+  "disclosure_acknowledged_at": "2026-11-18T09:00:00Z"
 }
 ```
 

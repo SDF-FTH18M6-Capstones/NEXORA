@@ -59,6 +59,9 @@ class Transaction(db.Model):
             name="fk_transactions_reverses_sacco",
         ),
         CheckConstraint("amount > 0", name="ck_transactions_amount_positive"),
+        CheckConstraint(
+            "source IN ('standard', 'manual', 'stk')", name="ck_transactions_source"
+        ),
         Index("ix_transactions_account_created", "savings_account_id", "created_at"),
     )
 
@@ -79,6 +82,11 @@ class Transaction(db.Model):
     # one earlier row. A row can be reversed once.
     reverses_id: Mapped[int | None] = mapped_column(Integer, unique=True, nullable=True)
     amount: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    # How the entry came in: `manual` was typed by an officer from an M-Pesa
+    # receipt, `stk` was an M-Pesa prompt the member answered. Set at insert only.
+    source: Mapped[str] = mapped_column(
+        String(10), nullable=False, default="standard", server_default="standard"
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )

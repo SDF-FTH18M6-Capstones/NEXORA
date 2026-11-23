@@ -31,3 +31,6 @@ migration-output.txt
 # Thunder Client / Postman local environments hold this machine's values (see *.env.example)
 *.env
 !*.env.example
+
+# Downloaded installers
+*.deb

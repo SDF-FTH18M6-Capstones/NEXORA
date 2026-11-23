@@ -1,7 +1,7 @@
 /* data.js: labels and small helpers for the People and Platform pages (no components). */
 
 export const ROLE_LABEL = {
-  circle_admin: 'SACCO admin',
+  sacco_admin: 'SACCO admin',
   secretary: 'Secretary',
   finance_officer: 'Finance officer',
   loans_officer: 'Loans officer',

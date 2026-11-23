@@ -215,7 +215,7 @@ def test_j_an_officer_cannot_decide_their_own_request(schema_app):  # noqa: F811
     client = schema_app.test_client()
     # The same person, now also a SACCO admin: they may post money, so they may
     # reach the confirm route, and it must refuse them.
-    for code in ("member", "circle_admin"):
+    for code in ("member", "sacco_admin"):
         role = db.session.query(Role).filter_by(code=code).one()
         db.session.add(
             MembershipRoleLink(
@@ -295,5 +295,5 @@ def test_n_savings_request_is_published_for_members_only():
 
     assert "savings.request" in PERMISSIONS
     assert "savings.request" in ROLE_PERMISSIONS["member"]
-    for title in ("circle_admin", "secretary", "finance_officer", "loans_officer"):
+    for title in ("sacco_admin", "secretary", "finance_officer", "loans_officer"):
         assert "savings.request" not in ROLE_PERMISSIONS[title]

@@ -1,7 +1,7 @@
 """Inviting a phone with a job title (Neo, N1b).
 
 `POST /saccos/<id>/members {phone, role}` accepts the legacy role values
-(`sacco_admin`, `staff`, `member`), the owner-only `circle_admin`, and the job
+(`sacco_admin`, `staff`, `member`), the owner-only `sacco_admin`, and the job
 titles the Add a member page offers. `can()` reads titles, so the invite must
 grant the title that was asked for instead of always `secretary`.
 """
@@ -121,17 +121,17 @@ def test_the_legacy_staff_value_still_means_a_secretary(client, world):
     assert resp.get_json()["title"] == "secretary"
 
 
-def test_only_the_platform_owner_invites_a_circle_admin(client, world):
-    by_admin = invite(client, world, world["admin"], "circle_admin")
+def test_only_the_platform_owner_invites_a_sacco_admin(client, world):
+    by_admin = invite(client, world, world["admin"], "sacco_admin")
     assert by_admin.status_code == 403
     assert "Only the platform owner" in by_admin.get_json()["error"]["message"]
 
-    by_owner = invite(client, world, world["owner"], "circle_admin")
+    by_owner = invite(client, world, world["owner"], "sacco_admin")
     assert by_owner.status_code == 201, by_owner.get_data(as_text=True)
     body = by_owner.get_json()
     assert body["role"] == MembershipRole.SACCO_ADMIN.value
     membership = db.session.get(SaccoMembership, body["id"])
-    assert _role_codes(membership) == {"circle_admin"}
+    assert _role_codes(membership) == {"sacco_admin"}
 
 
 def test_an_unknown_role_is_refused(client, world):

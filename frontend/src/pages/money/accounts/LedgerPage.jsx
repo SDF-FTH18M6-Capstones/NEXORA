@@ -1,9 +1,9 @@
-/* LedgerPage: one account's ledger. A drill-in from Accounts, so it has a Back button. Officers with savings.reverse can reverse a posted entry. */
+/* LedgerPage: one account's ledger. A drill-in from Accounts, so it has a Back button. Officers with savings.reverse can ask for a reversal; a different officer approves it in the requests queue. */
 import { useEffect, useRef, useState } from 'react';
 import { useSession } from '../../../lib/session.jsx';
 import { useAsync } from '../../../lib/useAsync.js';
-import { kesFromMinor, dTime, newReference } from '../../../lib/format.js';
-import { getAccount, listTransactions, reverseTransaction } from '../../../api/money.js';
+import { kesFromMinor, dTime } from '../../../lib/format.js';
+import { getAccount, listTransactions, requestReversal } from '../../../api/money.js';
 import BackButton from '../../../components/BackButton.jsx';
 import StatusChip from '../../../components/StatusChip.jsx';
 import ErrorBanner from '../../../components/ErrorBanner.jsx';
@@ -19,7 +19,6 @@ function ReverseDialog({ tx, onClose, onDone }) {
   const [error, setError] = useState('');
   const [note, setNote] = useState(null);
   const [sending, setSending] = useState(false);
-  const [reference, setReference] = useState(newReference);   // one per dialog; reused when the press is retried
   const busy = useRef(false);
   const field = useRef(null);
   useEffect(() => { const el = document.getElementById('reverse-reason'); if (el) el.focus(); }, []);
@@ -29,8 +28,9 @@ function ReverseDialog({ tx, onClose, onDone }) {
     e.preventDefault();
     if (busy.current) return;
     if (!reason.trim()) { setError('Write a reason for the reversal.'); const el = document.getElementById('reverse-reason'); if (el) el.focus(); return; }
+    if (reason.trim().length < 10) { setError('Write at least 10 characters saying why.'); return; }
     busy.current = true; setSending(true); setNote(null);
-    try { await reverseTransaction(tx.account_id, tx.id, { reference, reason: reason.trim() }); setReference(newReference()); onDone({ kind: 'ok', text: `Entry #${tx.id} reversed.` }); }
+    try { await requestReversal(tx.account_id, tx.id, { reason: reason.trim() }); onDone({ kind: 'ok', text: `Reversal of entry #${tx.id} requested. A different officer must approve it.` }); }
     catch (err) {
       const f = failure(err, 'Reverse');
       if (f.page) onDone({ page: f.page });
@@ -42,14 +42,14 @@ function ReverseDialog({ tx, onClose, onDone }) {
   return (
     <div className="sam-scrim" onMouseDown={e => { if (e.target === e.currentTarget && !busy.current) onClose(); }}>
       <form ref={field} className="glass sam-dialog sam-form" role="dialog" aria-modal="true" aria-labelledby="reverse-title" onSubmit={submit} noValidate>
-        <div><div className="eyebrow">savings.reverse</div><h3 id="reverse-title" className="font-serif text-xl">Reverse {txTitle(tx).toLowerCase()} of {kesFromMinor(tx.amount)}</h3></div>
-        <p className="muted">A reversal adds a new entry that cancels this one. Nothing is deleted.</p>
+        <div><div className="eyebrow">savings.reverse</div><h3 id="reverse-title" className="font-serif text-xl">Ask to reverse {txTitle(tx).toLowerCase()} of {kesFromMinor(tx.amount)}</h3></div>
+        <p className="muted">A reversal adds a new entry that cancels this one. Nothing is deleted. A different officer must approve it first.</p>
         <Field id="reverse-reason" label="Reason" error={error}>
           <textarea value={reason} onChange={e => { setReason(e.target.value); setError(''); }} />
         </Field>
         {note && <ErrorBanner kind={note.kind}>{note.text}</ErrorBanner>}
         <div className="sam-row-gap">
-          <button type="submit" className="btn warn" disabled={sending}>{sending ? 'Reversing...' : 'Reverse entry'}</button>
+          <button type="submit" className="btn warn" disabled={sending}>{sending ? 'Sending...' : 'Ask for reversal'}</button>
           <button type="button" className="btn ghost" disabled={sending} onClick={onClose}>Cancel</button>
         </div>
       </form>
@@ -99,10 +99,10 @@ export default function LedgerPage({ account, onBack }) {
                     return (
                       <tr key={t.id}>
                         <td>{dTime(t.created_at)}</td>
-                        <td>{txTitle(t)}<span className="sam-sub">#{t.id}</span></td>
+                        <td>{txTitle(t)}{t.source === 'manual' && <span className="chip lock">Manual</span>}{t.source === 'stk' && <span className="chip">M-Pesa</span>}<span className="sam-sub">#{t.id}</span></td>
                         <td className={`sam-r${isCredit(t) ? ' sam-credit' : ''}`}>{isCredit(t) ? '+' : '-'}{kesFromMinor(t.amount)}</td>
                         <td><StatusChip status={isReversed ? 'Reversed' : 'Posted'} /></td>
-                        {can('savings.reverse') && <td>{!t.reverses_id && !isReversed && <button type="button" className="btn warn small" onClick={() => setDialog({ ...t, account_id: account.account_id })}>Reverse</button>}</td>}
+                        {can('savings.reverse') && <td>{!t.reverses_id && !isReversed && <button type="button" className="btn warn small" onClick={() => setDialog({ ...t, account_id: account.account_id })}>Ask to reverse</button>}</td>}
                       </tr>
                     );
                   })}

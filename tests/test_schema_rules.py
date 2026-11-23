@@ -16,7 +16,12 @@ from app.models.loan import LoanDecisionKind, SaccoSettings
 from app.models.membership import MembershipRole, MembershipStatus, SaccoMembership
 from app.models.user import User
 from app.security.permissions import can
-from savings_support import Setup, release_session, schema_app  # noqa: F401
+from savings_support import (  # noqa: F401
+    Setup,
+    manual_body,
+    release_session,
+    schema_app,
+)
 
 pytestmark = pytest.mark.schema
 
@@ -343,9 +348,9 @@ def test_an_admin_holds_no_other_job_title(schema_app):  # noqa: F811
     boss = auth(make_user(owner=True))
     url = f"/api/v1/saccos/{s.sacco.id}/members/{s.admin_membership.id}/roles"
     for extra in ("loans_officer", "secretary", "finance_officer"):
-        resp = client.put(url, json={"roles": ["circle_admin", extra]}, headers=boss)
+        resp = client.put(url, json={"roles": ["sacco_admin", extra]}, headers=boss)
         assert resp.status_code == 409, extra
-    # A secretary promoted to admin keeps only circle_admin.
+    # A secretary promoted to admin keeps only sacco_admin.
     secretary = officer(s, "secretary")
     mid = (
         db.session.query(SaccoMembership.id).filter_by(user_id=secretary.id).scalar()
@@ -360,7 +365,7 @@ def test_an_admin_holds_no_other_job_title(schema_app):  # noqa: F811
     titles = client.get(
         f"/api/v1/saccos/{s.sacco.id}/members/{mid}/roles", headers=auth(s.admin)
     )
-    assert titles.json["roles"] == ["circle_admin"]
+    assert titles.json["roles"] == ["sacco_admin"]
 
 
 def _disbursed_loan(s, reference):
@@ -882,7 +887,9 @@ def test_a_secretary_moves_no_money_over_http(schema_app):  # noqa: F811
     for path in ("deposits", "withdrawals", "interest", "fees"):
         resp = client.post(
             f"{base}/{path}",
-            json={"amount": 10, "reference": f"sec-{path}"},
+            json=manual_body(10)
+            if path == "deposits"
+            else {"amount": 10, "reference": f"sec-{path}"},
             headers=auth(secretary),
         )
         assert resp.status_code == 403, path

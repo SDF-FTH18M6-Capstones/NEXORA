@@ -4,6 +4,7 @@ import { useSession } from '../../lib/session.jsx';
 import { useAsync } from '../../lib/useAsync.js';
 import { getSettings, renameSacco } from '../../api/people.js';
 import ErrorBanner from '../../components/ErrorBanner.jsx';
+import DarajaCard from '../../components/DarajaCard.jsx';
 import Field from '../../components/Field.jsx';
 import { Body } from './shared.jsx';
 import { describe } from '../../lib/errors.js';
@@ -45,7 +46,7 @@ export default function SettingsPage() {
     <section className="glass neo-stack loose">
       <div>
         <h2 className="font-serif text-xl">SACCO settings</h2>
-        <p className="muted text-sm">The circle's name, and the loan rules it runs on.</p>
+        <p className="muted text-sm">The SACCO's name, and the loan rules it runs on.</p>
       </div>
 
       {saved && <ErrorBanner kind="ok">Your changes were saved.</ErrorBanner>}
@@ -66,6 +67,8 @@ export default function SettingsPage() {
           </button>
         </div>
       </form>
+
+      <DarajaCard />
 
       <Body
         status={settings.status}

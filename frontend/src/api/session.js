@@ -6,7 +6,7 @@ import {
   RYAN_SACCOS,
 } from '../mocks/ryan.js';
 import {
-  circleLoginRequest,
+  saccoLoginRequest,
   loginRequest,
   logoutRequest,
   mockAccountFromTokens,
@@ -14,7 +14,6 @@ import {
 
 const roleAliases = {
   admin: 'admin',
-  circle_admin: 'admin',
   sacco_admin: 'admin',
   secretary: 'secretary',
   finance: 'finance',
@@ -52,7 +51,7 @@ function listFromResponse(response, key) {
 }
 
 /* The login answer lists each membership with the legacy role (sacco_admin | staff | member).
- * The job titles (circle_admin, finance_officer, loans_officer, secretary, member) come from
+ * The job titles (sacco_admin, finance_officer, loans_officer, secretary, member) come from
  * GET /members/me/saccos as `roles`. Use them when they are there, so staff are not "unsupported". */
 function withJobTitles(memberships, saccos) {
   return memberships.map(item => {
@@ -188,7 +187,7 @@ export function afterSignIn(saccos, user = null, perms = []) {
   const active = saccos.filter(item => item.membershipStatus === 'active');
   const invited = saccos.filter(item => item.membershipStatus === 'invited');
   if (active.length === 0) {
-    return { path: '/enter', view: 'no-circle', invited };
+    return { path: '/enter', view: 'no-sacco', invited };
   }
   if (active.length === 1) {
     return { path: '/enter', view: 'enter', saccoId: active[0].id };
@@ -236,9 +235,9 @@ export async function enterSacco(session, saccoId, pin) {
   if (!session || !session.sourceUser) {
     throw new Error('A signed-in session is required to enter a SACCO.');
   }
-  const result = await circleLoginRequest(session, saccoId, pin);
+  const result = await saccoLoginRequest(session, saccoId, pin);
   if (!result || result.ok !== true) {
-    throw new Error('The circle sign-in did not complete.');
+    throw new Error('The SACCO sign-in did not complete.');
   }
   const memberships = session.sourceUser.memberships.map(item => (
     String(item.sacco_id) === String(saccoId)

@@ -1,26 +1,23 @@
 """NEXORA configuration. Secrets and connection strings come from environment variables only."""
+
 import os
 from datetime import timedelta
 
 
-def _database_url() -> str:
-    """DATABASE_URL, rewritten so SQLAlchemy uses psycopg 3.
-
-    Hosts such as Render hand out postgres:// or postgresql://, which makes
-    SQLAlchemy look for psycopg2. Anything already carrying a driver is untouched.
-    """
-    url = os.environ.get("DATABASE_URL", "").strip()
-    for prefix in ("postgres://", "postgresql://"):
-        if url.startswith(prefix):
-            return "postgresql+psycopg://" + url[len(prefix):]
-    return url
+def database_url(raw: str) -> str:
+    """Hosts such as Render hand out `postgres://` or `postgresql://`; SQLAlchemy
+    needs the driver named, or it looks for psycopg2, which is not installed."""
+    for plain in ("postgres://", "postgresql://"):
+        if raw.startswith(plain):
+            return "postgresql+psycopg://" + raw[len(plain) :]
+    return raw
 
 
 class Config:
     """Default settings used by `flask run`. Values come from .env or your shell."""
 
     SECRET_KEY = os.environ.get("SECRET_KEY", "")
-    SQLALCHEMY_DATABASE_URI = _database_url()
+    SQLALCHEMY_DATABASE_URI = database_url(os.environ.get("DATABASE_URL", ""))
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     # Reverse proxies in front of the app (0 = none). Per-IP rate limits need the
     # real client address, so set this to the proxy count when deployed behind one.
@@ -56,6 +53,24 @@ class Config:
     MAIL_PASSWORD = os.environ.get("MAIL_PASSWORD", "")
     FRONTEND_URL = os.environ.get("FRONTEND_URL", "http://localhost:5173")
 
+    # M-Pesa STK push. Off unless DARAJA_ENABLED=1. DARAJA_ENV picks Safaricom's
+    # sandbox (default) or live API; with APP_ENV=production only the live API is
+    # allowed (see _check_daraja_settings in app/__init__.py).
+    DARAJA_ENV = os.environ.get("DARAJA_ENV", "sandbox")
+    DARAJA_ENABLED = os.environ.get("DARAJA_ENABLED", "").strip().lower() in (
+        "1",
+        "true",
+    )
+    DARAJA_CONSUMER_KEY = os.environ.get("DARAJA_CONSUMER_KEY", "")
+    DARAJA_CONSUMER_SECRET = os.environ.get("DARAJA_CONSUMER_SECRET", "")
+    DARAJA_PASSKEY = os.environ.get("DARAJA_PASSKEY", "")
+    DARAJA_SHORTCODE = os.environ.get("DARAJA_SHORTCODE", "")
+    # Encrypts each SACCO's own Daraja credentials (see .env.example).
+    DARAJA_ENCRYPTION_KEY = os.environ.get("DARAJA_ENCRYPTION_KEY", "")
+    # The public URL Safaricom posts to, ending in /api/v1/daraja/callback/<token>.
+    DARAJA_CALLBACK_URL = os.environ.get("DARAJA_CALLBACK_URL", "")
+    DARAJA_CALLBACK_TOKEN = os.environ.get("DARAJA_CALLBACK_TOKEN", "")
+
     TESTING = False
 
 
@@ -65,8 +80,12 @@ class TestConfig(Config):
     TESTING = True
     RATELIMIT_ENABLED = False  # tests make many logins from one address
     SECRET_KEY = "test-only-not-a-real-secret-0123456789"
+    DARAJA_ENABLED = False  # a test turns it on for itself; the default stays off
+    DARAJA_ENV = "sandbox"  # whatever the developer's environment says
+    # A developer's .env may hold real mail settings: tests must never send mail.
+    MAIL_BACKEND = "log"
+    MAIL_USERNAME = MAIL_PASSWORD = ""
     SQLALCHEMY_DATABASE_URI = os.environ.get("TEST_DATABASE_URL", "")
     # A test that waits on a database lock for more than 15s fails with an error
     # instead of hanging forever (e.g. a stale connection left on the test database).
     SQLALCHEMY_ENGINE_OPTIONS = {"connect_args": {"options": "-c lock_timeout=15000"}}
-

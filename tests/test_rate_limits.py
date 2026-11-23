@@ -50,7 +50,14 @@ def _exhaust(client, method, path, limit):
 
 
 @pytest.mark.parametrize(
-    "path", ["/api/v1/saccos/1", "/api/v1/savings/accounts/me"]
+    "path",
+    [
+        "/api/v1/saccos/1",
+        "/api/v1/savings/accounts/me",
+        # A read of the member's own request history, not a write: it must not
+        # run out at the 30 a minute that sending a request does.
+        "/api/v1/savings/requests/me",
+    ],
 )
 def test_reads_allow_120_a_minute(limited, path):
     codes = _exhaust(limited, "get", path, READ_LIMIT)

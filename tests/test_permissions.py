@@ -85,7 +85,7 @@ def holder(job_title, status=MembershipStatus.ACTIVE):
 
 
 ALLOWS = [
-    ("circle_admin", "savings.post"),
+    ("sacco_admin", "savings.post"),
     ("secretary", "audit.view"),
     ("finance_officer", "loan.disburse"),
     ("loans_officer", "loan.approve"),
@@ -93,7 +93,7 @@ ALLOWS = [
 ]
 
 DENIALS = [
-    ("circle_admin", "loan.disburse"),
+    ("sacco_admin", "loan.disburse"),
     ("secretary", "savings.post"),
     ("finance_officer", "member.manage"),
     ("loans_officer", "savings.post"),
@@ -114,8 +114,8 @@ def test_each_role_is_denied_what_it_does_not_hold(job_title, permission):
 
 
 def test_the_answer_comes_from_the_database_not_the_enum():
-    """A membership whose enum says member, but whose roles say circle admin."""
-    user, sacco = holder("circle_admin")
+    """A membership whose enum says member, but whose roles say SACCO admin."""
+    user, sacco = holder("sacco_admin")
     membership = db.session.query(SaccoMembership).filter_by(user_id=user.id).one()
     assert membership.role is MembershipRole.MEMBER
     assert can(user, sacco, "savings.post") is True
@@ -123,7 +123,7 @@ def test_the_answer_comes_from_the_database_not_the_enum():
 
 def test_the_sacco_admin_holds_support_approve_and_a_member_does_not():
     """The Access requests page decides by this name (frontend `lib/perms.js`)."""
-    admin_user, sacco = holder("circle_admin")
+    admin_user, sacco = holder("sacco_admin")
     member_user = make_user()
     make_membership(member_user, sacco, job_title="member")
 
@@ -134,7 +134,7 @@ def test_the_sacco_admin_holds_support_approve_and_a_member_does_not():
 
 
 def test_inactive_membership_is_denied_everything():
-    user, sacco = holder("circle_admin", status=MembershipStatus.INACTIVE)
+    user, sacco = holder("sacco_admin", status=MembershipStatus.INACTIVE)
     assert can(user, sacco, "savings.view") is False
     assert can(user, sacco, "member.view") is False
     assert permissions_for(user, sacco) == frozenset()
@@ -146,7 +146,7 @@ def test_a_non_member_is_denied():
 
 
 def test_another_saccos_role_grants_nothing():
-    user, sacco = holder("circle_admin")
+    user, sacco = holder("sacco_admin")
     other = make_sacco()
     assert can(user, other, "savings.view") is False
 
@@ -168,7 +168,7 @@ def test_a_platform_grant_alone_is_enough():
 
 
 def test_an_unknown_permission_is_denied():
-    user, sacco = holder("circle_admin")
+    user, sacco = holder("sacco_admin")
     assert can(user, sacco, "loan.delete") is False
     assert can(user, sacco, "SAVINGS.POST") is False
 

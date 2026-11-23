@@ -23,7 +23,9 @@ const WORDS = {
   'member.invite': 'A member was invited',
   'member.update': 'A member was changed',
   'member.activate': 'A member joined',
-  'member.circle_login': 'Someone entered the circle',
+  'member.sacco_login': 'Someone entered the SACCO',
+  /* legacy: written before circle became SACCO. The audit log is append-only, so these rows keep the action they were recorded with and are shown as such, not rewritten. */
+  'member.circle_login': 'Someone entered the SACCO (legacy entry, recorded as member.circle_login)',
   'support.approve': 'Support access was approved',
   'support.deny': 'Support access was denied',
   'support.revoke': 'Support access was revoked',

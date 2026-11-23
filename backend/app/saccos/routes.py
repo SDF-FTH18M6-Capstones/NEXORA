@@ -1,7 +1,8 @@
 """SACCO endpoints.
 
 Create, list, activate and deactivate: platform owner only.
-Get and rename one SACCO: the platform owner, or that SACCO's own admin.
+Get, rename and record the registration details of one SACCO: the platform
+owner, or that SACCO's own admin.
 Every change writes an audit row in the same transaction as the change.
 """
 
@@ -21,6 +22,7 @@ from app.extensions import db
 from app.models.audit import AuditLog
 from app.models.membership import MembershipStatus, SaccoMembership
 from app.models.sacco import Sacco, SaccoStatus
+from app.saccos import registration
 from app.security.tenant import permission_scoped
 
 MAX_NAME_LENGTH = 255
@@ -30,6 +32,10 @@ NAME_RULE = (
     "no control or invisible characters)."
 )
 DUPLICATE_NAME = "A SACCO with this name already exists."
+DUPLICATE_REGISTRATION = (
+    "Another SACCO already has this registration number or SASRA licence number."
+)
+EDITABLE = {"name", *registration.FIELDS}
 
 
 def _clean_name(value) -> str | None:
@@ -75,6 +81,19 @@ def _member_count(sacco_id: int) -> int:
     ).scalar_one()
 
 
+def _invalid_registration(errors: dict):
+    return (
+        jsonify(
+            error={
+                "code": "validation_error",
+                "message": "Some registration details are not valid. See fields.",
+                "fields": errors,
+            }
+        ),
+        400,
+    )
+
+
 def _sacco_json(sacco: Sacco) -> dict:
     return {
         "id": sacco.id,
@@ -83,6 +102,11 @@ def _sacco_json(sacco: Sacco) -> dict:
         "status": sacco.status.value,
         "member_count": _member_count(sacco.id),
         "created_at": sacco.created_at.isoformat(),
+        "registration_number": sacco.registration_number,
+        "sasra_licence_number": sacco.sasra_licence_number,
+        "registration_date": (
+            sacco.registration_date.isoformat() if sacco.registration_date else None
+        ),
     }
 
 
@@ -98,25 +122,31 @@ def create_sacco():
     if not CURRENCY_RE.fullmatch(currency):
         return error_response(400, "Currency must be a 3-letter code such as KES.")
 
+    reg_values, reg_errors = registration.validate(data)
+    if reg_errors:
+        return _invalid_registration(reg_errors)
+
     rule_values = None
     if "rules" in data:
-        from app.saccos import rules as circle_rules
+        from app.saccos import rules as sacco_rules
         from app.saccos.rules_routes import invalid
 
-        rule_values, rule_errors = circle_rules.validate_rules(data["rules"])
+        rule_values, rule_errors = sacco_rules.validate_rules(data["rules"])
         if rule_errors:
             return invalid(rule_errors)
 
-    sacco = Sacco(name=name, currency=currency)
+    sacco = Sacco(name=name, currency=currency, **reg_values)
     db.session.add(sacco)
     try:
         db.session.flush()  # assigns the id the audit row points at
-    except IntegrityError:  # unique index on lower(btrim(name))
+    except IntegrityError as exc:
         db.session.rollback()
-        return error_response(409, DUPLICATE_NAME)
+        if "uq_saccos_name_lower" in str(exc.orig):
+            return error_response(409, DUPLICATE_NAME)
+        return error_response(409, DUPLICATE_REGISTRATION)
     _audit(sacco, g.user.id, "sacco.create")
     if rule_values is not None:
-        row = circle_rules.publish_rules(sacco.id, rule_values, g.user.id)
+        row = sacco_rules.publish_rules(sacco.id, rule_values, g.user.id)
         _audit(sacco, g.user.id, "rules.publish", f"rules:{row.id} v{row.version}")
     db.session.commit()
     return jsonify(_sacco_json(sacco)), 201
@@ -171,37 +201,63 @@ def get_sacco(sacco_id):
 @write_limit
 @permission_scoped("sacco.update")
 def update_sacco(sacco_id):
-    """Rename the SACCO. `name` is the only editable field.
+    """Rename the SACCO and record its registration details.
 
-    Status is the platform owner's call (activate/deactivate), and the currency
-    must not change once money has been posted in it.
+    Editable: `name`, `registration_number`, `sasra_licence_number` and
+    `registration_date` (null or "" clears a registration field). Status is the
+    platform owner's call (activate/deactivate), and the currency must not
+    change once money has been posted in it.
     """
     data = _body()
-    if not data or set(data) != {"name"}:
-        return error_response(400, 'Send only "name".')
-    name = _clean_name(data["name"])
-    if name is None:
-        return error_response(400, NAME_RULE)
+    if not data or not set(data) <= EDITABLE:
+        return error_response(
+            400,
+            "Send only name, registration_number, sasra_licence_number "
+            "or registration_date.",
+        )
+    name = None
+    if "name" in data:
+        name = _clean_name(data["name"])
+        if name is None:
+            return error_response(400, NAME_RULE)
+    reg_values, reg_errors = registration.validate(data)
+    if reg_errors:
+        return _invalid_registration(reg_errors)
 
-    # Lock the row so two renames cannot overlap: the second waits, then sees the
-    # first one's name, so each audit row records the name it really replaced.
+    # Lock the row so two edits cannot overlap: the second waits, then sees the
+    # first one's values, so each audit row records what it really replaced.
     sacco = db.session.execute(
         select(Sacco)
         .where(Sacco.id == sacco_id)
         .with_for_update()
         .execution_options(populate_existing=True)
     ).scalar_one()
-    if name == sacco.name:
+    renamed = name is not None and name != sacco.name
+    changed = [f for f, v in reg_values.items() if getattr(sacco, f) != v]
+    if not renamed and not changed:
         body = _sacco_json(sacco)
         db.session.rollback()  # nothing to write; release the lock
         return jsonify(body)
 
-    old = f"sacco:{sacco.id} from {sacco.name!r}"
-    _audit(sacco, g.access.user.id, "sacco.rename", old)
-    sacco.name = name
+    if renamed:
+        old = f"sacco:{sacco.id} from {sacco.name!r}"
+        _audit(sacco, g.access.user.id, "sacco.rename", old)
+        sacco.name = name
+    if changed:
+        # Field names only: the audit trail says what changed, not the numbers.
+        _audit(
+            sacco,
+            g.access.user.id,
+            "sacco.registration_update",
+            f"sacco:{sacco.id} fields:{','.join(changed)}",
+        )
+        for field in changed:
+            setattr(sacco, field, reg_values[field])
     try:
-        db.session.commit()  # the rename and its audit row, or neither
-    except IntegrityError:  # unique index on lower(btrim(name))
+        db.session.commit()  # the edit and its audit rows, or neither
+    except IntegrityError as exc:
         db.session.rollback()
-        return error_response(409, DUPLICATE_NAME)
+        if "uq_saccos_name_lower" in str(exc.orig):
+            return error_response(409, DUPLICATE_NAME)
+        return error_response(409, DUPLICATE_REGISTRATION)
     return jsonify(_sacco_json(sacco))

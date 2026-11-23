@@ -133,7 +133,9 @@ def test_every_route_answers_errors_in_the_one_shape(app, client):
     """Walks the URL map, so a route added later without the helper is caught."""
     checked = 0
     for rule in app.url_map.iter_rules():
-        if rule.endpoint == "static" or rule.rule in ({"/api/health"} | ALWAYS_OK):
+        if rule.endpoint == "static" or rule.rule in (
+            {"/api/health", "/health"} | ALWAYS_OK
+        ):
             continue
         method = next(m for m in sorted(rule.methods) if m not in ("HEAD", "OPTIONS"))
         path = rule.rule

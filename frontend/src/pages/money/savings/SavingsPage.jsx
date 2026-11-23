@@ -1,4 +1,4 @@
-/* SavingsPage: the MEMBER's own savings (permission savings.request). Staff see the circle's savings under Accounts. */
+/* SavingsPage: the MEMBER's own savings (permission savings.request). Staff see the SACCO's savings under Accounts. */
 import { useState } from 'react';
 import { useSession } from '../../../lib/session.jsx';
 import { useAsync } from '../../../lib/useAsync.js';

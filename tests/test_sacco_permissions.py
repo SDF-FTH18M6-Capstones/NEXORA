@@ -5,7 +5,13 @@ from sqlalchemy import func, select
 
 from app.extensions import db
 from app.models.audit import AuditLog
-from savings_support import Setup, release_session, schema_app  # noqa: F401
+from savings_support import (  # noqa: F401
+    Setup,
+    manual_body,
+    release_session,
+    schema_app,
+    switch_off_quick_withdrawal_flag,
+)
 from test_schema_rules import auth, make_user, officer
 
 pytestmark = pytest.mark.schema
@@ -61,7 +67,7 @@ def test_only_the_admin_title_manages_members_and_titles(schema_app):  # noqa: F
     )
 
 
-def test_circle_login_writes_an_audit_row_ok_or_refused(schema_app):  # noqa: F811
+def test_sacco_login_writes_an_audit_row_ok_or_refused(schema_app):  # noqa: F811
     s = Setup()
     client = schema_app.test_client()
     person = make_user()
@@ -81,8 +87,8 @@ def test_circle_login_writes_an_audit_row_ok_or_refused(schema_app):  # noqa: F8
         json={"setup_token": joined.json["setup_token"], "pin": "4826"},
         headers=auth(person),
     )
-    before = audit_count("member.circle_login")
-    url = "/api/v1/auth/circle-login"
+    before = audit_count("member.sacco_login")
+    url = "/api/v1/auth/sacco-login"
     good, wrong = (
         {"sacco_id": s.sacco.id, "pin": "4826"},
         {"sacco_id": s.sacco.id, "pin": "0000"},
@@ -90,7 +96,7 @@ def test_circle_login_writes_an_audit_row_ok_or_refused(schema_app):  # noqa: F8
     ok = client.post(url, json=good, headers=auth(person))
     bad = client.post(url, json=wrong, headers=auth(person))
     assert ok.status_code == 200 and bad.status_code == 401
-    assert audit_count("member.circle_login") == before + 2
+    assert audit_count("member.sacco_login") == before + 2
 
 
 WRITES = [
@@ -98,7 +104,7 @@ WRITES = [
     (
         "post",
         "/api/v1/savings/accounts/{account}/deposits",
-        {"amount": 10, "reference": "aud-dep"},
+        manual_body(10, receipt="AUD0DEP001"),
         "savings.deposit",
     ),
     (
@@ -115,6 +121,7 @@ WRITES = [
 @pytest.mark.parametrize(("method", "path", "body", "action"), WRITES)
 def test_sacco_writes_leave_an_audit_row(schema_app, method, path, body, action):  # noqa: F811
     s = Setup(balance=1_000)
+    switch_off_quick_withdrawal_flag(s.sacco.id, s.admin.id)
     client = schema_app.test_client()
     fill = {"account": s.account.id, "sacco": s.sacco.id}
     body = {k: v.format(**fill) if isinstance(v, str) else v for k, v in body.items()}

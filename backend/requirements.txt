@@ -6,3 +6,4 @@ pytest-cov==6.0.0
 ruff==0.11.0
 fakeredis[lua]==2.40.0
 PyYAML==6.0.3
+cryptography==50.0.2

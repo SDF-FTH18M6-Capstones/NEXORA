@@ -8,8 +8,13 @@ from flask import jsonify, request
 from app import savings_bp
 from app.auth.limits import money_limit, write_limit
 from app.errors import error_response
-from app.savings import service
-from app.savings.validation import InvalidRequest, parse_money, parse_open_account
+from app.savings import deposits, service
+from app.savings.validation import (
+    InvalidRequest,
+    parse_amount,
+    parse_money,
+    parse_open_account,
+)
 from app.security.tenant import AccessDenied, current_user
 
 
@@ -73,13 +78,26 @@ def _post_money(user_id: int, account_id: int, action):
 @money_limit
 @signed_in
 def deposit(user_id: int, account_id: int):
-    return _post_money(user_id, account_id, service.deposit)
+    """A manual deposit: the officer types in the M-Pesa receipt."""
+    body = _body()
+    result, posted = deposits.manual_deposit(
+        user_id,
+        account_id,
+        parse_amount(body.get("amount")),
+        deposits.parse_receipt(body.get("mpesa_receipt")),
+        body.get("phone"),
+    )
+    if not posted:  # flagged: waits for a second officer, or a retry of that
+        return jsonify(queued=True, request=result), 202
+    return jsonify(result), 200 if result["replayed"] else 201
 
 
 @savings_bp.post("/accounts/<int:account_id>/withdrawals")
 @money_limit
 @signed_in
 def withdraw(user_id: int, account_id: int):
+    amount, _ = parse_money(_body())
+    deposits.refuse_flagged_withdrawal(user_id, account_id, amount)
     return _post_money(user_id, account_id, service.withdraw)
 
 
@@ -87,6 +105,8 @@ def withdraw(user_id: int, account_id: int):
 @money_limit
 @signed_in
 def interest(user_id: int, account_id: int):
+    amount, _ = parse_money(_body())
+    deposits.refuse_large_interest(user_id, account_id, amount)
     return _post_money(user_id, account_id, service.post_interest)
 
 

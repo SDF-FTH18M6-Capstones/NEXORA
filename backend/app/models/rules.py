@@ -1,4 +1,4 @@
-"""Circle rules: what a circle's creator sets and every member accepts.
+"""SACCO rules: what a SACCO's creator sets and every member accepts.
 
 A row is one published version. Rules are never edited: a change is a new
 version, adopted by member vote once the cycle has ended. Amounts are integer
@@ -29,10 +29,10 @@ from sqlalchemy.orm import Mapped, mapped_column
 from app.extensions import db
 
 
-class CircleRules(db.Model):
-    __tablename__ = "circle_rules"
+class SaccoRules(db.Model):
+    __tablename__ = "sacco_rules"
     __table_args__ = (
-        UniqueConstraint("sacco_id", "version", name="uq_circle_rules_version"),
+        UniqueConstraint("sacco_id", "version", name="uq_sacco_rules_version"),
         CheckConstraint(
             "contribution_amount > 0", name="ck_rules_contribution_positive"
         ),
@@ -95,7 +95,7 @@ class RulesAcceptance(db.Model):
         ForeignKey("sacco_memberships.id"), primary_key=True
     )
     rules_id: Mapped[int] = mapped_column(
-        ForeignKey("circle_rules.id", ondelete="CASCADE"), primary_key=True
+        ForeignKey("sacco_rules.id", ondelete="CASCADE"), primary_key=True
     )
     accepted_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
@@ -110,7 +110,8 @@ class RulesProposal(db.Model):
         CheckConstraint(
             "status IN ('open', 'adopted', 'rejected')", name="ck_rules_proposal_status"
         ),
-        # One open vote per circle, enforced by the database.
+        CheckConstraint("active_members >= 0", name="ck_rules_proposal_active_members"),
+        # One open vote per SACCO, enforced by the database.
         Index(
             "uq_rules_one_open_proposal",
             "sacco_id",
@@ -127,6 +128,8 @@ class RulesProposal(db.Model):
     fields: Mapped[dict] = mapped_column(JSONB, nullable=False)
     # Membership ids that may vote, frozen when the proposal opens.
     electorate: Mapped[list] = mapped_column(JSONB, nullable=False)
+    # Every active member when it opened: a change needs more than half of these.
+    active_members: Mapped[int] = mapped_column(Integer, nullable=False)
     proposed_by_user_id: Mapped[int | None] = mapped_column(
         ForeignKey("users.id"), nullable=True
     )

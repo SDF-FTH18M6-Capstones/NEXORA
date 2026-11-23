@@ -29,6 +29,7 @@ from app.models.loan import SaccoSettings
 from app.models.membership import MembershipStatus, SaccoMembership
 from app.models.sacco import Sacco
 from app.models.user import User
+from app.saccos import payment_details as payin
 from app.security.permissions import (
     LEGACY_ROLE_CODES,
     OWNER_PLATFORM,
@@ -339,6 +340,7 @@ def add_member(sacco_id):
     # opened the emailed link can be given access to a SACCO.
     if target.email_verified_at is None:
         return error_response(409, "That user has not verified their email yet.")
+    officers_before = payin.officer_ids(sacco_id)
     membership = SaccoMembership(
         user_id=target.id, sacco_id=sacco_id, role=role, status=status
     )
@@ -351,6 +353,7 @@ def add_member(sacco_id):
     _grant_default_title(membership)
     _audit(membership, "member.add")
     db.session.commit()
+    payin.announce_new_officers(sacco_id, officers_before, g.access.user.email)
     return jsonify(_member_json(membership, target.email)), 201
     if not is_admin_role(role) and not can(g.access.user, sacco_id, "member.manage"):
         return error_response(
@@ -363,7 +366,7 @@ def _reset_titles(membership: SaccoMembership) -> None:
 
     Titles left behind would keep powers the new role does not have (a loans
     officer demoted to member could still approve). With no title rows, `can()`
-    answers from the role column; a new admin gets circle_admin as a row, so
+    answers from the role column; a new admin gets sacco_admin as a row, so
     `can()` and the admin routes (which read the role) agree.
     """
     db.session.execute(
@@ -376,7 +379,7 @@ def _reset_titles(membership: SaccoMembership) -> None:
 
 def _grant_default_title(membership: SaccoMembership, title: str | None = None) -> None:
     """Store the job title the invite asked for (or the one the role implies:
-    admin -> circle_admin, staff -> secretary, member -> member), so `can()`
+    admin -> sacco_admin, staff -> secretary, member -> member), so `can()`
     reads a title row for every membership the API creates or changes, never the
     role column.
     """
@@ -451,6 +454,7 @@ def update_member(sacco_id, membership_id):
         db.session.rollback()  # nothing changed; release the lock
         return jsonify(body)
     before = _state(membership)
+    officers_before = payin.officer_ids(sacco_id)
     old_role = membership.role
     for field, value in changes.items():
         setattr(membership, field, value)
@@ -478,4 +482,5 @@ def update_member(sacco_id, membership_id):
     if code is not None:
         body.update(join_code=code, expires_at=row.expires_at.isoformat())
     db.session.commit()
+    payin.announce_new_officers(sacco_id, officers_before, g.access.user.email)
     return jsonify(body)

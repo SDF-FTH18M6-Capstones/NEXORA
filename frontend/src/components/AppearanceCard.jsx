@@ -65,7 +65,7 @@ export default function AppearanceCard() {
 
       <div className={label}>Preview</div>
       <div className="grid gap-2 rounded-2xl border border-white/80 bg-white/40 p-4">
-        <div className="eyebrow">Circle savings balance</div>
+        <div className="eyebrow">SACCO savings balance</div>
         <div className="font-serif text-[clamp(1.6rem,3vw,2.2rem)] text-teal">KES 186,400</div>
         <p className="text-muted">Your next payment of KES 8,500 is due on 30 November.</p>
         <div className="flex flex-wrap items-center gap-2">

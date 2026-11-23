@@ -1,4 +1,4 @@
-/* AccountsPage: the circle's member accounts (savings.view_all). A row opens that account's ledger. */
+/* AccountsPage: the SACCO's member accounts (savings.view_all). A row opens that account's ledger. */
 import { useState } from 'react';
 import { useSession } from '../../../lib/session.jsx';
 import { kesFromMinor } from '../../../lib/format.js';

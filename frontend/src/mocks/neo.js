@@ -10,7 +10,7 @@ const iso = (daysAgo, hour = 9) => {
 };
 
 export const members = [
-  { id: 101, user_id: 11, email: 'jordan.mwangi@example.com', phone: '254712345678', role: 'sacco_admin', roles: ['circle_admin'], status: 'active', created_at: iso(140) },
+  { id: 101, user_id: 11, email: 'jordan.mwangi@example.com', phone: '254712345678', role: 'sacco_admin', roles: ['sacco_admin'], status: 'active', created_at: iso(140) },
   { id: 102, user_id: 12, email: 'aisha.otieno@example.com', phone: '254712345679', role: 'staff', roles: ['secretary'], status: 'active', created_at: iso(133) },
   { id: 103, user_id: 13, email: 'brian.kimani@example.com', phone: '254712345680', role: 'staff', roles: ['finance_officer'], status: 'active', created_at: iso(121) },
   { id: 104, user_id: 14, email: 'carol.wanjiku@example.com', phone: '254712345681', role: 'staff', roles: ['loans_officer'], status: 'active', created_at: iso(96) },
@@ -35,7 +35,7 @@ export const auditLog = [
   { id: 896, action: 'support.approve', target: 'grant:29 members', actor_email: 'jordan.mwangi@example.com', created_at: iso(1, 10) },
   { id: 895, action: 'member.update', target: 'membership:108 member/inactive', actor_email: 'jordan.mwangi@example.com', created_at: iso(3, 12) },
   { id: 894, action: 'savings.reverse', target: 'savings_account:22/transaction:498', actor_email: 'brian.kimani@example.com', created_at: iso(4, 16) },
-  { id: 893, action: 'member.circle_login', target: 'membership:105 ok', actor_email: 'david.ochieng@example.com', created_at: iso(5, 8) },
+  { id: 893, action: 'member.sacco_login', target: 'membership:105 ok', actor_email: 'david.ochieng@example.com', created_at: iso(5, 8) },
 ];
 
 export const saccoSettings = {

@@ -17,7 +17,7 @@ sys.path.insert(0, str(BACKEND))
 
 # One clearly fake password for every seeded user (dev databases only).
 DEV_PASSWORD = "Dev-Seed-Pass-2026"
-# Circle PIN for every seeded membership; without one nobody seeded can pass /enter.
+# SACCO PIN for every seeded membership; without one nobody seeded can pass /enter.
 DEV_PIN = "2468"
 DOMAIN = "example.com"
 OWNER_EMAIL = f"owner@{DOMAIN}"
@@ -93,7 +93,7 @@ def seed(app, require_dev=True):
     # so `can()` answers from the same table as production data instead of using
     # its legacy-column fallback.
     JOB_TITLE = {
-        MembershipRole.SACCO_ADMIN: "circle_admin",
+        MembershipRole.SACCO_ADMIN: "sacco_admin",
         MembershipRole.STAFF: "secretary",
         MembershipRole.MEMBER: "member",
     }
@@ -258,7 +258,7 @@ def main():
 
     app = create_app()
     seeded = seed(app)
-    print(f"Seeded. Every user's password is: {DEV_PASSWORD}, circle PIN {DEV_PIN}\n")
+    print(f"Seeded. Every user's password is: {DEV_PASSWORD}, SACCO PIN {DEV_PIN}\n")
     for row in seeded:
         where = row["sacco"] or "-"
         print(f"  {row['email']:<28} {row['role']:<15} {where}")

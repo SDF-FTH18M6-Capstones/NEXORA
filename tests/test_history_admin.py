@@ -82,8 +82,9 @@ def test_member_sees_own_history_newest_first(schema_app):
     assert [t["reference"] for t in body["transactions"]][:2] == ["w1", "d2"]
     first = body["transactions"][0]
     assert set(first) == {
-        "id", "type", "amount", "reference", "created_at", "reverses_id"
+        "id", "type", "amount", "reference", "created_at", "reverses_id", "source"
     }
+    assert first["source"] == "standard"
     assert first["type"] == "withdrawal"
     assert first["amount"] == 100 and isinstance(first["amount"], int)
     assert first["reverses_id"] is None

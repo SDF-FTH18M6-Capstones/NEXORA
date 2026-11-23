@@ -76,7 +76,7 @@ export default function SaccoSwitcher({ open, onToggle, onClose, onSelect }) {
         onClick={onToggle}
         aria-haspopup="menu"
         aria-expanded={open}
-        aria-label={`Circle: ${sacco.name}. Switch circle`}
+        aria-label={`SACCO: ${sacco.name}. Switch SACCO`}
       >
         <span className="max-w-40 truncate">{sacco.name}</span>
         <Icon name="chevron" className="size-4 shrink-0" />

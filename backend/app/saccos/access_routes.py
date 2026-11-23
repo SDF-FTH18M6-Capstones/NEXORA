@@ -3,7 +3,7 @@
 Job titles: GET/PUT /saccos/<id>/members/<membership_id>/roles. The SACCO admin
 (or the platform owner) sets which job titles a membership holds, for example
 loans_officer or finance_officer. Only the platform owner gives or takes
-circle_admin, nobody changes their own titles, and a title can only be held by
+sacco_admin, nobody changes their own titles, and a title can only be held by
 an active membership.
 
 Settings: GET/PATCH /saccos/<id>/settings. Every active member may read the loan
@@ -25,6 +25,7 @@ from app.models.audit import AuditLog
 from app.models.loan import SaccoSettings
 from app.models.membership import MembershipStatus, SaccoMembership
 from app.models.sacco import Sacco
+from app.saccos import payment_details as payin
 from app.security.permissions import (
     ROLE_NAMES,
     _role_codes,
@@ -33,7 +34,7 @@ from app.security.permissions import (
 )
 from app.security.tenant import permission_scoped
 
-OWNER_ONLY_TITLE = "circle_admin"
+OWNER_ONLY_TITLE = "sacco_admin"
 ADMIN_TITLES = {OWNER_ONLY_TITLE, "member"}
 SETTING_FIELDS = (
     "loan_cap",
@@ -144,27 +145,34 @@ def set_roles(sacco_id, membership_id):
             "or reads the audit log.",
         )
     # The admin routes check the membership's role, `can()` checks these titles.
-    # They must agree, so circle_admin moves only with the role (PATCH /members).
+    # They must agree, so sacco_admin moves only with the role (PATCH /members).
     if (OWNER_ONLY_TITLE in wanted) != is_admin:
         db.session.rollback()
         return error_response(
             409,
-            "circle_admin follows the SACCO admin role. Make or remove an admin "
+            "sacco_admin follows the SACCO admin role. Make or remove an admin "
             "with PATCH /saccos/<id>/members/<membership_id> instead.",
         )
 
+    officers_before = payin.officer_ids(sacco_id)
     if wanted != current:
         role_ids = dict(
             db.session.execute(
-                select(Role.code, Role.id).where(Role.code.in_(wanted))
+                select(Role.code, Role.id).where(Role.code.in_(wanted | current))
             ).all()
         )
-        db.session.execute(
-            delete(MembershipRoleLink).where(
-                MembershipRoleLink.membership_id == membership.id
+        # Only titles that actually change are touched: a kept title keeps its
+        # granted_at, which decides who may approve a waiting pay-in change.
+        if current - wanted:
+            db.session.execute(
+                delete(MembershipRoleLink).where(
+                    MembershipRoleLink.membership_id == membership.id,
+                    MembershipRoleLink.role_id.in_(
+                        [role_ids[c] for c in current - wanted]
+                    ),
+                )
             )
-        )
-        for code in sorted(wanted):
+        for code in sorted(wanted - current):
             db.session.add(
                 MembershipRoleLink(
                     membership_id=membership.id,
@@ -180,6 +188,7 @@ def set_roles(sacco_id, membership_id):
             f" -> {','.join(sorted(wanted))}",
         )
     db.session.commit()
+    payin.announce_new_officers(sacco_id, officers_before, g.access.user.email)
     return jsonify(membership_id=membership.id, roles=sorted(wanted))
 
 

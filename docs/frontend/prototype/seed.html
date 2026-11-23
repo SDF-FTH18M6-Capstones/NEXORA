@@ -1,7 +1,0 @@
-<script>
-var q = new URLSearchParams(location.search), who = q.get('role') || 'admin';
-localStorage.setItem('nexora.session', '1'); localStorage.setItem('nexora.role', who);
-Object.keys(localStorage).filter(function (k) { return k.indexOf('nexora.appearance') === 0; }).forEach(function (k) { localStorage.removeItem(k); });
-if (q.get('ap')) localStorage.setItem('nexora.appearance:' + who, q.get('ap'));
-location.href = 'index.html#' + (q.get('r') || 'overview');
-</script>

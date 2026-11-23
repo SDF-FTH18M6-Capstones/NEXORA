@@ -13,7 +13,7 @@ const LINKS = [
 ];
 
 const STEPS = [
-  ['01', 'Join your circle', 'An admin adds you to your SACCO and gives you a join code. You enter it once, set a four-digit circle PIN, and from then on you sign in with your email, your password and that PIN.'],
+  ['01', 'Join your SACCO', 'An admin adds you to your SACCO and gives you a join code. You enter it once, set a four-digit SACCO PIN, and from then on you sign in with your email, your password and that PIN.'],
   ['02', 'Save', 'Choose Deposit or Withdraw, pick M-Pesa or Bank, and send a request. Nothing moves yet: an officer checks the payment and confirms it, and only then does your balance change.'],
   ['03', 'Borrow', 'Ask for a loan and a term in months. Loans officers approve it, one approval or two depending on the SACCO’s cap and your savings, and a different officer pays it out. Loans carry no interest in this release.'],
   ['04', 'See everything', 'Every shilling is one ledger entry. Your balance is the sum of your entries, so you can always trace how it got there, and nobody can quietly edit the past.'],
@@ -31,16 +31,16 @@ const ROLES = [
   ['Loans officer', 'Reads loans and reports, and approves loan steps. Cannot move money.'],
   ['Finance officer', 'Confirms deposit and withdrawal requests, posts money, pays out and records repayments, and reverses mistakes.'],
   ['Secretary', 'Reads members, accounts, reports and the audit log. Cannot change anything.'],
-  ['SACCO admin', 'Runs the circle: adds members, sets job titles, renames the SACCO and approves platform support access. Never approves loans or reads the audit log.'],
+  ['SACCO admin', 'Runs the SACCO: adds members, sets job titles, renames the SACCO and approves platform support access. Never approves loans or reads the audit log.'],
   ['Platform owner', 'Creates SACCOs and sets loan rules. Needs no membership, and at least two owners always exist.'],
 ];
 
 const TRUST = [
   ['Append-only records', 'Ledger entries, loan decisions, repayments and the audit log are never edited. A correction is a new entry that points at the old one.'],
   ['Two keys on every loan', 'You cannot decide your own loan, one officer cannot approve two steps, and whoever approved cannot pay it out.'],
-  ['Circles stay apart', 'Every request is checked against your SACCO. Another circle’s data is not just hidden, it answers as if it does not exist.'],
+  ['SACCOs stay apart', 'Every request is checked against your SACCO. Another SACCO’s data is not just hidden, it answers as if it does not exist.'],
   ['Safe to retry', 'Each money request carries its own reference. A double tap or a dropped connection posts once, never twice.'],
-  ['Locks that hold', 'Five wrong passwords lock the account and five wrong PINs lock the circle, each for 15 minutes.'],
+  ['Locks that hold', 'Five wrong passwords lock the account and five wrong PINs lock the SACCO, each for 15 minutes.'],
   ['Admins checked too', 'A SACCO admin cannot grant themselves a title, and every title change is in the audit log.'],
 ];
 
@@ -161,7 +161,7 @@ export default function Landing() {
           * the gap tightens below xl so both columns still fit. */}
         <section className="relative flex flex-col items-start gap-12 lg:min-h-[calc(100vh-9rem)] lg:flex-row lg:items-center lg:justify-between lg:gap-10 xl:gap-20">
           <div className="flex max-w-[46rem] flex-col gap-6 lg:max-w-[28rem] xl:max-w-[46rem]">
-            <h1 className="font-serif text-[clamp(2.5rem,4.4vw,5rem)] leading-[1.04]">Savings and loans for your circle.</h1>
+            <h1 className="font-serif text-[clamp(2.5rem,4.4vw,5rem)] leading-[1.04]">Savings and loans for your SACCO.</h1>
             <p className="text-muted lg:text-lg xl:text-xl">
               NEXORA keeps your SACCO&rsquo;s money in one clear record. Members see their own
               balance. Staff see what their role needs.
@@ -182,8 +182,8 @@ export default function Landing() {
               <p className="eyebrow" data-side="left">How it works</p>
               <h2 id="how-h" className="font-serif lsec-h" data-side="left">From joining to repaying, in four steps.</h2>
               <p className="lsec-lead" data-side="right">
-                NEXORA is the record book of a savings and credit circle (a SACCO). Members put money
-                in, borrow against it, and pay it back. The people who run the circle each get exactly
+                NEXORA is the record book of a SACCO, a savings and credit society. Members put money
+                in, borrow against it, and pay it back. The people who run the SACCO each get exactly
                 the tools their job needs, and the app writes down everything they do.
               </p>
             </div>
@@ -263,7 +263,7 @@ export default function Landing() {
       </div>
 
       <footer className="lfoot mx-auto w-full max-w-[100rem] px-5 pb-10 md:px-8">
-        NEXORA · Savings and loans for your circle.
+        NEXORA · Savings and loans for your SACCO.
       </footer>
     </div>
   );

@@ -13,12 +13,14 @@ from app.errors import (
     INSUFFICIENT_FUNDS,
     OWN_REQUEST,
     REQUEST_ALREADY_DECIDED,
+    SECOND_OFFICER_REQUIRED,
 )
 from app.extensions import db
 from app.models.membership import MembershipStatus, SaccoMembership
 from app.models.payment_request import PaymentRequest
 from app.models.savings import SavingsAccount
 from app.models.user import User
+from app.savings import flags as deposit_flags
 from app.savings import service
 from app.savings.service import (
     Conflict,
@@ -26,6 +28,7 @@ from app.savings.service import (
     NotFound,
     _require_sacco_active,
 )
+from app.savings.validation import InvalidRequest
 from app.security.permissions import can
 
 DEFAULT_LIMIT = 25
@@ -45,6 +48,13 @@ def _item(row: PaymentRequest, email: str | None = None) -> dict:
         "bank_name": row.bank_name,
         "account_ref": row.account_ref,
         "reference": row.reference,
+        "source": row.source,
+        "mpesa_receipt": row.mpesa_receipt,
+        "flags": deposit_flags.split(row.flags),
+        "awaiting_second_approval": bool(
+            row.flags and row.first_approved_by and row.status == "pending"
+        ),
+        "first_approved_by": row.first_approved_by,
         "status": row.status,
         "reject_reason": row.reject_reason,
         "ledger_transaction_id": row.ledger_transaction_id,
@@ -150,6 +160,11 @@ def create(user_id: int, sacco_id: int, data: dict) -> tuple[dict, bool]:
         account_ref=data["account_ref"],
         reference=data["reference"],
         status="pending",
+        flags=deposit_flags.join(
+            deposit_flags.evaluate(
+                sacco_id, actor.id, data["kind"], data["amount"], "member"
+            )
+        ),
     )
     db.session.add(row)
     db.session.commit()
@@ -167,7 +182,11 @@ def list_mine(user_id: int, sacco_id: int, kind, limit, cursor):
     )
     if kind is not None:
         stmt = stmt.where(PaymentRequest.kind == kind)
-    return _page(stmt, _clamp(limit), cursor, with_email=False)
+    items, nxt = _page(stmt, _clamp(limit), cursor, with_email=False)
+    for item in items:  # a member must not learn the flag thresholds by probing
+        for key in ("flags", "first_approved_by", "awaiting_second_approval"):
+            item.pop(key, None)
+    return items, nxt
 
 
 def list_for_sacco(user_id: int, sacco_id: int, status, limit, cursor):
@@ -183,8 +202,22 @@ def list_for_sacco(user_id: int, sacco_id: int, status, limit, cursor):
     return _page(stmt, _clamp(limit), cursor, with_email=True)
 
 
-def confirm(user_id: int, request_id: int, reference: str) -> dict:
-    """Confirm one pending request: one ledger entry, then status confirmed."""
+def ledger_reference(row: PaymentRequest, client_reference: str | None) -> str:
+    """A payment with an M-Pesa receipt posts under that receipt, so the same
+    receipt can never reach the ledger twice, whatever the client sends."""
+    if row.mpesa_receipt:
+        return f"mpesa-{row.mpesa_receipt}"
+    if not client_reference:
+        raise InvalidRequest("reference is required.")
+    return client_reference
+
+
+def confirm(user_id: int, request_id: int, reference: str | None) -> dict:
+    """Confirm one pending request: one ledger entry, then status confirmed.
+
+    A flagged request needs two different officers: the first call records the
+    first approval and posts nothing; a second officer's call posts it.
+    """
     row = db.session.execute(
         select(PaymentRequest)
         .where(PaymentRequest.id == request_id)
@@ -207,10 +240,54 @@ def confirm(user_id: int, request_id: int, reference: str) -> dict:
             code=REQUEST_ALREADY_DECIDED,
         )
     _require_sacco_active(row.sacco_id)
+    try:
+        ledger_ref = ledger_reference(row, reference)
+    except InvalidRequest:
+        db.session.rollback()
+        raise
     account = _account(row.membership_id)
     if account is None:
         db.session.rollback()
         raise Conflict("The member has no savings account in this SACCO.")
+
+    if row.kind == "withdrawal" and row.amount_minor > account.balance:
+        # Refuse now, not after a first approval that could never be completed.
+        db.session.rollback()
+        raise Conflict("Insufficient funds.", code=INSUFFICIENT_FUNDS)
+
+    flags = sorted(
+        set(deposit_flags.split(row.flags))
+        | set(
+            deposit_flags.evaluate(
+                row.sacco_id,
+                row.membership_id,
+                row.kind,
+                row.amount_minor,
+                row.source,
+                exclude_request_id=row.id,
+            )
+        )
+    )
+    if flags:
+        row.flags = deposit_flags.join(flags)
+        if row.first_approved_by is None:
+            row.first_approved_by = officer.id
+            row.first_approved_at = func.now()
+            audit_log.record(
+                row.sacco_id,
+                user_id,
+                "savings.request.first_approve",
+                f"payment_request:{row.id} flags:{row.flags}",
+            )
+            db.session.commit()
+            db.session.refresh(row)
+            return _item(row, _email(row.membership_id))
+        if row.first_approved_by == officer.id:
+            db.session.rollback()
+            raise Forbidden(
+                "A flagged payment needs a second, different officer.",
+                code=SECOND_OFFICER_REQUIRED,
+            )
 
     # Mark the decision before the money moves: the ledger call commits the same
     # transaction, so a second officer finds the row decided even mid-flight. A
@@ -224,8 +301,13 @@ def confirm(user_id: int, request_id: int, reference: str) -> dict:
         row.sacco_id, user_id, "savings.request.confirm", f"payment_request:{row.id}"
     )
 
-    action = service.deposit if row.kind == "deposit" else service.withdraw
-    posted = action(user_id, account.id, row.amount_minor, reference)
+    if row.kind == "deposit":
+        source = {"stk": "stk", "manual": "manual"}.get(row.source, "standard")
+        posted = service.deposit(
+            user_id, account.id, row.amount_minor, ledger_ref, source=source
+        )
+    else:
+        posted = service.withdraw(user_id, account.id, row.amount_minor, ledger_ref)
 
     row.ledger_transaction_id = posted.id
     db.session.commit()
@@ -255,6 +337,12 @@ def reject(user_id: int, request_id: int, reason: str) -> dict:
             "Someone already decided this request.",
             code=REQUEST_ALREADY_DECIDED,
         )
+    if row.first_approved_by == officer.id:
+        db.session.rollback()
+        raise Forbidden(
+            "You gave the first approval; a different officer must reject it.",
+            code=SECOND_OFFICER_REQUIRED,
+        )
     row.status = "rejected"
     row.reject_reason = reason
     row.decided_by = officer.id
@@ -264,4 +352,9 @@ def reject(user_id: int, request_id: int, reason: str) -> dict:
     )
     db.session.commit()
     db.session.refresh(row)
+    return _item(row, _email(row.membership_id))
+
+
+def item_by_id(request_id: int) -> dict:
+    row = db.session.get(PaymentRequest, request_id)
     return _item(row, _email(row.membership_id))

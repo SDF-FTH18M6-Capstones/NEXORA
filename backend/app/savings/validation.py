@@ -1,6 +1,5 @@
-
-
 import re
+import unicodedata
 
 # Per-transaction ceiling, in minor units: 1,000,000.00 in a 2-decimal currency.
 MAX_TRANSACTION_AMOUNT = 100_000_000
@@ -42,6 +41,55 @@ def parse_reference(value) -> str:
         raise InvalidRequest(
             "reference must be 1 to 64 characters: letters, digits, . _ : -"
         )
+    return value
+
+
+def parse_override_reason(value, low: int = 10, high: int = 140) -> str | None:
+    """Optional. A reason is a plain sentence the audit trail will keep."""
+    if value is None:
+        return None
+    # Control characters, line separators and odd spaces would break or forge
+    # the audit text: one line of ordinary characters only.
+    plain = isinstance(value, str) and not any(
+        unicodedata.category(ch).startswith(("C", "Zl", "Zp"))
+        or (unicodedata.category(ch) == "Zs" and ch != " ")
+        for ch in value.strip()
+    )
+    if not plain or not low <= len(value.strip()) <= high:
+        raise InvalidRequest(
+            f"override_reason must be {low} to {high} characters saying why, "
+            "on one line."
+        )
+    return value.strip()
+
+
+LOAN_SECTORS = (
+    "agriculture",
+    "trade",
+    "manufacturing",
+    "transport",
+    "housing",
+    "education",
+    "health",
+    "other",
+)
+
+
+def parse_sector(value) -> str | None:
+    """Optional: what the loan is for. null or "" means not given."""
+    if value is None or value == "":
+        return None
+    if value not in LOAN_SECTORS:
+        raise InvalidRequest(f"sector must be one of: {', '.join(LOAN_SECTORS)}.")
+    return value
+
+
+def parse_flag(value, name: str) -> bool:
+    """Optional true/false, false when absent."""
+    if value is None:
+        return False
+    if type(value) is not bool:
+        raise InvalidRequest(f"{name} must be true or false.")
     return value
 
 

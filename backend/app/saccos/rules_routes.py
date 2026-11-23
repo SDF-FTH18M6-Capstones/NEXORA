@@ -1,10 +1,10 @@
-"""Circle rules: read, publish, accept, propose a change, vote.
+"""SACCO rules: read, publish, accept, propose a change, vote.
 
 GET  /saccos/<id>/rules                       any active member: the current rules
-POST /saccos/<id>/rules                       circle admin or platform owner
+POST /saccos/<id>/rules                       SACCO admin or platform owner
 POST /saccos/<id>/rules/accept                a member accepts the current version
 GET  /saccos/<id>/rules/proposals             any active member
-POST /saccos/<id>/rules/proposals             circle admin or platform owner
+POST /saccos/<id>/rules/proposals             SACCO admin or platform owner
 POST /saccos/<id>/rules/proposals/<pid>/votes a member votes; a majority adopts it
 """
 
@@ -37,7 +37,7 @@ def invalid(errors: dict):
     body = {
         "error": {
             "code": "validation_error",
-            "message": "Some circle rules are missing or not valid. See fields.",
+            "message": "Some SACCO rules are missing or not valid. See fields.",
             "fields": errors,
         }
     }
@@ -91,10 +91,10 @@ def publish_first_rules(sacco_id):
 def accept_rules(sacco_id):
     membership = g.access.membership
     if membership is None:
-        return error_response(403, "Only members of the circle accept its rules.")
+        return error_response(403, "Only members of the SACCO accept its rules.")
     rules = logic.current_rules(sacco_id)
     if rules is None:
-        return error_response(404, "This circle has no rules yet.")
+        return error_response(404, "This SACCO has no rules yet.")
     version = _body().get("version")
     if type(version) is not int or version != rules.version:
         return error_response(
@@ -135,6 +135,7 @@ def _proposal_json(proposal, membership):
             for k, v in proposal.fields.items()
         },
         "electorate_size": len(proposal.electorate),
+        "active_members": proposal.active_members,
         "approvals": yes,
         "rejections": no,
         "my_vote": None if mine is None else mine.approve,
@@ -168,7 +169,7 @@ def propose_rules(sacco_id):
         return error_response(409, "Publish the first rules before proposing a change.")
     if logic.today() < current.cycle_ends_on:
         return interface_error(RULES_LOCKED, logic.lock_message(current))
-    # A vote nobody finishes must not block the circle for ever: it lapses.
+    # A vote nobody finishes must not block the SACCO for ever: it lapses.
     for stale in db.session.scalars(
         select(RulesProposal).where(
             RulesProposal.sacco_id == sacco_id, RulesProposal.status == "open"
@@ -187,11 +188,27 @@ def propose_rules(sacco_id):
     values, errors = logic.validate_rules(_body())
     if errors:
         return invalid(errors)
+    electorate = logic.electorate(sacco_id, current.id)
+    active = logic.active_member_count(sacco_id)
+    if not electorate:
+        return error_response(
+            409,
+            "Nobody has accepted the current rules yet, so nobody can vote on a "
+            "change. Ask the members to accept them first.",
+        )
+    if not logic.can_still_pass(len(electorate), 0, active):
+        return error_response(
+            409,
+            f"Only {len(electorate)} of {active} members have accepted the current "
+            "rules. A change needs more than half of all members to approve it, so "
+            "it cannot pass yet. Ask the others to accept the rules first.",
+        )
     proposal = RulesProposal(
         sacco_id=sacco_id,
         base_version=current.version,
         fields=_json_fields(values),
-        electorate=logic.electorate(sacco_id, current.id),
+        electorate=electorate,
+        active_members=active,
         proposed_by_user_id=g.access.user.id,
     )
     db.session.add(proposal)
@@ -211,7 +228,7 @@ def propose_rules(sacco_id):
 def vote_on_proposal(sacco_id, proposal_id):
     membership = g.access.membership
     if membership is None:
-        return error_response(403, "Only members of the circle vote.")
+        return error_response(403, "Only members of the SACCO vote.")
     approve = _body().get("approve")
     if not isinstance(approve, bool):
         return error_response(400, "Send approve: true or false.")
@@ -250,17 +267,26 @@ def vote_on_proposal(sacco_id, proposal_id):
     else:
         vote.approve = approve
     db.session.flush()
-    members = len(proposal.electorate)
     yes, no = _tally(proposal)
-    if yes * 2 > members:  # a strict majority of the electorate frozen when it opened
+    if yes * 2 > proposal.active_members:  # more than half of ALL active members
+        yes_voters = db.session.execute(
+            select(RulesVote.membership_id).where(
+                RulesVote.proposal_id == proposal.id, RulesVote.approve.is_(True)
+            )
+        ).scalars()
         row = logic.publish_rules(
-            sacco_id, _from_json(proposal.fields), proposal.proposed_by_user_id
+            sacco_id,
+            _from_json(proposal.fields),
+            proposal.proposed_by_user_id,
+            carry_forward=yes_voters,
         )
         proposal.status = "adopted"
         _audit(
             sacco_id, g.access.user.id, "rules.adopt", f"rules:{row.id} v{row.version}"
         )
-    elif no * 2 >= members:  # it can no longer win
+    elif not logic.can_still_pass(
+        len(proposal.electorate), no, proposal.active_members
+    ):  # it can no longer win
         proposal.status = "rejected"
         _audit(sacco_id, g.access.user.id, "rules.reject", f"proposal:{proposal.id}")
     db.session.commit()

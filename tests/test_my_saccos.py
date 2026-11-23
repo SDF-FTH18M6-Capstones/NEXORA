@@ -4,7 +4,12 @@ import pytest
 
 from app.extensions import db
 from app.models.membership import MembershipRole, MembershipStatus, SaccoMembership
-from savings_support import Setup, release_session, schema_app  # noqa: F401
+from savings_support import (  # noqa: F401
+    Setup,
+    manual_body,
+    release_session,
+    schema_app,
+)
 from test_schema_rules import _link, auth, make_user
 
 pytestmark = pytest.mark.schema
@@ -43,7 +48,7 @@ def test_one_user_in_three_saccos_acts_in_each_without_logging_in_again(schema_a
     # Act in each by naming it: what is allowed depends on that SACCO's roles.
     deposit = client.post(
         f"/api/v1/savings/accounts/{a.account.id}/deposits",
-        json={"amount": 10, "reference": "multi-dep"},
+        json=manual_body(10),
         headers=headers,
     )
     assert deposit.status_code == 201  # finance officer in A

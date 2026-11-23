@@ -1,4 +1,4 @@
-/* reports.js: the circle's summary and member activity. Totals are MINOR units. */
+/* reports.js: the SACCO's summary and member activity. Totals are MINOR units. */
 import { http, MOCK, mockDelay } from '../lib/http.js';
 import { store, ledgerOf, seedHistory } from '../mocks/sam.js';
 

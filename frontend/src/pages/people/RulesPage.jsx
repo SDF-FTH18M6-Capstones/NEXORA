@@ -53,14 +53,14 @@ export default function RulesPage() {
   return (
     <section className="glass neo-stack loose">
       <div>
-        <h2 className="font-serif text-xl">Circle rules</h2>
-        <p className="muted text-sm">What this circle agreed. Read all of it before you accept.</p>
+        <h2 className="font-serif text-xl">SACCO rules</h2>
+        <p className="muted text-sm">What this SACCO agreed. Read all of it before you accept.</p>
       </div>
       {notice && <ErrorBanner>{notice}</ErrorBanner>}
       <Body status={rules.status} error={rules.error} reload={rules.reload}>
         {!current && (
           <>
-            <p>This circle has not published its rules yet.</p>
+            <p>This SACCO has not published its rules yet.</p>
             {canChange && !form && <button type="button" className="btn" onClick={() => setForm(emptyRules())}>Set the rules</button>}
             {form && (
               <form className="neo-stack" noValidate onSubmit={event => { event.preventDefault(); send(publishRules, 'Rules published'); }}>

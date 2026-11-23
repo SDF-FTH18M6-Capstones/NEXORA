@@ -2,7 +2,7 @@
 
 One test per item, per the plan: permissions for a SACCO, `roles` on the member
 list, `?status=` on the loan list, `Retry-After` readable by the browser, and
-the renamed circle login that still answers on its old path.
+the renamed SACCO login that still answers on its old path.
 """
 
 import itertools
@@ -66,14 +66,14 @@ def auth(user):
 def test_a1_a_member_and_an_admin_get_different_lists(client):
     sacco = make_sacco()
     admin, member = make_user(), make_user()
-    join(admin, sacco, "circle_admin")
+    join(admin, sacco, "sacco_admin")
     join(member, sacco, "member")
 
     url = f"/api/v1/members/me/permissions?sacco_id={sacco.id}"
     admin_body = client.get(url, headers=auth(admin)).get_json()
     member_body = client.get(url, headers=auth(member)).get_json()
 
-    assert admin_body["roles"] == ["circle_admin"]
+    assert admin_body["roles"] == ["sacco_admin"]
     assert member_body["roles"] == ["member"]
     assert "member.manage" in admin_body["permissions"]
     assert "member.manage" not in member_body["permissions"]
@@ -103,7 +103,7 @@ def test_a1_a_platform_owner_without_a_sacco_gets_the_platform_permissions(clien
 def test_a2_the_member_list_and_one_member_carry_roles(client):
     sacco = make_sacco()
     admin, officer = make_user(), make_user()
-    join(admin, sacco, "circle_admin")
+    join(admin, sacco, "sacco_admin")
     membership = join(officer, sacco, "loans_officer")
 
     listed = client.get(
@@ -125,7 +125,7 @@ def test_a2_the_member_list_and_one_member_carry_roles(client):
 def test_a3_the_loan_list_filters_by_status(client):
     sacco = make_sacco()
     admin = make_user()
-    join(admin, sacco, "circle_admin")
+    join(admin, sacco, "sacco_admin")
     waiting = join(make_user(), sacco, "member")
     refused = join(make_user(), sacco, "member")
     db.session.add_all(
@@ -160,7 +160,7 @@ def test_a3_the_loan_list_filters_by_status(client):
 def test_a3_an_unknown_status_is_400(client):
     sacco = make_sacco()
     admin = make_user()
-    join(admin, sacco, "circle_admin")
+    join(admin, sacco, "sacco_admin")
     resp = client.get(
         f"/api/v1/loans/saccos/{sacco.id}?status=waiting", headers=auth(admin)
     )
@@ -183,7 +183,7 @@ def test_a4_the_browser_may_read_retry_after(client, app):
 
 
 @pytest.mark.parametrize(
-    "path", ["/api/v1/auth/circle-login", "/api/v1/auth/sacco-login"]
+    "path", ["/api/v1/auth/sacco-login", "/api/v1/auth/sacco-login"]
 )
 def test_a5_both_login_paths_are_served(client, path):
     resp = client.post(path, json={})

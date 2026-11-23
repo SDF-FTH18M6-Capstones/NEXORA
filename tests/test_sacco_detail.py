@@ -131,6 +131,9 @@ def test_admin_reads_their_own_sacco(client):
         "status",
         "member_count",
         "created_at",
+        "registration_number",
+        "sasra_licence_number",
+        "registration_date",
     }
     assert resp.get_json()["member_count"] == 1  # the admin above
     assert resp.headers["Cache-Control"] == "no-store"
