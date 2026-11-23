@@ -53,7 +53,7 @@ services:
         sync: false
       - key: MAIL_PASSWORD
         sync: false
-      # M-Pesa. Off until docs/deployment-checklist.md is complete.
+      # M-Pesa. Off until the Deployment section of README.md is complete.
       - key: DARAJA_ENABLED
         value: "0"
       - key: DARAJA_ENV
