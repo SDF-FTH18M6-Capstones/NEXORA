@@ -75,25 +75,39 @@ def join():
     if error := _signed_in():
         return error
     body = _body()
-    try:
-        phone = normalize_phone(body.get("phone"))
-    except ValueError:
-        return interface_error(CODE_WRONG, "That code is not correct.")
+    # No phone means the invitation was made by email: it belongs to the signed-in
+    # account itself, so the account is who it is looked up by.
+    by_account = str(body.get("phone") or "").strip() == ""
+    phone = None
+    if not by_account:
+        try:
+            phone = normalize_phone(body.get("phone"))
+        except ValueError:
+            return interface_error(CODE_WRONG, "That code is not correct.")
     code = str(body.get("code", ""))
-    # Every live invitation for this phone, one per SACCO, locked in id order.
-    # The code's digest is tied to its membership, so the code itself says which
-    # SACCO is being joined. An unknown phone answers like a wrong code.
-    invited = db.session.execute(
-        select(SaccoMembership)
-        .where(
-            SaccoMembership.phone == phone,
-            # Only a live invitation can be joined: a cancelled or finished
-            # membership answers like an unknown phone.
-            SaccoMembership.status == MembershipStatus.INVITED,
+    # Every live invitation for this phone (or account), one per SACCO, locked in
+    # id order. The code's digest is tied to its membership, so the code itself
+    # says which SACCO is being joined. An unknown phone answers like a wrong code.
+    holder = (
+        SaccoMembership.user_id == g.user.id
+        if by_account
+        else SaccoMembership.phone == phone
+    )
+    invited = (
+        db.session.execute(
+            select(SaccoMembership)
+            .where(
+                holder,
+                # Only a live invitation can be joined: a cancelled or finished
+                # membership answers like an unknown phone.
+                SaccoMembership.status == MembershipStatus.INVITED,
+            )
+            .order_by(SaccoMembership.id)
+            .with_for_update()
         )
-        .order_by(SaccoMembership.id)
-        .with_for_update()
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     latest = []
     for candidate in invited:
         code_row = db.session.execute(
@@ -135,16 +149,17 @@ def join():
         return interface_error(exc.name, exc.message)
 
     user = g.user
-    existing = db.session.execute(
-        select(UserPhone).where(UserPhone.phone == phone)
-    ).scalar_one_or_none()
-    if existing is not None and existing.user_id != user.id:
-        db.session.rollback()  # code stays unspent
-        return error_response(409, "That phone belongs to another account.")
-    if existing is None:
-        db.session.add(
-            UserPhone(user_id=user.id, phone=phone, verified_at=datetime.now(UTC))
-        )
+    if phone is not None:
+        existing = db.session.execute(
+            select(UserPhone).where(UserPhone.phone == phone)
+        ).scalar_one_or_none()
+        if existing is not None and existing.user_id != user.id:
+            db.session.rollback()  # code stays unspent
+            return error_response(409, "That phone belongs to another account.")
+        if existing is None:
+            db.session.add(
+                UserPhone(user_id=user.id, phone=phone, verified_at=datetime.now(UTC))
+            )
     membership.user_id = user.id
     try:
         db.session.flush()

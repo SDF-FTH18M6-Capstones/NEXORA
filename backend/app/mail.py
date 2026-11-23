@@ -68,6 +68,40 @@ def send_text_email(to: str, subject: str, body: str) -> None:
         smtp.send_message(message)
 
 
+def send_join_code_email(to: str, code: str, sacco_name: str, minutes: int) -> None:
+    """Email a join code to the person an officer added by email."""
+    body = (
+        f"You were added to {sacco_name} on NEXORA.\n\n"
+        f"Your join code is {code}\n\n"
+        f"It works once and expires in {minutes} minutes. Sign in to NEXORA, open "
+        "Join with a code, and enter it. Do not share it with anyone.\n\n"
+        "If you did not expect this, ignore this email."
+    )
+    send_text_email(to, f"Your {sacco_name} join code", body)
+
+
+def send_join_code_safely(to: str, code: str, sacco_name: str, minutes: int) -> None:
+    """Like send_safely: a mail outage must not fail the request, and SMTP goes out
+    on a background thread so the answer takes the same time for every address."""
+
+    def deliver() -> None:
+        try:
+            send_join_code_email(to, code, sacco_name, minutes)
+        except Exception:
+            log.exception("Could not send the join code email")
+
+    if current_app.config["MAIL_BACKEND"] != "smtp":
+        deliver()
+        return
+    app = current_app._get_current_object()
+
+    def work() -> None:
+        with app.app_context():
+            deliver()
+
+    threading.Thread(target=work, daemon=True).start()
+
+
 def _send_logged(to: str, token: str, purpose: str) -> None:
     try:
         send_link_email(to, token, purpose)
