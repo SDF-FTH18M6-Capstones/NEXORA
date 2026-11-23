@@ -11,7 +11,7 @@ services:
     buildCommand: pip install -r requirements.txt
     # `app` is a package, so the factory is app:create_app(). Workers and the 30 s
     # timeout are in backend/gunicorn.conf.py.
-    startCommand: gunicorn "app:create_app()"
+    startCommand: flask --app app db upgrade && gunicorn "app:create_app()"
     # Runs the migrations before each new version starts (paid plans only; on a
     # free plan run `flask --app app db upgrade` from the Render shell instead).
     # preDeployCommand: flask --app app db upgrade
