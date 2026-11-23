@@ -14,7 +14,7 @@ DEFAULTS = {
     "manual_flag_limit": 2_000_000,  # KES 20,000
     "repeat_count": 3,
     "repeat_window_hours": 24,
-    "quick_withdrawal_hours": 24,  # 0 switches this flag off
+    "quick_withdrawal_hours": 24,  # 0 (set in the database only) switches this flag off
 }
 MAX_AUTO_CONFIRM = 500_000  # KES 5,000: a hard ceiling no setting can lift
 

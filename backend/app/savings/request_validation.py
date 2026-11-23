@@ -35,6 +35,15 @@ def _text(value, name: str, low: int, high: int) -> str:
     return text
 
 
+def _member_reference(value) -> str:
+    """`manual-` and `stk-` belong to rows the system writes; a member cannot
+    pre-occupy them."""
+    reference = parse_reference(value)
+    if reference.lower().startswith(("manual-", "stk-", "mpesa-")):
+        raise InvalidRequest("reference cannot start with manual-, stk- or mpesa-.")
+    return reference
+
+
 def parse_request(body: dict) -> dict:
     """A clean request, or `InvalidRequest` (the routes answer it as a 400)."""
     kind = body.get("kind")
@@ -47,7 +56,7 @@ def parse_request(body: dict) -> dict:
         "kind": kind,
         "method": method,
         "amount": parse_amount(body.get("amount")),
-        "reference": parse_reference(body.get("reference")),
+        "reference": _member_reference(body.get("reference")),
         "phone": None,
         "bank_name": None,
         "account_ref": None,

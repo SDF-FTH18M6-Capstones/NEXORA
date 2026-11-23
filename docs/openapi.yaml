@@ -3902,9 +3902,9 @@ paths:
       description: '**Who:** `sacco.update` (the SACCO admin). Send any of the settings; the rest keep their
         value. `auto_confirm_limit` (0 to 500000, default 0: every deposit waits for an officer; a
         deposit at or under it, with no flag, posts at once after a paid M-Pesa prompt),
-        `large_amount_limit` (default 10000000), `manual_flag_limit` (default 2000000),
+        `large_amount_limit` (100 to 20000000, default 10000000), `manual_flag_limit` (100 to 5000000, default 2000000),
         `repeat_count` (2 to 20, default 3), `repeat_window_hours` (1 to 720, default 24),
-        `quick_withdrawal_hours` (0 to 720, default 24; 0 switches that flag off). Audited as
+        `quick_withdrawal_hours` (1 to 720, default 24). The large-amount flag also adds up a member''s payments over `repeat_window_hours`, so splitting does not avoid it. Audited as
         `deposit_controls.set`, and the officers are emailed.
 
 

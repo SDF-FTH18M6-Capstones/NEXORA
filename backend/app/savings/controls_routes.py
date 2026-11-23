@@ -30,16 +30,15 @@ from app.models.stk_push import StkPush
 from app.models.user import User
 from app.saccos import payment_details as pay_in
 from app.savings import flags as deposit_flags
-from app.savings.validation import MAX_TRANSACTION_AMOUNT
 from app.security.tenant import permission_scoped
 
 LIMITS = {  # setting -> (lowest, highest)
     "auto_confirm_limit": (0, MAX_AUTO_CONFIRM),
-    "large_amount_limit": (100, MAX_TRANSACTION_AMOUNT),
-    "manual_flag_limit": (100, MAX_TRANSACTION_AMOUNT),
+    "large_amount_limit": (100, 20_000_000),  # KES 200,000: no setting hides big money
+    "manual_flag_limit": (100, 5_000_000),
     "repeat_count": (2, 20),
     "repeat_window_hours": (1, 720),
-    "quick_withdrawal_hours": (0, 720),
+    "quick_withdrawal_hours": (1, 720),
 }
 STALE_AFTER = timedelta(hours=24)  # a paid push still unconfirmed after this is listed
 
@@ -221,6 +220,8 @@ def reconcile(sacco_id: int) -> dict:
         if req is None:
             flag("paid_not_recorded", push, None, "M-Pesa paid, no deposit request.")
             continue
+        if req.membership_id != push.membership_id:
+            flag("member_differs", push, req, "Recorded for a different member.")
         if req.amount_minor != push.amount:
             flag(
                 "amount_differs",

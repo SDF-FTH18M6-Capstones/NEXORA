@@ -182,7 +182,11 @@ def list_mine(user_id: int, sacco_id: int, kind, limit, cursor):
     )
     if kind is not None:
         stmt = stmt.where(PaymentRequest.kind == kind)
-    return _page(stmt, _clamp(limit), cursor, with_email=False)
+    items, nxt = _page(stmt, _clamp(limit), cursor, with_email=False)
+    for item in items:  # a member must not learn the flag thresholds by probing
+        for key in ("flags", "first_approved_by", "awaiting_second_approval"):
+            item.pop(key, None)
+    return items, nxt
 
 
 def list_for_sacco(user_id: int, sacco_id: int, status, limit, cursor):
@@ -327,6 +331,12 @@ def reject(user_id: int, request_id: int, reason: str) -> dict:
         raise Conflict(
             "Someone already decided this request.",
             code=REQUEST_ALREADY_DECIDED,
+        )
+    if row.first_approved_by == officer.id:
+        db.session.rollback()
+        raise Forbidden(
+            "You gave the first approval; a different officer must reject it.",
+            code=SECOND_OFFICER_REQUIRED,
         )
     row.status = "rejected"
     row.reject_reason = reason

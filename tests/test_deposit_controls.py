@@ -778,3 +778,167 @@ def test_only_officers_with_report_access_read_the_reconciliation(schema_app):
     assert client.get(url).status_code == 401
     other = Setup()
     assert client.get(url, headers=auth_headers(other.admin)).status_code == 404
+
+
+# ---- found by the red-team review ---------------------------------------------
+
+
+def test_the_first_approver_rejecting_is_a_403_not_a_500(schema_app):
+    s = Setup()
+    client = schema_app.test_client()
+    made = manual(client, s, amount=2_500_000, code="FIRSTREJ01")
+    rid = made.json["request"]["id"]
+    mine = client.post(
+        f"{SAVINGS}/requests/{rid}/reject",
+        json={"reason": "changed my mind"},
+        headers=auth_headers(s.admin),
+    )
+    assert mine.status_code == 403
+    assert mine.json["error"]["code"] == "SECOND_OFFICER_REQUIRED"
+    other = client.post(
+        f"{SAVINGS}/requests/{rid}/reject",
+        json={"reason": "not ours"},
+        headers=auth_headers(add_officer(s)),
+    )
+    assert other.status_code == 200
+
+
+@pytest.mark.parametrize("ref", ["manual-1-GRIEF00001", "stk-5", "MPESA-X", "Stk-9"])
+def test_a_member_cannot_take_a_reference_the_system_uses(schema_app, ref):
+    s = Setup()
+    made = schema_app.test_client().post(
+        f"{SAVINGS}/requests",
+        json={
+            "sacco_id": s.sacco.id,
+            "kind": "deposit",
+            "method": "mpesa",
+            "amount": 100,
+            "phone": "0712345678",
+            "reference": ref,
+        },
+        headers=auth_headers(s.member),
+    )
+    assert made.status_code == 400
+
+
+def test_a_rejected_receipt_is_refused_not_queued(schema_app):
+    s = Setup()
+    client = schema_app.test_client()
+    first = manual(client, s, amount=2_500_000, code="REJECTED01")
+    client.post(
+        f"{SAVINGS}/requests/{first.json['request']['id']}/reject",
+        json={"reason": "wrong member"},
+        headers=auth_headers(add_officer(s)),
+    )
+    again = manual(client, s, amount=2_500_000, code="REJECTED01")
+    assert again.status_code == 409
+    assert again.json["error"]["code"] == "DUPLICATE_RECEIPT"
+
+
+def test_a_member_does_not_see_flags_on_their_own_requests(schema_app):
+    s = Setup()
+    client = schema_app.test_client()
+    client.post(
+        f"{SAVINGS}/requests",
+        json={
+            "sacco_id": s.sacco.id,
+            "kind": "deposit",
+            "method": "mpesa",
+            "amount": 12_000_000,
+            "phone": "0712345678",
+            "reference": f"mine-{receipt()}",
+        },
+        headers=auth_headers(s.member),
+    )
+    mine = client.get(
+        f"{SAVINGS}/requests/me?sacco_id={s.sacco.id}", headers=auth_headers(s.member)
+    )
+    (item,) = mine.json["items"]
+    assert not {"flags", "first_approved_by", "awaiting_second_approval"} & set(item)
+
+
+def test_a_large_interest_credit_is_not_posted_by_one_officer(schema_app):
+    s = Setup()
+    client = schema_app.test_client()
+    url = f"{SAVINGS}/accounts/{s.account.id}/interest"
+    big = client.post(
+        url,
+        json={"amount": 10_000_000, "reference": "int-big"},
+        headers=auth_headers(s.admin),
+    )
+    assert big.status_code == 409
+    assert big.json["error"]["code"] == "NEEDS_SECOND_APPROVAL"
+    small = client.post(
+        url,
+        json={"amount": 500, "reference": "int-small"},
+        headers=auth_headers(s.admin),
+    )
+    assert small.status_code == 201 and balance_of(s) == 500
+
+
+def test_interest_counts_as_a_recent_deposit_for_the_withdrawal_flag(schema_app):
+    from app.savings import service
+
+    s = Setup()
+    service.post_interest(s.admin.id, s.account.id, 5_000, "int-quick")
+    db.session.remove()
+    refused = schema_app.test_client().post(
+        f"{SAVINGS}/accounts/{s.account.id}/withdrawals",
+        json={"amount": 1_000, "reference": "wd-after-interest"},
+        headers=auth_headers(s.admin),
+    )
+    assert refused.status_code == 409
+
+
+def test_the_controls_cannot_be_set_to_hide_big_money(schema_app):
+    s = Setup()
+    client = schema_app.test_client()
+    url = f"/api/v1/saccos/{s.sacco.id}/deposit-controls"
+    for body in (
+        {"large_amount_limit": 20_000_001},
+        {"manual_flag_limit": 5_000_001},
+        {"quick_withdrawal_hours": 0},
+    ):
+        bad = client.put(url, json=body, headers=auth_headers(s.admin))
+        assert bad.status_code == 400, body
+
+
+def test_splitting_a_large_deposit_into_small_ones_is_flagged(schema_app):
+    s = Setup()
+    client = schema_app.test_client()
+    codes = [
+        manual(client, s, amount=1_999_990 - i).status_code for i in range(6)
+    ]  # each under the manual limit; together over the large-amount limit
+    assert codes == [201, 201, 201, 201, 201, 202]
+
+
+def test_repeated_direct_withdrawals_are_flagged(schema_app):
+    s = Setup(balance=100_000)
+    set_controls(s, quick_withdrawal_hours=0)  # isolate the repeat flag
+    client = schema_app.test_client()
+    codes = [
+        client.post(
+            f"{SAVINGS}/accounts/{s.account.id}/withdrawals",
+            json={"amount": 777, "reference": f"rep-wd-{i}"},
+            headers=auth_headers(s.admin),
+        ).status_code
+        for i in range(3)
+    ]
+    assert codes == [201, 201, 409]
+
+
+def test_a_callback_does_not_link_to_another_amount_and_lowercase_receipts_match(
+    schema_app, daraja_on
+):
+    s = Setup()
+    client = schema_app.test_client()
+    manual(client, s, code="MISMATCH01", amount=4_000)
+    pay(client, s, amount=10_000, code="MISMATCH01")
+    (row,) = requests_of(s)
+    assert row.stk_push_id is None
+    assert "payment.stk_link_mismatch" in actions(s)
+    # a lowercase receipt from Safaricom still finds the manual entry
+    manual(client, s, code="LOWERCASE1", amount=6_000)
+    push_id, _, _ = pay(client, s, amount=6_000, code="lowercase1")
+    linked = [r for r in requests_of(s) if r.mpesa_receipt == "LOWERCASE1"]
+    assert len(linked) == 1 and linked[0].stk_push_id == push_id

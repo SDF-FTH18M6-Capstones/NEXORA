@@ -105,6 +105,8 @@ def withdraw(user_id: int, account_id: int):
 @money_limit
 @signed_in
 def interest(user_id: int, account_id: int):
+    amount, _ = parse_money(_body())
+    deposits.refuse_large_interest(user_id, account_id, amount)
     return _post_money(user_id, account_id, service.post_interest)
 
 

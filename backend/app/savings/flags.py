@@ -63,8 +63,42 @@ def evaluate(
     )
     if exclude_request_id is not None:
         same = same.where(PaymentRequest.id != exclude_request_id)
-    if db.session.scalar(same) + 1 >= limits["repeat_count"]:
+    repeats = db.session.scalar(same)
+    if kind == "withdrawal":
+        # Withdrawals posted directly leave no request, only a ledger row.
+        repeats += db.session.scalar(
+            select(func.count())
+            .select_from(Transaction)
+            .join(SavingsAccount, SavingsAccount.id == Transaction.savings_account_id)
+            .where(
+                SavingsAccount.membership_id == membership_id,
+                SavingsAccount.sacco_id == sacco_id,
+                Transaction.type == TransactionType.WITHDRAWAL,
+                Transaction.reverses_id.is_(None),
+                Transaction.amount == amount,
+                Transaction.created_at >= since,
+            )
+        )
+    if repeats + 1 >= limits["repeat_count"]:
         flags.append("repeated_amount")
+
+    # Splitting one large payment into small ones: add up the window.
+    total = db.session.scalar(
+        select(func.coalesce(func.sum(PaymentRequest.amount_minor), 0)).where(
+            PaymentRequest.sacco_id == sacco_id,
+            PaymentRequest.membership_id == membership_id,
+            PaymentRequest.kind == kind,
+            PaymentRequest.status != "rejected",
+            PaymentRequest.created_at >= since,
+            *(
+                [PaymentRequest.id != exclude_request_id]
+                if exclude_request_id is not None
+                else []
+            ),
+        )
+    )
+    if "large_amount" not in flags and total + amount >= limits["large_amount_limit"]:
+        flags.append("large_amount")
 
     if kind == "withdrawal" and limits["quick_withdrawal_hours"]:
         recent = now - timedelta(hours=limits["quick_withdrawal_hours"])
@@ -75,7 +109,9 @@ def evaluate(
             .where(
                 SavingsAccount.membership_id == membership_id,
                 SavingsAccount.sacco_id == sacco_id,
-                Transaction.type == TransactionType.DEPOSIT,
+                Transaction.type.in_(
+                    (TransactionType.DEPOSIT, TransactionType.INTEREST)
+                ),
                 Transaction.reverses_id.is_(None),
                 Transaction.created_at >= recent,
             )

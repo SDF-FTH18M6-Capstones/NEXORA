@@ -225,7 +225,7 @@ def stk_callback(token):
     ):
         paid, data["ResultDesc"] = False, "Paid amount did not match the request."
     receipt = items.get("MpesaReceiptNumber")
-    receipt = _text(receipt, 20).strip() if isinstance(receipt, str) else ""
+    receipt = _text(receipt, 20).strip().upper() if isinstance(receipt, str) else ""
     if paid and not receipt:  # no receipt number: nothing for an officer to match
         paid, data["ResultDesc"] = False, "No receipt number."
     row.status = "succeeded" if paid else "failed"

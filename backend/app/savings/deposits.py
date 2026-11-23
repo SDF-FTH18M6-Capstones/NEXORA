@@ -81,6 +81,11 @@ def manual_deposit(
                 "This M-Pesa receipt is already recorded in this SACCO.",
                 code=DUPLICATE_RECEIPT,
             )
+        if held.status == "rejected":
+            raise Conflict(
+                "This M-Pesa receipt was rejected by an officer.",
+                code=DUPLICATE_RECEIPT,
+            )
         if held.status == "confirmed":
             return _posted(held.id, replayed=True), True
         return request_service.item_by_id(held.id), False
@@ -163,6 +168,31 @@ def _posted(request_id: int, replayed: bool) -> dict:
     }
 
 
+def refuse_large_interest(user_id: int, account_id: int, amount: int) -> None:
+    """Interest is a credit with no M-Pesa receipt: above the SACCO's large-amount
+    limit one officer cannot post it alone."""
+    account = db.session.get(SavingsAccount, account_id)
+    if account is None:
+        return
+    try:
+        service._actor(user_id, account.sacco_id)
+    except SavingsError:
+        return
+    if amount >= deposit_flags.controls(account.sacco_id)["large_amount_limit"]:
+        audit_log.record(
+            account.sacco_id,
+            user_id,
+            "savings.interest.flagged",
+            f"savings_account:{account.id}",
+        )
+        db.session.commit()
+        raise Conflict(
+            "This credit is over the SACCO's large-amount limit and cannot be "
+            "posted by one officer.",
+            code=NEEDS_SECOND_APPROVAL,
+        )
+
+
 def refuse_flagged_withdrawal(user_id: int, account_id: int, amount: int) -> None:
     """A withdrawal one officer would post directly must not slip past the flags.
 
@@ -194,7 +224,7 @@ def refuse_flagged_withdrawal(user_id: int, account_id: int, amount: int) -> Non
         )
 
 
-def record_stk_payment(push: StkPush) -> None:
+def record_stk_payment(push: StkPush, _retry: bool = True) -> None:
     """A paid STK push becomes one pending deposit for an officer to confirm.
 
     Safaricom retries callbacks and an officer may already have typed the
@@ -204,6 +234,17 @@ def record_stk_payment(push: StkPush) -> None:
     """
     held = _by_receipt(push.sacco_id, push.mpesa_receipt)
     if held is not None:
+        if (held.membership_id, held.amount_minor) != (push.membership_id, push.amount):
+            # Never link a payment to a different member or amount: reconciliation
+            # lists it instead.
+            audit_log.record(
+                push.sacco_id,
+                None,
+                "payment.stk_link_mismatch",
+                f"stk:{push.id} payment_request:{held.id}",
+            )
+            db.session.commit()
+            return
         if held.stk_push_id is None:
             held.stk_push_id = push.id
             audit_log.record(
@@ -240,7 +281,9 @@ def record_stk_payment(push: StkPush) -> None:
         db.session.commit()
     except IntegrityError:  # a manual entry for this receipt landed meanwhile
         db.session.rollback()
-        return record_stk_payment(push)
+        if _retry:
+            return record_stk_payment(push, _retry=False)
+        raise
 
     limit = deposit_flags.controls(push.sacco_id)["auto_confirm_limit"]
     if flags or not 0 < push.amount <= limit:
