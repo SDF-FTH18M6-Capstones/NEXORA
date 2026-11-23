@@ -1,4 +1,4 @@
-"""STK push (sandbox, behind DARAJA_ENABLED, off by default).
+"""STK push (behind DARAJA_ENABLED, off by default; DARAJA_ENV picks the API).
 
 POST /saccos/<id>/stk-push        a member asks M-Pesa to prompt their phone
 GET  /saccos/<id>/stk-push/<pid>  that member, or `member.manage`: the answer

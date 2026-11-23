@@ -44,8 +44,10 @@ class Config:
     MAIL_PASSWORD = os.environ.get("MAIL_PASSWORD", "")
     FRONTEND_URL = os.environ.get("FRONTEND_URL", "http://localhost:5173")
 
-    # M-Pesa STK push, Safaricom SANDBOX only. Off unless set to 1, and refused
-    # outright when APP_ENV=production (see app/__init__.py).
+    # M-Pesa STK push. Off unless DARAJA_ENABLED=1. DARAJA_ENV picks Safaricom's
+    # sandbox (default) or live API; with APP_ENV=production only the live API is
+    # allowed (see _check_daraja_settings in app/__init__.py).
+    DARAJA_ENV = os.environ.get("DARAJA_ENV", "sandbox")
     DARAJA_ENABLED = os.environ.get("DARAJA_ENABLED", "").strip().lower() in (
         "1",
         "true",
@@ -70,6 +72,7 @@ class TestConfig(Config):
     RATELIMIT_ENABLED = False  # tests make many logins from one address
     SECRET_KEY = "test-only-not-a-real-secret-0123456789"
     DARAJA_ENABLED = False  # a test turns it on for itself; the default stays off
+    DARAJA_ENV = "sandbox"  # whatever the developer's environment says
     # A developer's .env may hold real mail settings: tests must never send mail.
     MAIL_BACKEND = "log"
     MAIL_USERNAME = MAIL_PASSWORD = ""

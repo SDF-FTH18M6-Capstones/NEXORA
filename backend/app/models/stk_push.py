@@ -1,4 +1,4 @@
-"""One STK push asked of M-Pesa (sandbox). Records the answer; moves no money."""
+"""One STK push asked of M-Pesa. Records the answer; a deposit is made separately."""
 
 from datetime import datetime
 

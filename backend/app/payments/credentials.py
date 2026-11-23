@@ -43,12 +43,18 @@ def encrypt(plain: str) -> str:
 
 
 def for_sacco(sacco_id: int) -> Credentials | None:
-    """The SACCO's own credentials, else the environment's sandbox ones, else None."""
+    """The SACCO's own credentials, else (sandbox only) the environment's, else None.
+
+    In production there is no fallback: the shared keys in the environment are
+    sandbox keys and must never reach the live API.
+    """
     row = db.session.execute(
         select(SaccoDarajaSettings).where(SaccoDarajaSettings.sacco_id == sacco_id)
     ).scalar_one_or_none()
     cfg = current_app.config
     if row is None:
+        if cfg.get("DARAJA_ENV") == "production":
+            return None
         env = [cfg.get(k) for k in _ENV]
         return Credentials(env[3], env[0], env[1], env[2]) if all(env) else None
     try:

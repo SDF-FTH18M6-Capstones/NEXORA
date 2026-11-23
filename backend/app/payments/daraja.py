@@ -1,9 +1,13 @@
-"""Safaricom Daraja STK push, SANDBOX ONLY.
+"""Safaricom Daraja STK push.
 
-The base URL is fixed to the sandbox and the feature refuses to run in
-production: no real money until a lawyer has ruled on the NPS Act definition.
-Nexora holds no funds. It asks M-Pesa to prompt the member's phone and records
-the answer; it never credits savings. An officer still confirms the deposit.
+`DARAJA_ENV` picks the API: `sandbox` (the default) or `production`. In
+production a push uses only the SACCO's own saved credentials, never the shared
+keys in the environment, which are sandbox keys: sandbox credentials are never
+sent to the live URL.
+
+Nexora holds no funds. It asks M-Pesa to prompt the member's phone, into the
+SACCO's own paybill or till, and records the answer. A paid answer becomes a
+pending deposit; an officer confirms it (see `savings.deposits`).
 """
 
 import base64
@@ -18,20 +22,34 @@ from flask import current_app
 
 from app.payments.credentials import Credentials
 
-BASE = "https://sandbox.safaricom.co.ke"
+BASES = {
+    "sandbox": "https://sandbox.safaricom.co.ke",
+    "production": "https://api.safaricom.co.ke",
+}
 PHONE = re.compile(r"254[17][0-9]{8}")
 _tokens: dict[
-    tuple[str, str], tuple[str, float]
-] = {}  # (key, secret) -> (token, expiry)
+    tuple[str, str, str], tuple[str, float]
+] = {}  # (base url, key, secret) -> (token, expiry)
 
 
 class DarajaError(Exception):
     """Daraja did not answer or refused. The message is safe to show."""
 
 
+def environment() -> str:
+    return current_app.config.get("DARAJA_ENV") or "sandbox"
+
+
+def base_url() -> str:
+    return BASES[environment()]
+
+
 def enabled() -> bool:
+    """DARAJA_ENABLED, and in a production app only with DARAJA_ENV=production."""
     cfg = current_app.config
-    return bool(cfg.get("DARAJA_ENABLED")) and cfg.get("APP_ENV") != "production"
+    if not cfg.get("DARAJA_ENABLED"):
+        return False
+    return cfg.get("APP_ENV") != "production" or environment() == "production"
 
 
 def msisdn(value) -> str | None:
@@ -44,7 +62,7 @@ def msisdn(value) -> str | None:
 def _call(path: str, payload=None, headers=None) -> dict:
     data = None if payload is None else json.dumps(payload).encode()
     request = urllib.request.Request(
-        BASE + path,
+        base_url() + path,
         data=data,
         headers={"Content-Type": "application/json", **(headers or {})},
     )
@@ -59,7 +77,8 @@ def _call(path: str, payload=None, headers=None) -> dict:
 
 
 def _bearer(key: str, secret: str) -> dict:
-    cached = _tokens.get((key, secret))
+    slot = (base_url(), key, secret)
+    cached = _tokens.get(slot)
     if cached is None or time.time() >= cached[1]:
         basic = base64.b64encode(f"{key}:{secret}".encode()).decode()
         reply = _call(
@@ -69,7 +88,7 @@ def _bearer(key: str, secret: str) -> dict:
         if not reply.get("access_token"):
             raise DarajaError("M-Pesa refused the sign-in.")
         expires = max(int(reply.get("expires_in", 3599)) - 60, 0)
-        cached = _tokens[key, secret] = (reply["access_token"], time.time() + expires)
+        cached = _tokens[slot] = (reply["access_token"], time.time() + expires)
     return {"Authorization": f"Bearer {cached[0]}"}
 
 
@@ -82,16 +101,22 @@ def stk_push(
 ) -> dict:
     """Ask M-Pesa to prompt `phone` for `shillings`. Returns Daraja's reply.
 
-    `creds` are the SACCO's own (default: the environment's sandbox ones). A
-    `till` number pays a Buy Goods till; its shortcode is the head-office number.
+    `creds` are the SACCO's own (sandbox only: the environment's shared keys when
+    none are given). In production they must be the SACCO's own: the shared keys
+    are sandbox keys and are never sent to the live URL. A `till` number pays a
+    Buy Goods till; its shortcode is the head-office number.
     """
     cfg = current_app.config
-    creds = creds or Credentials(
-        cfg["DARAJA_SHORTCODE"],
-        cfg["DARAJA_CONSUMER_KEY"],
-        cfg["DARAJA_CONSUMER_SECRET"],
-        cfg["DARAJA_PASSKEY"],
-    )
+    if environment() == "production":
+        if creds is None or not creds.own:
+            raise DarajaError("Live M-Pesa prompts use the SACCO's own credentials.")
+    elif creds is None:
+        creds = Credentials(
+            cfg["DARAJA_SHORTCODE"],
+            cfg["DARAJA_CONSUMER_KEY"],
+            cfg["DARAJA_CONSUMER_SECRET"],
+            cfg["DARAJA_PASSKEY"],
+        )
     stamp = datetime.now(UTC).strftime("%Y%m%d%H%M%S")
     password = base64.b64encode(f"{creds.shortcode}{creds.passkey}{stamp}".encode())
     reply = _call(

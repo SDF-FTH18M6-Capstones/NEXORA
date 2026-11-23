@@ -225,12 +225,21 @@ def _check_required_settings(app):
         raise RuntimeError(
             f'APP_ENV must be "development" or "production", not {app_env!r}.'
         )
+    daraja_env = str(app.config.get("DARAJA_ENV") or "sandbox").strip().lower()
+    if daraja_env not in DARAJA_ENVS:
+        raise RuntimeError(
+            f'DARAJA_ENV must be "sandbox" or "production", not {daraja_env!r}.'
+        )
+    app.config["DARAJA_ENV"] = daraja_env
     if app_env == PRODUCTION:
         _check_production_settings(app)
     if app.config.get("DARAJA_ENABLED"):
         _check_daraja_settings(app, app_env)
 
 
+DARAJA_ENVS = ("sandbox", "production")
+# The shared keys are sandbox keys. Live Daraja never reads them: every SACCO
+# brings its own, so only the callback is needed here.
 DARAJA_SETTINGS = (
     "DARAJA_CONSUMER_KEY",
     "DARAJA_CONSUMER_SECRET",
@@ -239,16 +248,21 @@ DARAJA_SETTINGS = (
     "DARAJA_CALLBACK_URL",
     "DARAJA_CALLBACK_TOKEN",
 )
+LIVE_DARAJA_SETTINGS = ("DARAJA_CALLBACK_URL", "DARAJA_CALLBACK_TOKEN")
 
 
 def _check_daraja_settings(app, app_env):
-    """STK push is sandbox only: never on in production, never half configured."""
-    if app_env == PRODUCTION:
+    """Never half configured. In a production app only the live API is allowed,
+    and live Daraja needs https, the token in the callback URL and the key that
+    encrypts each SACCO's credentials."""
+    live = app.config.get("DARAJA_ENV") == "production"
+    if app_env == PRODUCTION and not live:
         raise RuntimeError(
-            "DARAJA_ENABLED must be off when APP_ENV=production: STK push is "
-            "sandbox only until a lawyer has ruled on the NPS Act."
+            "DARAJA_ENABLED with APP_ENV=production needs DARAJA_ENV=production: "
+            "sandbox Daraja never runs in a production app."
         )
-    missing = [k for k in DARAJA_SETTINGS if not app.config.get(k)]
+    needed = LIVE_DARAJA_SETTINGS if live else DARAJA_SETTINGS
+    missing = [k for k in needed if not app.config.get(k)]
     if missing:
         raise RuntimeError(f"DARAJA_ENABLED needs: {', '.join(missing)}.")
     # The path token is the only thing that proves a callback came from Safaricom.
@@ -258,6 +272,11 @@ def _check_daraja_settings(app, app_env):
             "DARAJA_CALLBACK_TOKEN must be 32 or more random letters, digits, - or _."
         )
     key = app.config.get("DARAJA_ENCRYPTION_KEY")
+    if live and not key:
+        raise RuntimeError(
+            "DARAJA_ENCRYPTION_KEY is required when DARAJA_ENV=production: live "
+            "prompts use each SACCO's saved credentials (see .env.example)."
+        )
     if key:
         try:
             Fernet(key.encode())

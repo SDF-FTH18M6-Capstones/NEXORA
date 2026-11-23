@@ -1,4 +1,4 @@
-"""STK push: sandbox only, off by default, records answers, never moves money."""
+"""STK push: off by default, sandbox unless DARAJA_ENV says otherwise."""
 
 import base64
 from pathlib import Path
@@ -115,15 +115,11 @@ def test_it_is_off_by_default_and_the_routes_do_not_exist(client):
     assert db.session.query(StkPush).count() == 0
 
 
-def test_the_sandbox_is_the_only_address_it_can_reach():
-    assert daraja.BASE == "https://sandbox.safaricom.co.ke"
-
-
 def test_it_refuses_production_and_a_half_configured_setup(app):
     from app import _check_daraja_settings
 
-    with pytest.raises(RuntimeError, match="sandbox only"):
-        _check_daraja_settings(app, "production")
+    with pytest.raises(RuntimeError, match="DARAJA_ENV=production"):
+        _check_daraja_settings(app, "production")  # a sandbox env in a production app
     old = app.config["DARAJA_CONSUMER_KEY"]
     app.config["DARAJA_CONSUMER_KEY"] = ""  # a developer's .env may set it
     try:

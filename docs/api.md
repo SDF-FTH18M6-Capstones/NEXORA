@@ -1927,7 +1927,7 @@ Error statuses: 401, 403, 404
 
 **Save this SACCO's own Daraja credentials (encrypted at rest)**
 
-**Who:** `sacco.update` (the SACCO admin). Off by default (404). Send `shortcode` (5 to 7 digits: the paybill, or the head-office number of a till), `consumer_key`, `consumer_secret` and `passkey` (printable, no spaces). They are stored encrypted with `DARAJA_ENCRYPTION_KEY` and never returned or logged; the audit row (`daraja.credentials_set`) names the fields, not the values. Saving again replaces them. Answers 503 if the encryption key is not set. Sandbox only.
+**Who:** `sacco.update` (the SACCO admin). Off by default (404). Send `shortcode` (5 to 7 digits: the paybill, or the head-office number of a till), `consumer_key`, `consumer_secret` and `passkey` (printable, no spaces). They are stored encrypted with `DARAJA_ENCRYPTION_KEY` and never returned or logged; the audit row (`daraja.credentials_set`) names the fields, not the values. Saving again replaces them. Answers 503 if the encryption key is not set. In production these are the only credentials a push can use.
 
 **Rate limit:** write limit.
 
@@ -1950,11 +1950,11 @@ Error statuses: 400, 503, 401, 403, 404
 
 ## POST /api/v1/saccos/{sacco_id}/stk-push
 
-**Ask M-Pesa to prompt my phone (sandbox)**
+**Ask M-Pesa to prompt my phone**
 
-**Who:** an active member (`savings.request`). **Sandbox only and off by default:** with `DARAJA_ENABLED` unset this route answers 404 as if it did not exist, and the app refuses to start with it on in production. Send `amount` (minor units, whole shillings, KES 1 to KES 150,000) and `phone` (07.., 01.. or 254..). At most 3 prompts may wait per member (429). The member then enters their M-Pesa PIN on the phone. Nexora holds no funds and credits nothing: an officer still confirms the deposit through the payment requests.
+**Who:** an active member (`savings.request`). **Off by default:** with `DARAJA_ENABLED` unset this route answers 404 as if it did not exist. `DARAJA_ENV` picks Safaricom's sandbox (default) or live API; a production app starts with Daraja on only for `DARAJA_ENV=production` (see `docs/deployment-checklist.md`). Send `amount` (minor units, whole shillings, KES 1 to KES 150,000) and `phone` (07.., 01.. or 254..). At most 3 prompts may wait per member (429). The member then enters their M-Pesa PIN on the phone. Nexora holds no funds: a paid answer becomes a pending deposit that an officer confirms (or that posts at once under the SACCO's auto-confirm limit, if it set one).
 
-The prompt uses the SACCO's own saved Daraja credentials (see `daraja-settings`), else the environment's sandbox ones. If the live pay-in is a till (`mpesa_type` `till`) the request is `CustomerBuyGoodsOnline` to that till; a paybill is `CustomerPayBillOnline`. A SACCO that takes Pochi la Biashara (`pochi`) is record only: the route answers 409. A SACCO with no usable credentials also answers 409.
+The prompt uses the SACCO's own saved Daraja credentials (see `daraja-settings`); in the sandbox, with none saved, the environment's shared sandbox keys. **In production there is no fallback:** a SACCO with no saved credentials answers 409, and the approved pay-in details must exist and, for a paybill, match the saved shortcode (409 otherwise). If the live pay-in is a till (`mpesa_type` `till`) the request is `CustomerBuyGoodsOnline` to that till; a paybill is `CustomerPayBillOnline`. A SACCO that takes Pochi la Biashara (`pochi`) is record only: the route answers 409. A SACCO with no usable credentials also answers 409.
 
 **Rate limit:** money limit.
 
@@ -1975,7 +1975,7 @@ Error statuses: 400, 409, 502, 401, 403, 404
 
 ## GET /api/v1/saccos/{sacco_id}/stk-push/{push_id}
 
-**The answer to one STK push (sandbox)**
+**The answer to one STK push**
 
 **Who:** the member who asked, or a holder of `member.manage`; anyone else gets 404. `status` is `pending`, `succeeded` or `failed`. 404 while the feature is off.
 
@@ -1989,9 +1989,9 @@ Error statuses: 401, 403, 404
 
 ## POST /api/v1/daraja/callback/{token}
 
-**Safaricom's answer to an STK push (sandbox)**
+**Safaricom's answer to an STK push**
 
-Called by Safaricom, not by the app. The unguessable `token` in the path is the only secret (`DARAJA_CALLBACK_TOKEN`); a wrong token is 404. Always acknowledges with `{ResultCode: 0}`, even for an unknown or repeated answer, and changes nothing for those. A success whose amount differs from the request is recorded as `failed`. 404 while the feature is off.
+Called by Safaricom, not by the app. The unguessable `token` in the path is the only secret (`DARAJA_CALLBACK_TOKEN`); a wrong token is 404. Always acknowledges with `{ResultCode: 0}`, even for an unknown or repeated answer, and changes nothing for those. A success whose amount differs from the request is recorded as `failed`; a paid one creates a pending deposit for an officer (see `deposit-controls`). 404 while the feature is off.
 
 Parameters: `token` (path, string)
 
