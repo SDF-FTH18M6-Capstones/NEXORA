@@ -4,9 +4,10 @@ Two groups live here because they both serve members: the signed-in user's own
 profile under /members/me (Sam's Move 2 work), and one SACCO's member list
 under /saccos/<sacco_id>/members (Neo's Move 2 work).
 """
+
 from datetime import timedelta
 
-from flask import current_app, g, jsonify, request
+from flask import Response, current_app, g, jsonify, request
 from sqlalchemy import delete, select
 from sqlalchemy.exc import IntegrityError
 
@@ -132,6 +133,73 @@ def patch_me():
         return error_response(exc.status, exc.message)
 
 
+_PROFILE_PHOTO_MAX_BYTES = 1_500_000
+_PROFILE_PHOTO_TYPES = {
+    "image/jpeg": lambda data: data.startswith(b"\xff\xd8\xff"),
+    "image/png": lambda data: data.startswith(b"\x89PNG\r\n\x1a\n"),
+    "image/webp": lambda data: (
+        len(data) >= 12 and data[:4] == b"RIFF" and data[8:12] == b"WEBP"
+    ),
+}
+
+
+@members_bp.get("/me/photo")
+@read_limit
+def get_me_photo():
+    user, error = _me_user()
+    if error:
+        return error
+    if not user.profile_photo or not user.profile_photo_content_type:
+        return "", 204
+    return Response(
+        user.profile_photo,
+        mimetype=user.profile_photo_content_type,
+        headers={"Cache-Control": "private, no-store"},
+    )
+
+
+@members_bp.put("/me/photo")
+@write_limit
+def put_me_photo():
+    user, error = _me_user()
+    if error:
+        return error
+    # This endpoint accepts a larger multipart body than the app's small JSON
+    # default while still rejecting oversized uploads before parsing them.
+    request.max_content_length = _PROFILE_PHOTO_MAX_BYTES + 64 * 1024
+    uploaded = request.files.get("photo")
+    if uploaded is None:
+        return error_response(400, "Choose a JPEG, PNG or WebP photo.")
+    data = uploaded.stream.read(_PROFILE_PHOTO_MAX_BYTES + 1)
+    if not data:
+        return error_response(400, "The selected photo is empty.")
+    if len(data) > _PROFILE_PHOTO_MAX_BYTES:
+        return error_response(413, "Choose a photo smaller than 1.5 MB.")
+    content_type = next(
+        (mime for mime, matches in _PROFILE_PHOTO_TYPES.items() if matches(data)),
+        None,
+    )
+    if content_type is None:
+        return error_response(400, "Choose a valid JPEG, PNG or WebP photo.")
+
+    user.profile_photo = data
+    user.profile_photo_content_type = content_type
+    db.session.commit()
+    return jsonify(saved=True)
+
+
+@members_bp.delete("/me/photo")
+@write_limit
+def delete_me_photo():
+    user, error = _me_user()
+    if error:
+        return error
+    user.profile_photo = None
+    user.profile_photo_content_type = None
+    db.session.commit()
+    return jsonify(deleted=True)
+
+
 @members_bp.get("/me/permissions")
 @read_limit
 def my_permissions():
@@ -175,7 +243,6 @@ def my_permissions():
 # The tenant guard answers 401/404/403/423, so another SACCO is never revealed.
 # Only the platform owner creates, edits or removes administrator memberships.
 # ---------------------------------------------------------------------------
-
 
 
 def _member_json(membership: SaccoMembership, email: str | None) -> dict:
@@ -269,27 +336,57 @@ def _invite_member(sacco_id):
         return error_response(
             403, "Adding or changing members needs member.manage (the SACCO admin)."
         )
-    membership = SaccoMembership(
-        user_id=None,
-        sacco_id=sacco_id,
-        phone=phone,
-        role=role,
-        status=MembershipStatus.INVITED,
-    )
-    db.session.add(membership)
-    try:
-        db.session.flush()
-    except IntegrityError:  # unique (sacco_id, phone)
-        db.session.rollback()
-        return error_response(409, "That phone has already been invited to this SACCO.")
+    membership = db.session.execute(
+        select(SaccoMembership)
+        .where(SaccoMembership.sacco_id == sacco_id, SaccoMembership.phone == phone)
+        .with_for_update()
+    ).scalar_one_or_none()
+    reissued = membership is not None
+    if reissued:
+        if membership.status is not MembershipStatus.INVITED:
+            db.session.rollback()
+            return error_response(409, "That phone already belongs to this SACCO.")
+        if is_admin_role(membership.role) and not can(
+            g.access.user, sacco_id, "admin.manage"
+        ):
+            db.session.rollback()
+            return error_response(
+                403, "Only the platform owner can change a SACCO administrator invite."
+            )
+        old_title_codes = _role_codes(membership)
+        membership.role = role
+        if old_title_codes != {title}:
+            db.session.execute(
+                delete(MembershipRoleLink).where(
+                    MembershipRoleLink.membership_id == membership.id
+                )
+            )
+            _grant_default_title(membership, title)
+    else:
+        membership = SaccoMembership(
+            user_id=None,
+            sacco_id=sacco_id,
+            phone=phone,
+            role=role,
+            status=MembershipStatus.INVITED,
+        )
+        db.session.add(membership)
+        try:
+            db.session.flush()
+        except IntegrityError:  # another request invited this phone at the same time
+            db.session.rollback()
+            return error_response(
+                409, "That phone has already been invited to this SACCO."
+            )
     row, code = issue_code(
         membership.id,
         g.access.user.id,
         current_app.config["SECRET_KEY"],
         ttl=_code_ttl(sacco_id),
     )
-    _grant_default_title(membership, title)
-    _audit(membership, "member.invite")
+    if not reissued:
+        _grant_default_title(membership, title)
+    _audit(membership, "member.invite_code_reissued" if reissued else "member.invite")
     db.session.commit()
     return (
         jsonify(
@@ -301,7 +398,7 @@ def _invite_member(sacco_id):
             join_code=code,
             expires_at=row.expires_at.isoformat(),
         ),
-        201,
+        200 if reissued else 201,
     )
 
 

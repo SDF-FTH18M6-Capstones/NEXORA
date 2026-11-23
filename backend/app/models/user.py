@@ -1,6 +1,15 @@
 from datetime import datetime
 
-from sqlalchemy import Boolean, CheckConstraint, DateTime, Index, Integer, String, func
+from sqlalchemy import (
+    Boolean,
+    CheckConstraint,
+    DateTime,
+    Index,
+    Integer,
+    LargeBinary,
+    String,
+    func,
+)
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.extensions import db
@@ -37,6 +46,10 @@ class User(db.Model):
     # add a verified user, so registering someone else's email gets an attacker nothing.
     email_verified_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
+    )
+    profile_photo: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
+    profile_photo_content_type: Mapped[str | None] = mapped_column(
+        String(32), nullable=True
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()

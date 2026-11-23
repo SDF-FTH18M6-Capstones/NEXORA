@@ -14,6 +14,7 @@ import { syncAppearance, watchAppearance } from './lib/appearance.js';
 import { can as canPermission, homeFor, ROUTES } from './lib/perms.js';
 import { useAsync } from './lib/useAsync.js';
 import { clearTokens, onSessionEnded } from './lib/http.js';
+import { getMyPhoto } from './api/profile.js';
 import { SessionContext, useSession } from './lib/session.jsx';
 import {
   afterSignIn,
@@ -124,6 +125,7 @@ function SessionProvider({ children }) {
   const [pageKey, setPageKey] = useState(0);
   const [restoreAttempt, setRestoreAttempt] = useState(0);
   const [enteredSaccoId, setEnteredSaccoId] = useState(null);
+  const [profilePhotoState, setProfilePhotoState] = useState(null);
   const openRef = useRef('');
   const toastTimer = useRef(null);
   const routerNavigateRef = useRef(routerNavigate);
@@ -145,6 +147,33 @@ function SessionProvider({ children }) {
   }, [location.pathname, location.search, session]);
 
   const userId = session && session.user ? session.user.id : null;
+  const profilePhoto = profilePhotoState && profilePhotoState.userId === userId
+    ? profilePhotoState.url
+    : null;
+
+  useEffect(() => {
+    let active = true;
+    if (userId == null) return () => { active = false; };
+
+    getMyPhoto()
+      .then(blob => {
+        if (!blob) return;
+        const url = URL.createObjectURL(blob);
+        if (active) setProfilePhotoState({ userId, url });
+        else URL.revokeObjectURL(url);
+      })
+      .catch(() => {}); // Account photo loading should not block the rest of the app.
+
+    return () => { active = false; };
+  }, [userId]);
+
+  useEffect(() => () => {
+    if (profilePhotoState) URL.revokeObjectURL(profilePhotoState.url);
+  }, [profilePhotoState]);
+
+  const setProfilePhoto = useCallback(url => {
+    setProfilePhotoState(url ? { userId, url } : null);
+  }, [userId]);
 
   useEffect(() => {
     if (!ready) return;
@@ -352,6 +381,8 @@ function SessionProvider({ children }) {
   ), [session]);
   const value = useMemo(() => ({
     user: session ? session.user : null,
+    profilePhoto,
+    setProfilePhoto,
     role: session ? session.role : null,
     perms: session ? session.perms : [],
     can,
@@ -374,7 +405,7 @@ function SessionProvider({ children }) {
     logout,
     sessionEnded,
     clearSessionEnded,
-  }), [session, can, navigate, switchSacco, enterSacco, completeJoin, takeOpen, toast, login, logout, sessionEnded, clearSessionEnded, panelRequest, clearPanelRequest, pageKey, retryPage, onErrorAction, enteredSaccoId]);
+  }), [session, profilePhoto, setProfilePhoto, can, navigate, switchSacco, enterSacco, completeJoin, takeOpen, toast, login, logout, sessionEnded, clearSessionEnded, panelRequest, clearPanelRequest, pageKey, retryPage, onErrorAction, enteredSaccoId]);
 
   return (
     <SessionContext.Provider value={value}>
