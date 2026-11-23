@@ -224,7 +224,7 @@ Files: `render.yaml` (API, Postgres, Key Value), `backend/gunicorn.conf.py` (2 w
 - [ ] `TRUSTED_PROXIES=1` (Render is one proxy). Check: five wrong logins from one address lock that address, not everyone; the access log shows real client IPs.
 - [ ] Start command `gunicorn "app:create_app()"` from `backend/` (`app` is a package, so there is no `app:app`). Health check path `/health` (200 `{"status":"ok"}`; 503 `{"status":"unavailable"}` with no detail). `/api/health` stays for manual checks.
 - [ ] Migrations run in `preDeployCommand` (`flask --app app db upgrade`), which needs a paid plan. On a free plan run it from the Render shell before the first start. Head must be `0038`.
-- [ ] `PYTHON_VERSION` in `render.yaml` is `3.13.5`; the project was developed on 3.14. Confirm the build passes, or set the version you tested.
+- [ ] `PYTHON_VERSION` in `render.yaml` is `3.12.8`, the same minor version as CI. `requirements.txt` installs on Python 3.12 and the suite was run on it; 3.13 and 3.14 were not needed.
 - [ ] After the first deploy: one failed login, then the Key Value store holds a `LIMITS:*` key; the logs do not say "Rate-limit storage ... is unreachable".
 
 **Vercel**

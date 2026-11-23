@@ -18,7 +18,7 @@ services:
     healthCheckPath: /health
     envVars:
       - key: PYTHON_VERSION
-        value: 3.13.5
+        value: 3.12.8   # same minor as CI (.github/workflows/ci.yml)
       - key: APP_ENV
         value: production
       - key: SECRET_KEY
