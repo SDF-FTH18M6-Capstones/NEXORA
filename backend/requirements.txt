@@ -12,7 +12,8 @@ cryptography>=44.0.0
 Flask-Limiter==4.1.1
 limits==5.8.0
 redis==8.1.0
-gunicorn==23.0.0pytest-timeout==2.4.0
+gunicorn==23.0.0
+pytest-timeout==2.4.0
 pytest-cov==6.0.0
 ruff==0.11.0
 fakeredis[lua]==2.40.0
