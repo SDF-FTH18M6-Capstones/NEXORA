@@ -74,14 +74,15 @@ services:
       - key: DARAJA_SHORTCODE
         sync: false
 
+  - type: keyvalue
+    name: nexora-redis
+    plan: starter
+    ipAllowList: []   # internal connections only
+    maxmemoryPolicy: noeviction
+
 databases:
   - name: nexora-db
     plan: basic-256mb
     databaseName: nexora
     user: nexora
 
-keyValue:
-  - name: nexora-redis
-    plan: starter
-    ipAllowList: []   # internal connections only
-    maxmemoryPolicy: noeviction
