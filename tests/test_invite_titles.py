@@ -121,6 +121,20 @@ def test_the_legacy_staff_value_still_means_a_secretary(client, world):
     assert resp.get_json()["title"] == "secretary"
 
 
+def test_reinviting_a_pending_phone_updates_the_existing_invite_title(client, world):
+    first = invite(client, world, world["admin"], "member")
+    resent = invite(client, world, world["admin"], "finance_officer")
+
+    assert first.status_code == 201
+    assert resent.status_code == 200
+    body = resent.get_json()
+    assert body["id"] == first.get_json()["id"]
+    assert body["title"] == "finance_officer"
+    assert body["role"] == MembershipRole.STAFF.value
+    membership = db.session.get(SaccoMembership, body["id"])
+    assert _role_codes(membership) == {"finance_officer"}
+
+
 def test_only_the_platform_owner_invites_a_sacco_admin(client, world):
     by_admin = invite(client, world, world["admin"], "sacco_admin")
     assert by_admin.status_code == 403

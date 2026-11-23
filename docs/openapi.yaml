@@ -1618,6 +1618,136 @@ paths:
               required:
               - email
               - current_password
+  /api/v1/members/me/photo:
+    get:
+      summary: Read the caller's profile photo
+      description: >-
+        **Who:** the signed-in account owner. The photo is private to that account.
+
+
+        **Rate limit:** 120 per minute.
+      responses:
+        '200':
+          description: The caller's saved profile photo.
+          content:
+            image/jpeg:
+              schema:
+                type: string
+                format: binary
+            image/png:
+              schema:
+                type: string
+                format: binary
+            image/webp:
+              schema:
+                type: string
+                format: binary
+        '204':
+          description: No profile photo has been saved.
+        '401':
+          description: Missing, invalid or expired access token (`unauthorized`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '429':
+          description: Rate limit exceeded (`rate_limited`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      security:
+      - bearerAuth: []
+    put:
+      summary: Save the caller's profile photo
+      description: >-
+        **Who:** the signed-in account owner. Send a `photo` file using
+        `multipart/form-data`. JPEG, PNG and WebP images are accepted, up to 1.5 MB.
+
+
+        **Rate limit:** 30 per minute.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                photo:
+                  type: string
+                  format: binary
+              required:
+              - photo
+      responses:
+        '200':
+          description: The photo was saved to the caller's account.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  saved:
+                    type: boolean
+                required:
+                - saved
+        '400':
+          description: Missing, empty or unsupported image (`validation_error`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Missing, invalid or expired access token (`unauthorized`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '413':
+          description: The image is larger than 1.5 MB (`payload_too_large`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '429':
+          description: Rate limit exceeded (`rate_limited`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      security:
+      - bearerAuth: []
+    delete:
+      summary: Remove the caller's profile photo
+      description: '**Who:** the signed-in account owner.
+
+
+        **Rate limit:** 30 per minute.'
+      responses:
+        '200':
+          description: The photo was removed from the caller's account.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  deleted:
+                    type: boolean
+                required:
+                - deleted
+        '401':
+          description: Missing, invalid or expired access token (`unauthorized`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '429':
+          description: Rate limit exceeded (`rate_limited`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      security:
+      - bearerAuth: []
   /api/v1/saccos:
     get:
       summary: List SACCOs

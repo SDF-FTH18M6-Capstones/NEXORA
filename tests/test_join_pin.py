@@ -128,6 +128,24 @@ def test_invite_creates_an_invited_membership_and_shows_a_code(client, world):
     assert membership.status is MembershipStatus.INVITED
 
 
+def test_reissuing_an_invite_burns_the_old_code_and_accepts_the_new_one(client, world):
+    first = invite(client, world)
+    resent = client.post(
+        f"/api/v1/saccos/{world.sacco.id}/members",
+        json={"phone": PHONE, "role": "member"},
+        headers=auth(world.admin),
+    )
+    assert resent.status_code == 200, resent.get_data(as_text=True)
+    replacement = resent.get_json()
+    assert replacement["id"] == first["id"]
+    assert replacement["join_code"] != first["join_code"]
+
+    old_code = join(client, world.joiner, first["join_code"])
+    assert old_code.status_code == 400
+    assert "CODE_WRONG" in old_code.get_data(as_text=True)
+    assert join(client, world.joiner, replacement["join_code"]).status_code == 200
+
+
 def test_invited_goes_to_active(client, world):
     body = invite(client, world)
     resp = join(client, world.joiner, body["join_code"])
