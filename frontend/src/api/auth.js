@@ -181,6 +181,7 @@ export async function saccoLoginRequest(session, saccoId, pin) {
   if (!MOCK) {
     return http.post('/auth/sacco-login', {
       body: { sacco_id: saccoId, pin },
+      refreshOn401: false,
     });
   }
 

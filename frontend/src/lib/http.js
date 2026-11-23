@@ -80,7 +80,7 @@ async function send(method, path, { body, params, auth = true, token } = {}) {
 async function request(method, path, opts = {}) {
   try { return await send(method, path, opts); }
   catch (e) {
-    if (e instanceof ApiError && e.status === 401 && opts.auth !== false && !opts._retried) {
+    if (e instanceof ApiError && e.status === 401 && opts.auth !== false && opts.refreshOn401 !== false && !opts._retried) {
       try { const fresh = await refresh(); return await send(method, path, { ...opts, token: fresh, _retried: true }); }
       catch (e2) { clearTokens(); endHandler(); throw e2 instanceof ApiError ? e2 : e; }
     }
