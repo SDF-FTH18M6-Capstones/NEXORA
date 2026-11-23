@@ -17,3 +17,4 @@ redis==8.1.0
 fakeredis[lua]==2.40.0
 PyYAML==6.0.3
 cryptography==50.0.2
+gunicorn==27.0.1

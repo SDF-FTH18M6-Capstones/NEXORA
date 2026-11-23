@@ -6,6 +6,7 @@ import re
 import psycopg
 from cryptography.fernet import Fernet
 from flask import Blueprint, Flask, current_app, jsonify, request
+from sqlalchemy import text
 from sqlalchemy.engine import make_url
 from sqlalchemy.exc import ArgumentError
 from werkzeug.exceptions import HTTPException
@@ -180,6 +181,16 @@ def create_app(config_class=Config):
 
 
 def _register_health(app):
+    @app.get("/health")
+    def host_health():
+        """For the host's health check: up or not, nothing about the database."""
+        try:
+            db.session.execute(text("SELECT 1"))
+        except Exception:
+            db.session.rollback()
+            return jsonify(status="unavailable"), 503
+        return jsonify(status="ok")
+
     @app.get("/api/health")
     @read_limit  # each call opens a database connection
     def health():

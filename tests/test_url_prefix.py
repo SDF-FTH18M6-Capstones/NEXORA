@@ -11,7 +11,7 @@ def test_every_route_lives_under_the_prefix(app):
     rules = [
         r.rule
         for r in app.url_map.iter_rules()
-        if r.endpoint not in ("static", "health")
+        if r.endpoint not in ("static", "health", "host_health")
     ]
     assert rules, "no routes registered"
     assert all(rule.startswith(f"{API_PREFIX}/") for rule in rules), rules
