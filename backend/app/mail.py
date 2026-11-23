@@ -36,7 +36,7 @@ def send_link_email(to: str, token: str, purpose: str = "verify") -> None:
     body = f"{intro}\n\n{link}\n\nIf you did not ask for this, ignore this email."
     backend = config["MAIL_BACKEND"]
     if backend == "log":
-        log.info("%s email to %s: %s", purpose, to, link)
+        current_app.logger.info("%s email to %s: %s", purpose, to, link)
         return
     message = EmailMessage()
     message["Subject"] = subject
@@ -54,7 +54,7 @@ def send_text_email(to: str, subject: str, body: str) -> None:
     """Send a plain message: logged on the log backend, delivered on smtp."""
     config = current_app.config
     if config["MAIL_BACKEND"] == "log":
-        log.info("email to %s (%s):\n%s", to, subject, body)
+        current_app.logger.info("email to %s (%s):\n%s", to, subject, body)
         return
     message = EmailMessage()
     message["Subject"] = subject

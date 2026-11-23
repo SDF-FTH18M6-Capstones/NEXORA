@@ -416,6 +416,10 @@ function AppRouter() {
     'styleguide',
   ];
   const LoginPage = makeLazyPage('login', 'Sign in');
+  // The API emails link to FRONTEND_URL/verify-email and /reset-password (see
+  // docs/frontend-handoff.md); the page modules themselves are verify and reset.
+  const VerifyLinkPage = makeLazyPage('verify', 'Verify your email');
+  const ResetLinkPage = makeLazyPage('reset', 'Reset password');
 
   return (
     <SessionProvider>
@@ -428,6 +432,9 @@ function AppRouter() {
             const Page = path === 'login' ? LoginPage : makeLazyPage(path, title);
             return <Route key={path} path={'/' + path} element={<Page />} />;
           })}
+
+          <Route path="/verify-email" element={<VerifyLinkPage />} />
+          <Route path="/reset-password" element={<ResetLinkPage />} />
 
           {ROUTES.map(route => {
             const Page = makeLazyPage(route.path, route.title);
