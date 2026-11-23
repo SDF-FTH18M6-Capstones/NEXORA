@@ -142,11 +142,17 @@ async function buildSession(user, saccos, selectedSaccoId = null, ahead = null) 
     ? null
     : accountSaccos.find(item => String(item.id) === String(saccoId)) || null;
   const fallbackRoles = isPlatform ? ['platform'] : membership ? roleKeys : [];
-  const perms = MOCK || isSuspended(sacco)
+  const loadedPerms = MOCK || isSuspended(sacco)
     ? permissionsForRoles(fallbackRoles)
     : fallbackRoles.length
       ? await loadPermissions(saccoId, fallbackRoles, ahead)
       : [];
+  // The platform pages and menu test for the word 'platform', but the API names permissions
+  // by what they allow (sacco.manage, admin.manage, ...) and never sends that word. A platform
+  // owner's session carries it, or every platform page answers 403.
+  const perms = isPlatform && !loadedPerms.includes('platform')
+    ? [...loadedPerms, 'platform']
+    : loadedPerms;
 
   return {
     user: toSessionUser(user),
