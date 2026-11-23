@@ -161,10 +161,29 @@ async function buildSession(user, saccos, selectedSaccoId = null, ahead = null) 
   };
 }
 
+// /members/me does not carry is_platform_owner (the sign-in reply does), so a session rebuilt
+// from it (page reload, token refresh) loses the platform role of an account with no SACCO.
+// /members/me/permissions without a sacco_id answers 200 only for a platform owner and 400
+// for everyone else, so ask it when the flag is unknown and the account has no active SACCO.
+async function withPlatformOwnerFlag(user) {
+  if (user.is_platform_owner !== undefined) return user;
+  const memberships = Array.isArray(user.memberships) ? user.memberships : [];
+  if (memberships.some(item => item.status === 'active')) return user;
+  try {
+    const response = await askPermissions(null);
+    if (response && Array.isArray(response.permissions) && response.permissions.includes('platform')) {
+      return { ...user, is_platform_owner: true };
+    }
+  } catch (error) {
+    if (!(error instanceof ApiError) || error.status !== 400) throw error;
+  }
+  return user;
+}
+
 async function loadCurrentSession(user = null) {
   const userRequest = user ? Promise.resolve(user) : http.get('/members/me');
   const saccosRequest = http.get('/members/me/saccos');
-  const currentUser = await userRequest;
+  const currentUser = await withPlatformOwnerFlag(await userRequest);
   // The permissions of the SACCO the person lands in need only its id, and the account already lists it,
   // so ask for them now, side by side with the SACCO list, not after it.
   const landing = currentUser.is_platform_owner
