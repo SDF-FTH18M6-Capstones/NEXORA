@@ -116,7 +116,9 @@ export async function resendVerificationRequest(email) {
 
 export async function joinRequest(phone, code) {
   if (!MOCK) {
-    return http.post('/auth/join', { body: { phone, code } });
+    // No phone: the code came by email and belongs to the signed-in account.
+    const given = String(phone || '').trim();
+    return http.post('/auth/join', { body: given ? { phone: given, code } : { code } });
   }
 
   await mockDelay(300);

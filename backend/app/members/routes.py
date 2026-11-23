@@ -17,10 +17,12 @@ from app.auth.limits import read_limit, write_limit
 from app.auth.routes import _body
 from app.errors import error_response
 from app.extensions import db
+from app.mail import send_join_code_safely
 from app.members import self_service
 from app.members.schemas import (
     InvalidMember,
     parse_create_member,
+    parse_email_invite,
     parse_invite_role,
     parse_update_member,
 )
@@ -402,6 +404,106 @@ def _invite_member(sacco_id):
     )
 
 
+def _invite_member_by_email(sacco_id):
+    """An officer adds an existing, verified account by email: an invited
+    membership plus a one-time join code that is emailed to that address.
+
+    The code is never in the response, so the officer cannot use it; only the
+    owner of the mailbox can finish the join (code, rules, PIN).
+    """
+    try:
+        email, role, title = parse_email_invite(_body())
+    except InvalidMember as exc:
+        return error_response(400, str(exc))
+    if is_admin_role(role) and not can(g.access.user, sacco_id, "admin.manage"):
+        return error_response(
+            403, "Only the platform owner can add a SACCO administrator."
+        )
+    if not is_admin_role(role) and not can(g.access.user, sacco_id, "member.manage"):
+        return error_response(
+            403, "Adding or changing members needs member.manage (the SACCO admin)."
+        )
+    target = db.session.execute(
+        select(User).where(User.email == email)
+    ).scalar_one_or_none()
+    # Same answers as adding an email member: the platform owner looks unknown,
+    # and only an address whose owner opened the emailed link can be invited.
+    if target is None or is_platform_owner(target):
+        return error_response(404, "No registered user with that email.")
+    if target.email_verified_at is None:
+        return error_response(409, "That user has not verified their email yet.")
+    membership = db.session.execute(
+        select(SaccoMembership)
+        .where(
+            SaccoMembership.sacco_id == sacco_id, SaccoMembership.user_id == target.id
+        )
+        .with_for_update()
+    ).scalar_one_or_none()
+    reissued = membership is not None
+    if reissued:
+        if membership.status is not MembershipStatus.INVITED:
+            db.session.rollback()
+            return error_response(409, "That user is already a member of this SACCO.")
+        if is_admin_role(membership.role) and not can(
+            g.access.user, sacco_id, "admin.manage"
+        ):
+            db.session.rollback()
+            return error_response(
+                403, "Only the platform owner can change a SACCO administrator invite."
+            )
+        old_title_codes = _role_codes(membership)
+        membership.role = role
+        if old_title_codes != {title}:
+            db.session.execute(
+                delete(MembershipRoleLink).where(
+                    MembershipRoleLink.membership_id == membership.id
+                )
+            )
+            _grant_default_title(membership, title)
+    else:
+        membership = SaccoMembership(
+            user_id=target.id,
+            sacco_id=sacco_id,
+            role=role,
+            status=MembershipStatus.INVITED,
+        )
+        db.session.add(membership)
+        try:
+            db.session.flush()
+        except IntegrityError:  # another request invited this user at the same time
+            db.session.rollback()
+            return error_response(
+                409, "That user has already been invited to this SACCO."
+            )
+    ttl = _code_ttl(sacco_id)
+    row, code = issue_code(
+        membership.id,
+        g.access.user.id,
+        current_app.config["SECRET_KEY"],
+        ttl=ttl,
+    )
+    if not reissued:
+        _grant_default_title(membership, title)
+    _audit(
+        membership,
+        "member.invite_email_code_reissued" if reissued else "member.invite_email",
+    )
+    sacco_name = db.session.get(Sacco, sacco_id).name
+    body = dict(
+        id=membership.id,
+        email=target.email,
+        role=role.value,
+        title=title,
+        status="invited",
+        expires_at=row.expires_at.isoformat(),
+    )
+    db.session.commit()
+    send_join_code_safely(
+        target.email, code, sacco_name, max(1, int(ttl.total_seconds() // 60))
+    )
+    return jsonify(body), 200 if reissued else 201
+
+
 @saccos_bp.post("/<int:sacco_id>/members")
 @write_limit
 @permission_scoped("member.manage", "admin.manage")
@@ -409,6 +511,8 @@ def add_member(sacco_id):
     raw = request.get_json(silent=True)
     if isinstance(raw, dict) and raw.get("phone") and not raw.get("email"):
         return _invite_member(sacco_id)
+    if isinstance(raw, dict) and raw.get("email") and raw.get("invite") is True:
+        return _invite_member_by_email(sacco_id)
     owner = can(g.access.user, sacco_id, "admin.manage")
     try:
         email, role, status = parse_create_member(_body())

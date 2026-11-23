@@ -66,10 +66,6 @@ export default function Join() {
     setPhoneError('');
     setNotice('');
     setNoticeHasEnterLink(false);
-    if (!phone.trim()) {
-      setPhoneError('Enter your phone number.');
-      return;
-    }
     if (!/^\d{6}$/.test(code)) {
       setError('Enter the 6-digit code.');
       return;
@@ -204,7 +200,7 @@ export default function Join() {
         </h1>
         <p className="text-muted">
           {step === 1
-            ? 'Use the phone number your SACCO admin added and the 6-digit code they gave you.'
+            ? 'Enter the 6-digit code from your email. If your admin added your phone number instead, enter that number too.'
             : needsRules
               ? 'Every fee, fine and rule is below. You join only after you accept them.'
               : 'Choose a 4-digit PIN for this SACCO.'}
@@ -229,7 +225,7 @@ export default function Join() {
 
         {step === 1 ? (
           <form className="flex flex-col gap-1" noValidate onSubmit={submitCode}>
-            <Field id="join-phone" label="Phone number" error={phoneError}>
+            <Field id="join-phone" label="Phone number (only if your admin added your phone)" error={phoneError}>
               <input
                 type="tel"
                 autoComplete="tel"
@@ -238,7 +234,6 @@ export default function Join() {
                   setPhone(event.target.value);
                   setPhoneError('');
                 }}
-                required
               />
             </Field>
             <Field id="join-code" label="6-digit join code" error={error}>

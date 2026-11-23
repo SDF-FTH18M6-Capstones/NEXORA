@@ -800,7 +800,7 @@ Error statuses: 401, 403, 404, 423, 429
 
 **Rate limit:** 30 per minute.
 
-Two forms. **Email:** adds a registered user (status `active` or `inactive`; `invited` is 400). 404 if no user has that email; 409 if the user is already a member, or has not verified their email yet. **Phone** (send `phone` and no `email`): creates an `invited` membership and answers 201 with a one-time `join_code` and `expires_at`, shown once; the person joins with POST /auth/join. 409 if the phone was already invited to this SACCO. Every new membership gets the job title its role implies (staff: secretary).
+Two forms. **Email:** adds a registered user (status `active` or `inactive`; `invited` is 400). 404 if no user has that email; 409 if the user is already a member, or has not verified their email yet. **Phone** (send `phone` and no `email`): creates an `invited` membership and answers 201 with a one-time `join_code` and `expires_at`, shown once; the person joins with POST /auth/join. 409 if the phone was already invited to this SACCO. Every new membership gets the job title its role implies (staff: secretary). **Email invite** (send `email`, `role` and `invite: true`): creates an `invited` membership for that verified account and emails it a one-time join code. The code is never in the response (it carries `id`, `email`, `role`, `title`, `status` and `expires_at`); the person joins with POST /auth/join sending only the `code`. Same 404 and 409 answers as the email form.
 
 Parameters: `sacco_id` (path, integer)
 
