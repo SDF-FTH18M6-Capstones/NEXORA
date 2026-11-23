@@ -250,6 +250,11 @@ def confirm(user_id: int, request_id: int, reference: str | None) -> dict:
         db.session.rollback()
         raise Conflict("The member has no savings account in this SACCO.")
 
+    if row.kind == "withdrawal" and row.amount_minor > account.balance:
+        # Refuse now, not after a first approval that could never be completed.
+        db.session.rollback()
+        raise Conflict("Insufficient funds.", code=INSUFFICIENT_FUNDS)
+
     flags = sorted(
         set(deposit_flags.split(row.flags))
         | set(

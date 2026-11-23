@@ -87,7 +87,7 @@ def confirm_request(user_id: int, request_id: int):
     if reference is not None and (
         not isinstance(reference, str) or not reference.strip()
     ):
-        raise InvalidRequest("reference must be a non-blank string.")
+        raise InvalidRequest("reference is required.")
     return jsonify(request_service.confirm(user_id, request_id, reference))
 
 
