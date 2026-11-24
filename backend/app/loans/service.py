@@ -106,36 +106,52 @@ def _lock_loan(loan_id: int) -> Loan:
 
 
 def _loan_view(loan: Loan) -> LoanView:
-    approvals_count = db.session.execute(
-        select(func.count())
-        .select_from(LoanDecision)
-        .where(
-            LoanDecision.loan_id == loan.id,
-            LoanDecision.decision == LoanDecisionKind.APPROVE,
+    return _loan_views([loan])[0]
+
+
+def _loan_views(loans: list[Loan]) -> list[LoanView]:
+    """Views for many loans: two grouped queries instead of two per loan."""
+    ids = [loan.id for loan in loans]
+    approvals: dict[int, int] = {}
+    repaid: dict[int, int] = {}
+    if ids:
+        approvals = dict(
+            db.session.execute(
+                select(LoanDecision.loan_id, func.count())
+                .where(
+                    LoanDecision.loan_id.in_(ids),
+                    LoanDecision.decision == LoanDecisionKind.APPROVE,
+                )
+                .group_by(LoanDecision.loan_id)
+            ).all()
         )
-    ).scalar_one()
-    repaid_total = db.session.execute(
-        select(func.coalesce(func.sum(LoanRepayment.amount), 0)).where(
-            LoanRepayment.loan_id == loan.id
+        repaid = dict(
+            db.session.execute(
+                select(LoanRepayment.loan_id, func.sum(LoanRepayment.amount))
+                .where(LoanRepayment.loan_id.in_(ids))
+                .group_by(LoanRepayment.loan_id)
+            ).all()
         )
-    ).scalar_one()
-    return LoanView(
-        id=loan.id,
-        sacco_id=loan.sacco_id,
-        membership_id=loan.membership_id,
-        principal=loan.principal,
-        term_months=loan.term_months,
-        required_approvals=loan.required_approvals,
-        approvals_count=int(approvals_count),
-        repaid_total=int(repaid_total),
-        status=loan.status.value,
-        disbursed_by_membership_id=loan.disbursed_by_membership_id,
-        disbursed_at=loan.disbursed_at,
-        disbursement_transaction_id=loan.disbursement_transaction_id,
-        created_at=loan.created_at,
-        sector=loan.sector,
-        disclosure_acknowledged_at=loan.disclosure_acknowledged_at,
-    )
+    return [
+        LoanView(
+            id=loan.id,
+            sacco_id=loan.sacco_id,
+            membership_id=loan.membership_id,
+            principal=loan.principal,
+            term_months=loan.term_months,
+            required_approvals=loan.required_approvals,
+            approvals_count=int(approvals.get(loan.id, 0)),
+            repaid_total=int(repaid.get(loan.id, 0)),
+            status=loan.status.value,
+            disbursed_by_membership_id=loan.disbursed_by_membership_id,
+            disbursed_at=loan.disbursed_at,
+            disbursement_transaction_id=loan.disbursement_transaction_id,
+            created_at=loan.created_at,
+            sector=loan.sector,
+            disclosure_acknowledged_at=loan.disclosure_acknowledged_at,
+        )
+        for loan in loans
+    ]
 
 
 @_atomic

@@ -85,7 +85,7 @@ def list_loans(sacco_id: int):
         .all()
     )
     return jsonify(
-        loans=[_serialize(service._loan_view(loan)) for loan in loans],
+        loans=[_serialize(view) for view in service._loan_views(loans)],
         page=page,
         per_page=per_page,
     )

@@ -251,6 +251,26 @@ def _role_codes(membership: SaccoMembership) -> set[str]:
     return {legacy} if legacy else set()
 
 
+def role_codes_by_membership(
+    memberships: list[SaccoMembership],
+) -> dict[int, set[str]]:
+    """`_role_codes` for many memberships in one query (list endpoints)."""
+    ids = [m.id for m in memberships]
+    found: dict[int, set[str]] = {i: set() for i in ids}
+    if ids:
+        for membership_id, code in db.session.execute(
+            select(MembershipRoleLink.membership_id, Role.code)
+            .join(Role, MembershipRoleLink.role_id == Role.id)
+            .where(MembershipRoleLink.membership_id.in_(ids))
+        ):
+            found[membership_id].add(code)
+    for m in memberships:
+        if not found[m.id]:
+            legacy = LEGACY_ROLE_CODES.get(m.role)
+            found[m.id] = {legacy} if legacy else set()
+    return found
+
+
 def is_admin_membership(membership: SaccoMembership) -> bool:
     """Is this membership the SACCO admin? (The role column says so; migration
     0010 and the role routes keep the sacco_admin title in step with it.)"""
