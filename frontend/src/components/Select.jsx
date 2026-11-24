@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState } from 'react';
+import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import Icon from '../shell/Icon.jsx';
 
 /*
@@ -25,6 +25,8 @@ export default function Select({
   const listId = `${id || autoId}-list`;
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(0);
+  const [up, setUp] = useState(false);
+  const [maxHeight, setMaxHeight] = useState(null);
   const wrapRef = useRef(null);
   const triggerRef = useRef(null);
   const listRef = useRef(null);
@@ -39,6 +41,8 @@ export default function Select({
 
   function close(refocus) {
     setOpen(false);
+    setUp(false);
+    setMaxHeight(null);
     if (refocus && triggerRef.current) triggerRef.current.focus();
   }
 
@@ -53,12 +57,12 @@ export default function Select({
     if (!open) return undefined;
     const wrap = wrapRef.current;
     function onPointerDown(event) {
-      if (wrap && !wrap.contains(event.target)) setOpen(false);
+      if (wrap && !wrap.contains(event.target)) close(false);
     }
     // Tabbing to the next field closes the panel; focus keeps going where it was
     // headed because it never left the trigger.
     function onFocusOut(event) {
-      if (wrap && !wrap.contains(event.relatedTarget)) setOpen(false);
+      if (wrap && !wrap.contains(event.relatedTarget)) close(false);
     }
     document.addEventListener('pointerdown', onPointerDown);
     if (wrap) wrap.addEventListener('focusout', onFocusOut);
@@ -68,12 +72,31 @@ export default function Select({
     };
   }, [open]);
 
+  // Place the panel from its real height, measured before the browser paints: on a
+  // phone it opens upwards when there is more room above than below, and it is
+  // capped to the room on that side so it fits a short screen too.
+  useLayoutEffect(() => {
+    if (!open) return;
+    const list = listRef.current;
+    const trigger = triggerRef.current;
+    if (!list || !trigger) return;
+    const height = list.getBoundingClientRect().height;
+    const triggerBox = trigger.getBoundingClientRect();
+    const below = window.innerHeight - triggerBox.bottom - 8;
+    const above = triggerBox.top - 8;
+    const placeUp = height > below && above > below;
+    const room = Math.max(placeUp ? above : below, 0);
+    setUp(placeUp);
+    setMaxHeight(height > room ? Math.floor(room) : null);
+  }, [open]);
+
   // Keep the highlighted option in view in a long list.
   useEffect(() => {
     if (!open || !listRef.current) return;
     const node = listRef.current.querySelector('.select-option.active');
     if (node) node.scrollIntoView({ block: 'nearest' });
   }, [open, active]);
+
 
   function onKeyDown(event) {
     if (event.key === 'Escape') {
@@ -132,9 +155,10 @@ export default function Select({
         <div
           ref={listRef}
           id={listId}
-          className="select-menu"
+          className={`select-menu${up ? ' up' : ''}`}
           role="listbox"
           aria-labelledby={id}
+          style={maxHeight ? { maxHeight: `${maxHeight}px` } : undefined}
         >
           {options.map((option, index) => (
             <button
