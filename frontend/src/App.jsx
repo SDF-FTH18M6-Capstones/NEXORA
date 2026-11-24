@@ -11,8 +11,7 @@ import ErrorPage from './components/ErrorPage.jsx';
 import { LogoDefs } from './components/Logo.jsx';
 import { describe } from './lib/errors.js';
 import { syncAppearance, watchAppearance } from './lib/appearance.js';
-import { can as canPermission, homeFor, ROUTES } from './lib/perms.js';
-import { useAsync } from './lib/useAsync.js';
+import { can as canPermission, homeFor, menuFor, ROUTES } from './lib/perms.js';
 import { clearTokens, onSessionEnded } from './lib/http.js';
 import { getMyPhoto } from './api/profile.js';
 import { SessionContext, useSession } from './lib/session.jsx';
@@ -24,66 +23,58 @@ import {
   selectSacco,
   signIn,
   signOut,
-  loadMockPlaceholderFailure,
 } from './api/session.js';
 import NetBanner from './shell/NetBanner.jsx';
-import PageState from './shell/PageState.jsx';
 import RequireAuth from './shell/RequireAuth.jsx';
 import RouteTransition from './shell/RouteTransition.jsx';
 import { PAGE_IMPORTS } from './shell/pages.js';
 
-const NETWORK_STATUS_EVENT = 'nexora:network-status';
-
-function Placeholder({ title, path }) {
-  const location = useLocation();
-  const { pageKey, onErrorAction } = useSession();
-  const result = useAsync(
-    () => loadMockPlaceholderFailure(path, location.search),
-    [path, location.search, pageKey],
-  );
-
-  useEffect(() => {
-    if (
-      (result.status === 'ready' || result.status === 'empty')
-      && navigator.onLine
-    ) {
-      window.dispatchEvent(new CustomEvent(NETWORK_STATUS_EVENT, {
-        detail: { status: 200 },
-      }));
-    }
-  }, [result.status]);
-
-  if (result.status === 'ready' && result.data && result.data.renderError) {
-    throw new Error('Mock page render failure.');
-  }
-
-  if (result.status === 'error') {
-    return (
-      <PageState
-        status={result.status}
-        error={result.error}
-        reload={result.reload}
-        onAction={onErrorAction}
-      />
-    );
-  }
+function PageLoadFallback({ title, path }) {
+  const { perms, navigate, logout } = useSession();
+  const startPage = homeFor(perms);
+  const alternatives = menuFor(perms).filter(route => (
+    route.path !== path && PAGE_IMPORTS[route.path]
+  ));
 
   return (
-    <div className="glass flex min-h-[30vh] flex-col items-center justify-center gap-2 p-6 text-center">
-      <h1 className="font-serif">{title}</h1>
-      <p className="text-muted">This page is being built.</p>
-    </div>
+    <section className="glass mx-auto flex min-h-[30vh] w-full max-w-2xl flex-col items-center justify-center gap-3 p-6 text-center">
+      <h1 className="font-serif text-2xl">We could not open {title}</h1>
+      <p className="text-muted">Choose another page you can access, or return to your start page.</p>
+      {startPage !== path && (
+        <button className="btn" type="button" onClick={() => navigate('/' + startPage)}>
+          Go to your start page
+        </button>
+      )}
+      {alternatives.length > 0 && (
+        <nav className="flex flex-wrap justify-center gap-2" aria-label="Available pages">
+          {alternatives.map(route => (
+            <button
+              className="btn ghost"
+              key={route.path}
+              type="button"
+              onClick={() => navigate('/' + route.path)}
+            >
+              {route.title}
+            </button>
+          ))}
+        </nav>
+      )}
+      <button className="link-btn" type="button" onClick={() => void logout()}>
+        Sign out
+      </button>
+    </section>
   );
 }
 
 function makeLazyPage(path, title) {
   return lazy(async () => {
     const loader = PAGE_IMPORTS[path];
-    if (!loader) return { default: () => <Placeholder title={title} path={path} /> };
+    if (!loader) return { default: () => <PageLoadFallback title={title} path={path} /> };
     try {
       return await loader();
-    } catch {
-      return { default: () => <Placeholder title={title} path={path} /> };
+    } catch (error) {
+      console.error(`Failed to load the ${path} page.`, error);
+      return { default: () => <PageLoadFallback title={title} path={path} /> };
     }
   });
 }
