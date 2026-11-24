@@ -109,7 +109,7 @@ class SaccoPaymentDetails(_Values, db.Model):
     sacco_id: Mapped[int] = mapped_column(
         ForeignKey("saccos.id"), nullable=False, unique=True
     )
-    # The moment these values went live (approval plus the go-live delay).
+    # The moment these values went live (the second officer's approval).
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
@@ -165,5 +165,5 @@ class SaccoPaymentDetailsChange(_Values, db.Model):
     )
     approved_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
     approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    # Members see the values only from here: approved_at plus the go-live delay.
+    # The moment the values went live: the same instant as approved_at.
     go_live_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

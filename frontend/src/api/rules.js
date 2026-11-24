@@ -41,3 +41,9 @@ export async function joinAcceptRules(setupToken, version) {
   if (MOCK) { await mockDelay(); return null; }
   return (await http.post('/auth/join/rules/accept', { body: { setup_token: setupToken, version } })).rules;
 }
+/* Refuse the invitation after reading the rules. The reason is required and is
+ * kept for the SACCO's officers; the membership never becomes active. */
+export async function joinDeclineRules(setupToken, version, reason) {
+  if (MOCK) { await mockDelay(); return null; }
+  return http.post('/auth/join/rules/decline', { body: { setup_token: setupToken, version, reason } });
+}

@@ -30,6 +30,8 @@ class MembershipStatus(enum.Enum):
     ACTIVE = "active"
     INACTIVE = "inactive"
     INVITED = "invited"
+    # The person read the rules and refused the invitation, with a reason.
+    DECLINED = "declined"
 
 
 class SaccoMembership(db.Model):
@@ -64,6 +66,12 @@ class SaccoMembership(db.Model):
             "national_id",
             unique=True,
             postgresql_where=text("national_id IS NOT NULL"),
+        ),
+        # A decline always has the moment and the reason, or neither.
+        CheckConstraint(
+            "(declined_at IS NULL) = (decline_reason IS NULL) "
+            "AND (status <> 'declined' OR declined_at IS NOT NULL)",
+            name="ck_memberships_decline_pair",
         ),
     )
 
@@ -114,3 +122,9 @@ class SaccoMembership(db.Model):
     pin_locked_until: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    # The member refused the invitation after reading the rules: when, and why in
+    # their own words, so the officers can see it. Both cleared by a re-invite.
+    declined_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    decline_reason: Mapped[str | None] = mapped_column(String(500), nullable=True)

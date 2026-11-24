@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useSession } from '../../lib/session.jsx';
 import { useAsync } from '../../lib/useAsync.js';
-import { addMember, addMemberByEmail, listInvited } from '../../api/people.js';
+import { addMember, addMemberByEmail, listDeclined, listInvited } from '../../api/people.js';
 import ErrorBanner from '../../components/ErrorBanner.jsx';
 import Field from '../../components/Field.jsx';
 import StatusChip from '../../components/StatusChip.jsx';
@@ -21,6 +21,7 @@ function secondsLeft(iso) {
 export default function AddMemberPage() {
   const { saccoId, can, toast } = useSession();
   const invited = useAsync(() => listInvited(saccoId), [saccoId]);
+  const declined = useAsync(() => listDeclined(saccoId), [saccoId]);
   const [mode, setMode] = useState('phone');
   const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
@@ -66,6 +67,7 @@ export default function AddMemberPage() {
       setMade(row);
       setWasInvited(already);
       invited.reload();
+      declined.reload();
       toast(`Join code made for ${row.phone}.`);
     } catch (e) {
       const shown = describe(e, { context: 'member' });
@@ -94,6 +96,7 @@ export default function AddMemberPage() {
       setEmailed({ email: row.email || clean, expires_at: row.expires_at });
       setWasInvited(already);
       invited.reload();
+      declined.reload();
       toast(`Join code emailed to ${clean}.`);
     } catch (e) {
       const shown = describe(e, { context: 'member' });
@@ -293,6 +296,51 @@ export default function AddMemberPage() {
                           onClick={() => (row.phone ? makeCode(row.phone, row.role) : sendEmailCode(row.email, row.role))}
                         >
                           {row.phone ? 'Make a new code' : 'Email a new code'}
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </Body>
+      </section>
+
+      <section className="glass neo-span-7 neo-stack tight">
+        <div className="neo-search">
+          <b className="grow">Declined the invitation</b>
+          <span className="chip">{declined.data ? `${declined.data.length} declined` : '—'}</span>
+        </div>
+        <Body
+          status={declined.status}
+          error={declined.error}
+          reload={declined.reload}
+          emptyTitle="Nobody has declined."
+          emptyHint="A person who reads the rules and refuses appears here, with their reason."
+        >
+          {declined.data && declined.data.length === 0 ? (
+            <p className="muted text-sm">Nobody has declined. A person who reads the rules and refuses appears here, with their reason.</p>
+          ) : (
+            <div className="table-wrap">
+              <table>
+                <thead>
+                  <tr><th>Phone or email</th><th>Role</th><th>Why they declined</th><th /></tr>
+                </thead>
+                <tbody>
+                  {(declined.data || []).map(row => (
+                    <tr key={row.id}>
+                      <td>{row.phone || row.email}</td>
+                      <td>{ROLE_LABEL[(row.roles && row.roles[0]) || row.role] || row.role}</td>
+                      <td>{row.decline_reason}</td>
+                      <td>
+                        <button
+                          type="button"
+                          className="btn small ghost"
+                          disabled={busy}
+                          onClick={() => (row.phone ? makeCode(row.phone, row.role) : sendEmailCode(row.email, row.role))}
+                        >
+                          {row.phone ? 'Invite again' : 'Email a new code'}
                         </button>
                       </td>
                     </tr>

@@ -2,15 +2,14 @@
 
 GET  .../payment-details                       any active member: the live details
 POST .../payment-details/changes               an officer (`payin.manage`): propose
-POST .../payment-details/changes/<cid>/approve a different officer: schedule it
-POST .../payment-details/changes/<cid>/cancel  any officer: stop it before it goes live
+POST .../payment-details/changes/<cid>/approve a different officer: it goes live
 (all under /saccos/<id>)
 
-A proposal changes nothing members see. An approval by someone other than the
-proposer schedules it: it goes live 24 hours later (`GO_LIVE_DELAY`), and
-officers (the admin included) are emailed at once and members see a notice in
-the app, so a change nobody expected can be questioned. Every proposal and
-approval is audited in the same transaction.
+A proposal changes nothing members see. A different officer's approval takes
+effect at once: the values members see change in the same request, and the
+officers (the admin included) are emailed. One officer alone can never move
+them, because the proposer cannot approve. Every proposal and approval is
+audited in the same transaction.
 """
 
 from datetime import UTC, datetime
@@ -66,21 +65,14 @@ def get_payment_details(sacco_id):
     logic.apply_due(sacco_id)
     live = logic.live_details(sacco_id)
     pending = None
-    scheduled = None
-    waiting = logic.waiting_change(sacco_id)
-    if waiting is not None:
-        # Everyone is told a change is coming and when, never what it is.
-        scheduled = {"go_live_at": waiting.go_live_at.isoformat()}
-    # Waiting changes are for officers only: members see what is live.
+    # A change waiting for its second officer is for officers only: members see
+    # what is live.
     if can(g.access.user, g.access.sacco, logic.PERMISSION):
         change = logic.pending_change(sacco_id)
         pending = logic.change_json(change) if change else None
-        if waiting is not None:
-            scheduled = logic.change_json(waiting)
     return jsonify(
         details=logic.live_json(live) if live else None,
         pending=pending,
-        scheduled=scheduled,
     )
 
 
@@ -92,7 +84,6 @@ def propose_payment_details(sacco_id):
     if errors:
         return _invalid(errors)
     user = g.access.user
-    logic.apply_due(sacco_id)  # commits, so it must come before the lock
     logic.lock_sacco(sacco_id)
     if logic.too_many_proposals(sacco_id):
         db.session.rollback()
@@ -142,7 +133,6 @@ def propose_payment_details(sacco_id):
 @permission_scoped(logic.PERMISSION)
 def approve_payment_details(sacco_id, change_id):
     user = g.access.user
-    logic.apply_due(sacco_id)  # commits, so it must come before the lock
     logic.lock_sacco(sacco_id)
     change = db.session.execute(
         select(SaccoPaymentDetailsChange)
@@ -183,85 +173,27 @@ def approve_payment_details(sacco_id, change_id):
             "proposal, so the officers the SACCO already had stand behind it.",
         )
 
-    # A change still waiting for its go-live time is replaced, not stacked: two
-    # waiting changes would put the older (possibly mistaken) one live first.
-    replaced = logic.waiting_change(sacco_id)
-    if replaced is not None:
-        replaced.status = "superseded"
-        audit_log.record(sacco_id, user.id, "payin.supersede", f"change:{replaced.id}")
+    # The second officer's approval is the moment it takes effect: the values
+    # members see change in this same request. go_live_at records that moment.
     now = datetime.now(UTC)
     change.status = "approved"
     change.approved_by = user.id
     change.approved_at = now
-    change.go_live_at = now + logic.GO_LIVE_DELAY
+    change.go_live_at = now
+    logic.go_live(change)
     db.session.flush()
-    audit_log.record(
-        sacco_id,
-        user.id,
-        "payin.approve",
-        f"change:{change.id} go_live_at:{change.go_live_at.isoformat()}",
-    )
+    audit_log.record(sacco_id, user.id, "payin.approve", f"change:{change.id}")
     sacco_name, actor = g.access.sacco.name, user.email
     body = logic.change_json(change)
     db.session.commit()
     logic.notify_officers(
         sacco_id,
-        "NEXORA: pay-in details will change in 24 hours",
+        "NEXORA: the pay-in details have changed",
         _email_body(
             sacco_name,
-            "New pay-in details were approved and go live for members at "
-            f"{change.go_live_at:%d %b %Y %H:%M} UTC. Until then members keep "
-            "seeing the current details.",
+            "New pay-in details were approved by a second officer and are live "
+            "for members now. Check them on the Pay-in details page.",
             actor,
         ),
-    )
-    return jsonify(change=body)
-
-
-@saccos_bp.post("/<int:sacco_id>/payment-details/changes/<int:change_id>/cancel")
-@write_limit
-@permission_scoped(logic.PERMISSION)
-def cancel_payment_details(sacco_id, change_id):
-    """Any single officer may stop an approved change during its 24 hours. No
-    second approval: stopping is the safe direction, and the details members
-    see never changed."""
-    user = g.access.user
-    logic.apply_due(sacco_id)  # commits, so it must come before the lock
-    logic.lock_sacco(sacco_id)
-    change = db.session.execute(
-        select(SaccoPaymentDetailsChange)
-        .where(
-            SaccoPaymentDetailsChange.id == change_id,
-            SaccoPaymentDetailsChange.sacco_id == sacco_id,
-        )
-        .with_for_update()
-    ).scalar_one_or_none()
-    if change is None:
-        db.session.rollback()
-        return error_response(404, "Not found.")
-    waiting = logic.waiting_change(sacco_id)
-    if change.status != "approved" or waiting is None or waiting.id != change.id:
-        db.session.rollback()
-        return error_response(
-            409,
-            "Only an approved change that has not gone live yet can be cancelled. "
-            "This one is live, was replaced, was already cancelled, or still "
-            "waits for a second officer.",
-        )
-    change.status = "cancelled"
-    audit_log.record(sacco_id, user.id, "payin.cancel", f"change:{change.id}")
-    sacco_name, actor = g.access.sacco.name, user.email
-    body = logic.change_json(change)
-    db.session.commit()
-    logic.notify_officers(
-        sacco_id,
-        "NEXORA: a pay-in details change was cancelled",
-        _email_body(
-            sacco_name,
-            "An approved change to the pay-in details was cancelled before it went "
-            "live. Members keep seeing the current details.",
-            actor,
-        ),
-        skip_user_id=user.id,
     )
     return jsonify(change=body)
