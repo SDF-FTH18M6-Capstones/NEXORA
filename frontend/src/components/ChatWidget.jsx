@@ -42,7 +42,7 @@ function ChatPanel({ owner }) {
   useEffect(() => {
     if (!open) return undefined;
     const onKey = event => {
-      if (event.key === 'Escape') {
+      if (event.key === 'Escape' && !event.defaultPrevented) {
         setOpen(false);
         button.current?.focus();
       }
@@ -64,6 +64,7 @@ function ChatPanel({ owner }) {
       const { reply } = await sendChat(message, history);
       setTurns(list => [...list, { role: 'assistant', text: reply }]);
     } catch (failure) {
+      setTurns(list => list.slice(0, -1)); // a question with no answer would leave two user turns in a row
       setError(failure.message || 'The assistant could not answer.');
     } finally {
       setBusy(false);

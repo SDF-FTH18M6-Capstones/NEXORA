@@ -346,3 +346,33 @@ def test_junk_requests_do_not_use_up_the_global_cap(limited, prompts):
     for _ in range(6):
         assert limited.post(URL, json={"message": ""}).status_code == 400
     assert ask(limited).status_code == 200
+
+
+def test_ipv6_addresses_in_one_64_share_one_limit(app, prompts):
+    class Limited(TestConfig):
+        RATELIMIT_ENABLED = True
+        GEMINI_API_KEY = "test-key-not-real"
+
+    client = create_app(Limited).test_client()
+    limiter.reset()
+    try:
+        codes = [
+            client.post(
+                URL,
+                json={"message": "hi"},
+                environ_overrides={"REMOTE_ADDR": f"2001:db8:0:1::{n}"},
+            ).status_code
+            for n in range(1, 12)
+        ]
+    finally:
+        limiter.reset()
+        limiter.enabled = False
+    assert codes == [200] * 10 + [429]
+
+
+def test_a_sacco_name_loses_control_and_bidi_characters(client, prompts):
+    _, headers = member("A\u200b\u202eB\x1b[31m C", 100)
+    ask(client, "hi", headers)
+    facts = prompts[0][0].split("ACCOUNT FACTS (this signed-in user only):\n")[1]
+    assert not any(c in facts for c in "\u200b\u202e\x1b")
+    assert "AB[31m C" in facts

@@ -1,5 +1,7 @@
 """POST /assistant/chat: one question in, one plain-text answer out."""
 
+import ipaddress
+
 from flask import current_app, jsonify, request
 
 from app import assistant_bp
@@ -26,13 +28,25 @@ def _signed_in_user():
     return current_user()
 
 
+def _ip_key() -> str:
+    """The caller's address; IPv6 callers share one bucket per /64, because a host
+    owns a whole /64 and could otherwise rotate addresses past every limit."""
+    address = request.remote_addr or ""
+    try:
+        if ipaddress.ip_address(address).version == 6:
+            return str(ipaddress.ip_network(f"{address}/64", strict=False))
+    except ValueError:
+        pass
+    return address
+
+
 def _user_key() -> str:
     """Per-person limit key: the user when signed in, else the address."""
     try:
         user = _signed_in_user()
     except AccessDenied:
         user = None
-    return f"user:{user.id}" if user else f"ip:{request.remote_addr}"
+    return f"user:{user.id}" if user else f"ip:{_ip_key()}"
 
 
 def _busy(request_limit):
@@ -74,8 +88,8 @@ def _daily_cap() -> str:
 
 
 @assistant_bp.post("/chat")
-@limiter.limit("10 per minute")
-@limiter.limit("30 per day")
+@limiter.limit("10 per minute", key_func=_ip_key)
+@limiter.limit("30 per day", key_func=_ip_key)
 @limiter.limit("20 per hour", key_func=_user_key)
 # Shared by everyone, and only answers that reached a good reply use it up, so
 # one abuser cannot burn the provider's free quota and junk costs nothing.

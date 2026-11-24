@@ -8,6 +8,7 @@ providers may train on prompts, so email, ids and tokens are never included.
 
 import json
 import logging
+import unicodedata
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -59,7 +60,9 @@ def _money(minor: int, currency: str) -> str:
 
 def _label(name: str) -> str:
     """A SACCO name is typed by that SACCO's admin: one short plain line only."""
-    return " ".join(name.split())[:60]
+    # Control, format (bidi, zero-width) and separator characters can hide or fake text.
+    visible = "".join(c for c in name if unicodedata.category(c)[0] != "C")
+    return " ".join(visible.split())[:60]
 
 
 def build_context(user: User) -> str:
