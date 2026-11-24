@@ -137,11 +137,15 @@ Request body:
 }
 ```
 
-Response **200**: The current rules and whether this member accepted them (`rules` is null if the SACCO has none).
+Response **200**: The current rules and whether this member accepted them (`rules` is null if the SACCO has none), plus the SACCO whose invitation is being read.
 
 ```json
 {
-  "rules": "rules"
+  "rules": "rules",
+  "sacco": {
+    "id": 1,
+    "name": "name"
+  }
 }
 ```
 
@@ -173,6 +177,27 @@ Response **200**: Accepted.
 ```
 
 Error statuses: 401, 403, 404, 409
+
+## POST /api/v1/auth/join/rules/decline
+
+**Decline the SACCO's rules and refuse the invitation**
+
+**Who:** the signed-in user who just joined, after reading the rules.
+`reason` is required and is kept for the officers of the SACCO, who see it on the member (`decline_reason`). The membership becomes `declined` and is never activated: its join code is spent, so declining ends the invitation, and an officer must invite the person again to restart. Audited as `member.decline`. **Rate limit:** 30 per minute.
+
+Request body:
+
+```json
+{
+  "setup_token": "setup_token",
+  "version": 1,
+  "reason": "reason"
+}
+```
+
+Response **200**: `{membership_id, status: declined}`.
+
+Error statuses: 400, 401, 403, 409
 
 ## POST /api/v1/auth/sacco-login
 
@@ -520,6 +545,56 @@ Response **200**: Updated profile. The new address is unverified, a link is emai
 
 Error statuses: 400, 401, 403, 409, 423, 429
 
+## GET /api/v1/members/me/photo
+
+**Read the caller's profile photo**
+
+**Who:** the signed-in account owner. The photo is private to that account.
+
+**Rate limit:** 120 per minute.
+
+Response **200**: The caller's saved profile photo.
+
+Response **204**: No profile photo has been saved.
+
+Error statuses: 401, 429
+
+## PUT /api/v1/members/me/photo
+
+**Save the caller's profile photo**
+
+**Who:** the signed-in account owner. Send a `photo` file using `multipart/form-data`. JPEG, PNG and WebP images are accepted, up to 1.5 MB.
+
+**Rate limit:** 30 per minute.
+
+Response **200**: The photo was saved to the caller's account.
+
+```json
+{
+  "saved": true
+}
+```
+
+Error statuses: 400, 401, 413, 429
+
+## DELETE /api/v1/members/me/photo
+
+**Remove the caller's profile photo**
+
+**Who:** the signed-in account owner.
+
+**Rate limit:** 30 per minute.
+
+Response **200**: The photo was removed from the caller's account.
+
+```json
+{
+  "deleted": true
+}
+```
+
+Error statuses: 401, 429
+
 ## GET /api/v1/saccos
 
 **List SACCOs**
@@ -750,7 +825,7 @@ Error statuses: 401, 403, 404, 423, 429
 
 **Rate limit:** 30 per minute.
 
-Two forms. **Email:** adds a registered user (status `active` or `inactive`; `invited` is 400). 404 if no user has that email; 409 if the user is already a member, or has not verified their email yet. **Phone** (send `phone` and no `email`): creates an `invited` membership and answers 201 with a one-time `join_code` and `expires_at`, shown once; the person joins with POST /auth/join. 409 if the phone was already invited to this SACCO. Every new membership gets the job title its role implies (staff: secretary).
+Two forms. **Email:** adds a registered user (status `active` or `inactive`; `invited` is 400). 404 if no user has that email; 409 if the user is already a member, or has not verified their email yet. **Phone** (send `phone` and no `email`): creates an `invited` membership and answers 201 with a one-time `join_code` and `expires_at`, shown once; the person joins with POST /auth/join. 409 if the phone was already invited to this SACCO. Every new membership gets the job title its role implies (staff: secretary). **Email invite** (send `email`, `role` and `invite: true`): creates an `invited` membership for that verified account and emails it a one-time join code. The code is never in the response (it carries `id`, `email`, `role`, `title`, `status` and `expires_at`); the person joins with POST /auth/join sending only the `code`. Same 404 and 409 answers as the email form.
 
 Parameters: `sacco_id` (path, integer)
 
@@ -1596,13 +1671,13 @@ Error statuses: 401, 403, 404, 409
 
 **Where members pay in**
 
-**Who:** any active member of the SACCO (`sacco.view`), or the platform owner. Returns `details` (the live values, or `null` when the SACCO has not set any) and `pending` (the change waiting for a second officer, or `null`). `pending` is only filled for holders of `payin.manage`; a member never sees a change before it is live. `scheduled` is the approved change still waiting for its go-live time (24 hours after approval): holders of `payin.manage` get the change with its values, everyone else only `{go_live_at}`, never the numbers. `updated_at` is when the live values went live (approval plus 24 hours). Reading applies a change whose time has come. `bank_manual_confirm_only` is true when the bank uses a shared paybill.
+**Who:** any active member of the SACCO (`sacco.view`), or the platform owner. Returns `details` (the live values, or `null` when the SACCO has not set any) and `pending` (the change waiting for a second officer, or `null`). `pending` is only filled for holders of `payin.manage`; a member never sees a change before it is live. An approval by a second officer takes effect at once, so there is no window between approval and the values members see: `updated_at` is that approval. `bank_manual_confirm_only` is true when the bank uses a shared paybill.
 
 **Rate limit:** 120 per minute.
 
 Parameters: `sacco_id` (path, integer)
 
-Response **200**: `{details, pending, scheduled}`. Members never get a pending change or the scheduled values.
+Response **200**: `{details, pending}`. Members never get a pending change.
 
 Error statuses: 401, 403, 404, 423, 429
 
@@ -1639,29 +1714,15 @@ Error statuses: 400, 401, 403, 404, 409, 423, 429
 
 ## POST /api/v1/saccos/{sacco_id}/payment-details/changes/{change_id}/approve
 
-**Approve a waiting change so it goes live in 24 hours**
+**Approve a waiting change, which puts it live at once**
 
-**Who:** holders of `payin.manage`, never the officer who proposed the change (403 `PAYIN_SAME_OFFICER`). The change is named by id, so nobody approves values that changed after they read them. The approver must have become an officer before the change was proposed (403 `PAYIN_NEW_OFFICER`), and the proposer must still be an officer (409). Officer since is the earliest `granted_at` of a title that carries `payin.manage` (editing other titles keeps it); an admin with no title rows counts from when the membership was created. Audited as `payin.approve`. The change goes live 24 hours after approval (`go_live_at`), not at once; every officer (the admin included) is emailed at approval, without the numbers; members get no email and see `scheduled.go_live_at` in the app. Approving while another approved change still waits replaces it (`payin.supersede`). Everyone is also emailed when someone gains `payin.manage` (member add, role or title change).
-
-**Rate limit:** 30 per minute.
-
-Parameters: `sacco_id` (path, integer), `change_id` (path, integer)
-
-Response **200**: `{change}` with `status: approved`, `approved_at` and `go_live_at`. Members keep seeing the current details until `go_live_at`.
-
-Error statuses: 401, 403, 404, 409, 423, 429
-
-## POST /api/v1/saccos/{sacco_id}/payment-details/changes/{change_id}/cancel
-
-**Cancel an approved change before it goes live**
-
-**Who:** any single holder of `payin.manage`, the proposer and the approver included. No second approval is needed: stopping is the safe direction. Only an approved change still inside its 24 hours can be cancelled; it becomes `cancelled`, never goes live, and the details members see stay as they are. Audited as `payin.cancel`; the other officers (the admin included) are emailed, without the numbers. A change that is live, replaced, already cancelled or still waiting for a second officer answers 409.
+**Who:** holders of `payin.manage`, never the officer who proposed the change (403 `PAYIN_SAME_OFFICER`). The change is named by id, so nobody approves values that changed after they read them. The approver must have become an officer before the change was proposed (403 `PAYIN_NEW_OFFICER`), and the proposer must still be an officer (409). Officer since is the earliest `granted_at` of a title that carries `payin.manage` (editing other titles keeps it); an admin with no title rows counts from when the membership was created. Audited as `payin.approve`. The approval is the moment it takes effect: the values members see change in the same request, with no waiting period. Every officer (the admin included) is emailed, without the numbers, and members get no email. Everyone is also emailed when someone gains `payin.manage` (member add, role or title change).
 
 **Rate limit:** 30 per minute.
 
 Parameters: `sacco_id` (path, integer), `change_id` (path, integer)
 
-Response **200**: `{change}` with `status: cancelled`.
+Response **200**: `{change}` with `status: approved`, `approved_at` and `go_live_at` (the same moment). Members see the new details from now on.
 
 Error statuses: 401, 403, 404, 409, 423, 429
 

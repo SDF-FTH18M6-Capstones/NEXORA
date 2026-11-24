@@ -4,9 +4,10 @@ Two groups live here because they both serve members: the signed-in user's own
 profile under /members/me (Sam's Move 2 work), and one SACCO's member list
 under /saccos/<sacco_id>/members (Neo's Move 2 work).
 """
+
 from datetime import timedelta
 
-from flask import current_app, g, jsonify, request
+from flask import Response, current_app, g, jsonify, request
 from sqlalchemy import delete, select
 from sqlalchemy.exc import IntegrityError
 
@@ -16,10 +17,12 @@ from app.auth.limits import read_limit, write_limit
 from app.auth.routes import _body
 from app.errors import error_response
 from app.extensions import db
+from app.mail import send_join_code_safely
 from app.members import self_service
 from app.members.schemas import (
     InvalidMember,
     parse_create_member,
+    parse_email_invite,
     parse_invite_role,
     parse_update_member,
 )
@@ -134,6 +137,73 @@ def patch_me():
         return error_response(exc.status, exc.message)
 
 
+_PROFILE_PHOTO_MAX_BYTES = 1_500_000
+_PROFILE_PHOTO_TYPES = {
+    "image/jpeg": lambda data: data.startswith(b"\xff\xd8\xff"),
+    "image/png": lambda data: data.startswith(b"\x89PNG\r\n\x1a\n"),
+    "image/webp": lambda data: (
+        len(data) >= 12 and data[:4] == b"RIFF" and data[8:12] == b"WEBP"
+    ),
+}
+
+
+@members_bp.get("/me/photo")
+@read_limit
+def get_me_photo():
+    user, error = _me_user()
+    if error:
+        return error
+    if not user.profile_photo or not user.profile_photo_content_type:
+        return "", 204
+    return Response(
+        user.profile_photo,
+        mimetype=user.profile_photo_content_type,
+        headers={"Cache-Control": "private, no-store"},
+    )
+
+
+@members_bp.put("/me/photo")
+@write_limit
+def put_me_photo():
+    user, error = _me_user()
+    if error:
+        return error
+    # This endpoint accepts a larger multipart body than the app's small JSON
+    # default while still rejecting oversized uploads before parsing them.
+    request.max_content_length = _PROFILE_PHOTO_MAX_BYTES + 64 * 1024
+    uploaded = request.files.get("photo")
+    if uploaded is None:
+        return error_response(400, "Choose a JPEG, PNG or WebP photo.")
+    data = uploaded.stream.read(_PROFILE_PHOTO_MAX_BYTES + 1)
+    if not data:
+        return error_response(400, "The selected photo is empty.")
+    if len(data) > _PROFILE_PHOTO_MAX_BYTES:
+        return error_response(413, "Choose a photo smaller than 1.5 MB.")
+    content_type = next(
+        (mime for mime, matches in _PROFILE_PHOTO_TYPES.items() if matches(data)),
+        None,
+    )
+    if content_type is None:
+        return error_response(400, "Choose a valid JPEG, PNG or WebP photo.")
+
+    user.profile_photo = data
+    user.profile_photo_content_type = content_type
+    db.session.commit()
+    return jsonify(saved=True)
+
+
+@members_bp.delete("/me/photo")
+@write_limit
+def delete_me_photo():
+    user, error = _me_user()
+    if error:
+        return error
+    user.profile_photo = None
+    user.profile_photo_content_type = None
+    db.session.commit()
+    return jsonify(deleted=True)
+
+
 @members_bp.get("/me/permissions")
 @read_limit
 def my_permissions():
@@ -179,7 +249,6 @@ def my_permissions():
 # ---------------------------------------------------------------------------
 
 
-
 def _member_json(
     membership: SaccoMembership, email: str | None, roles: set[str] | None = None
 ) -> dict:
@@ -194,6 +263,11 @@ def _member_json(
         "roles": sorted(roles),
         "status": membership.status.value,
         "created_at": membership.created_at.isoformat(),
+        # Why a refused invitation was refused, in the person's own words.
+        "declined_at": membership.declined_at.isoformat()
+        if membership.declined_at
+        else None,
+        "decline_reason": membership.decline_reason,
     }
 
 
@@ -277,27 +351,63 @@ def _invite_member(sacco_id):
         return error_response(
             403, "Adding or changing members needs member.manage (the SACCO admin)."
         )
-    membership = SaccoMembership(
-        user_id=None,
-        sacco_id=sacco_id,
-        phone=phone,
-        role=role,
-        status=MembershipStatus.INVITED,
-    )
-    db.session.add(membership)
-    try:
-        db.session.flush()
-    except IntegrityError:  # unique (sacco_id, phone)
-        db.session.rollback()
-        return error_response(409, "That phone has already been invited to this SACCO.")
+    membership = db.session.execute(
+        select(SaccoMembership)
+        .where(SaccoMembership.sacco_id == sacco_id, SaccoMembership.phone == phone)
+        .with_for_update()
+    ).scalar_one_or_none()
+    reissued = membership is not None
+    if reissued:
+        if membership.status not in (
+            MembershipStatus.INVITED,
+            MembershipStatus.DECLINED,
+        ):
+            db.session.rollback()
+            return error_response(409, "That phone already belongs to this SACCO.")
+        # Inviting a person who declined starts over: the reason is history now.
+        membership.declined_at = membership.decline_reason = None
+        membership.status = MembershipStatus.INVITED
+        if is_admin_role(membership.role) and not can(
+            g.access.user, sacco_id, "admin.manage"
+        ):
+            db.session.rollback()
+            return error_response(
+                403, "Only the platform owner can change a SACCO administrator invite."
+            )
+        old_title_codes = _role_codes(membership)
+        membership.role = role
+        if old_title_codes != {title}:
+            db.session.execute(
+                delete(MembershipRoleLink).where(
+                    MembershipRoleLink.membership_id == membership.id
+                )
+            )
+            _grant_default_title(membership, title)
+    else:
+        membership = SaccoMembership(
+            user_id=None,
+            sacco_id=sacco_id,
+            phone=phone,
+            role=role,
+            status=MembershipStatus.INVITED,
+        )
+        db.session.add(membership)
+        try:
+            db.session.flush()
+        except IntegrityError:  # another request invited this phone at the same time
+            db.session.rollback()
+            return error_response(
+                409, "That phone has already been invited to this SACCO."
+            )
     row, code = issue_code(
         membership.id,
         g.access.user.id,
         current_app.config["SECRET_KEY"],
         ttl=_code_ttl(sacco_id),
     )
-    _grant_default_title(membership, title)
-    _audit(membership, "member.invite")
+    if not reissued:
+        _grant_default_title(membership, title)
+    _audit(membership, "member.invite_code_reissued" if reissued else "member.invite")
     db.session.commit()
     return (
         jsonify(
@@ -309,8 +419,114 @@ def _invite_member(sacco_id):
             join_code=code,
             expires_at=row.expires_at.isoformat(),
         ),
-        201,
+        200 if reissued else 201,
     )
+
+
+def _invite_member_by_email(sacco_id):
+    """An officer adds an existing, verified account by email: an invited
+    membership plus a one-time join code that is emailed to that address.
+
+    The code is never in the response, so the officer cannot use it; only the
+    owner of the mailbox can finish the join (code, rules, PIN).
+    """
+    try:
+        email, role, title = parse_email_invite(_body())
+    except InvalidMember as exc:
+        return error_response(400, str(exc))
+    if is_admin_role(role) and not can(g.access.user, sacco_id, "admin.manage"):
+        return error_response(
+            403, "Only the platform owner can add a SACCO administrator."
+        )
+    if not is_admin_role(role) and not can(g.access.user, sacco_id, "member.manage"):
+        return error_response(
+            403, "Adding or changing members needs member.manage (the SACCO admin)."
+        )
+    target = db.session.execute(
+        select(User).where(User.email == email)
+    ).scalar_one_or_none()
+    # Same answers as adding an email member: the platform owner looks unknown,
+    # and only an address whose owner opened the emailed link can be invited.
+    if target is None or is_platform_owner(target):
+        return error_response(404, "No registered user with that email.")
+    if target.email_verified_at is None:
+        return error_response(409, "That user has not verified their email yet.")
+    membership = db.session.execute(
+        select(SaccoMembership)
+        .where(
+            SaccoMembership.sacco_id == sacco_id, SaccoMembership.user_id == target.id
+        )
+        .with_for_update()
+    ).scalar_one_or_none()
+    reissued = membership is not None
+    if reissued:
+        if membership.status not in (
+            MembershipStatus.INVITED,
+            MembershipStatus.DECLINED,
+        ):
+            db.session.rollback()
+            return error_response(409, "That user is already a member of this SACCO.")
+        # Inviting a person who declined starts over: the reason is history now.
+        membership.declined_at = membership.decline_reason = None
+        membership.status = MembershipStatus.INVITED
+        if is_admin_role(membership.role) and not can(
+            g.access.user, sacco_id, "admin.manage"
+        ):
+            db.session.rollback()
+            return error_response(
+                403, "Only the platform owner can change a SACCO administrator invite."
+            )
+        old_title_codes = _role_codes(membership)
+        membership.role = role
+        if old_title_codes != {title}:
+            db.session.execute(
+                delete(MembershipRoleLink).where(
+                    MembershipRoleLink.membership_id == membership.id
+                )
+            )
+            _grant_default_title(membership, title)
+    else:
+        membership = SaccoMembership(
+            user_id=target.id,
+            sacco_id=sacco_id,
+            role=role,
+            status=MembershipStatus.INVITED,
+        )
+        db.session.add(membership)
+        try:
+            db.session.flush()
+        except IntegrityError:  # another request invited this user at the same time
+            db.session.rollback()
+            return error_response(
+                409, "That user has already been invited to this SACCO."
+            )
+    ttl = _code_ttl(sacco_id)
+    row, code = issue_code(
+        membership.id,
+        g.access.user.id,
+        current_app.config["SECRET_KEY"],
+        ttl=ttl,
+    )
+    if not reissued:
+        _grant_default_title(membership, title)
+    _audit(
+        membership,
+        "member.invite_email_code_reissued" if reissued else "member.invite_email",
+    )
+    sacco_name = db.session.get(Sacco, sacco_id).name
+    body = dict(
+        id=membership.id,
+        email=target.email,
+        role=role.value,
+        title=title,
+        status="invited",
+        expires_at=row.expires_at.isoformat(),
+    )
+    db.session.commit()
+    send_join_code_safely(
+        target.email, code, sacco_name, max(1, int(ttl.total_seconds() // 60))
+    )
+    return jsonify(body), 200 if reissued else 201
 
 
 @saccos_bp.post("/<int:sacco_id>/members")
@@ -320,6 +536,8 @@ def add_member(sacco_id):
     raw = request.get_json(silent=True)
     if isinstance(raw, dict) and raw.get("phone") and not raw.get("email"):
         return _invite_member(sacco_id)
+    if isinstance(raw, dict) and raw.get("email") and raw.get("invite") is True:
+        return _invite_member_by_email(sacco_id)
     owner = can(g.access.user, sacco_id, "admin.manage")
     try:
         email, role, status = parse_create_member(_body())
@@ -363,10 +581,6 @@ def add_member(sacco_id):
     db.session.commit()
     payin.announce_new_officers(sacco_id, officers_before, g.access.user.email)
     return jsonify(_member_json(membership, target.email)), 201
-    if not is_admin_role(role) and not can(g.access.user, sacco_id, "member.manage"):
-        return error_response(
-            403, "Adding or changing members needs member.manage (the SACCO admin)."
-        )
 
 
 def _reset_titles(membership: SaccoMembership) -> None:
@@ -437,9 +651,13 @@ def update_member(sacco_id, membership_id):
     if new_status is not None and new_status is not membership.status:
         if new_status is MembershipStatus.INVITED:
             # Agreed rule: only inactive -> invited, a re-add by phone with a
-            # fresh join code. An active member never goes back to invited.
-            inactive = membership.status is MembershipStatus.INACTIVE
-            if not inactive or not membership.phone:
+            # fresh join code. A person who declined can be invited again the
+            # same way. An active member never goes back to invited.
+            idle = membership.status in (
+                MembershipStatus.INACTIVE,
+                MembershipStatus.DECLINED,
+            )
+            if not idle or not membership.phone:
                 db.session.rollback()
                 return error_response(
                     409,
@@ -476,6 +694,7 @@ def update_member(sacco_id, membership_id):
         # A re-add starts over: the person joins and sets a new PIN, and holds
         # only the default title of their role until an admin gives more.
         _reset_titles(membership)
+        membership.declined_at = membership.decline_reason = None
         membership.pin_hash = None
         membership.pin_attempts = 0
         membership.pin_locked_until = None

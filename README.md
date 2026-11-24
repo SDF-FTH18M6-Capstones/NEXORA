@@ -223,7 +223,7 @@ Files: `render.yaml` (API, Postgres, Key Value), `backend/gunicorn.conf.py` (2 w
 - [ ] `DATABASE_URL`: Render supplies `postgresql://...`. The app rewrites `postgres://` and `postgresql://` to `postgresql+psycopg://` (`config.database_url`). If you set it by hand, either scheme works.
 - [ ] `TRUSTED_PROXIES=1` (Render is one proxy). Check: five wrong logins from one address lock that address, not everyone; the access log shows real client IPs.
 - [ ] Start command `gunicorn "app:create_app()"` from `backend/` (`app` is a package, so there is no `app:app`). Health check path `/health` (200 `{"status":"ok"}`; 503 `{"status":"unavailable"}` with no detail). `/api/health` stays for manual checks.
-- [ ] Migrations run in `preDeployCommand` (`flask --app app db upgrade`), which needs a paid plan. On a free plan run it from the Render shell before the first start. Head must be `0039`.
+- [ ] Migrations run in `preDeployCommand` (`flask --app app db upgrade`), which needs a paid plan. On a free plan run it from the Render shell before the first start. Head must be `0041`.
 - [ ] `PYTHON_VERSION` in `render.yaml` is `3.12.8`, the same minor version as CI. `requirements.txt` installs on Python 3.12 and the suite was run on it; 3.13 and 3.14 were not needed.
 - [ ] After the first deploy: one failed login, then the Key Value store holds a `LIMITS:*` key; the logs do not say "Rate-limit storage ... is unreachable".
 
@@ -274,7 +274,7 @@ python -c "import secrets; print(secrets.token_urlsafe(48))"
 
 ### 3. Each SACCO before it takes live prompts
 
-- [ ] The SACCO's officers have approved its pay-in details (two officers: one proposes, another approves; a change waits 24 hours before it goes live).
+- [ ] The SACCO's officers have approved its pay-in details (two officers: one proposes, another approves, and the approval takes effect at once).
 - [ ] The SACCO admin saved its **own** Daraja shortcode, consumer key, consumer secret and passkey (`PUT /saccos/{id}/daraja-settings`). In production there is no fallback to anything else.
 - [ ] For a **paybill**, the saved shortcode equals the approved paybill (a mismatch answers 409 and no prompt is sent).
 - [ ] For a **till**, the saved shortcode is the till's head-office number and the approved number is the till. Prompts go to the approved till.
@@ -292,7 +292,7 @@ python -c "import secrets; print(secrets.token_urlsafe(48))"
 
 ### 5. Before the first real payment
 
-- [ ] `alembic upgrade head` ran: one head, `0039`.
+- [ ] `alembic upgrade head` ran: one head, `0041`.
 - [ ] Take a database backup.
 - [ ] Do a small live payment with an officer's own number into a SACCO that agreed to it. Confirm the callback created a pending deposit, an officer confirmed it, the ledger row says `stk`, and `GET /saccos/{id}/reconciliation` lists no mismatch.
 - [ ] Check `GET /saccos/{id}/flagged-payments` is readable by the secretary.

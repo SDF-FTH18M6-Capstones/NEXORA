@@ -12,6 +12,7 @@ from app import auth_bp
 from app.auth.join import (
     MAX_ATTEMPTS,
     JoinError,
+    burn_codes,
     check_code,
     digest_code,
     normalize_phone,
@@ -30,6 +31,7 @@ from app.savings.validation import MAX_ID
 from app.security.tenant import AccessDenied, current_user
 
 SETUP_TTL = 600  # seconds the setup token stays valid
+DECLINE_REASON_MAX = 500
 
 
 def _serializer():
@@ -75,25 +77,39 @@ def join():
     if error := _signed_in():
         return error
     body = _body()
-    try:
-        phone = normalize_phone(body.get("phone"))
-    except ValueError:
-        return interface_error(CODE_WRONG, "That code is not correct.")
+    # No phone means the invitation was made by email: it belongs to the signed-in
+    # account itself, so the account is who it is looked up by.
+    by_account = str(body.get("phone") or "").strip() == ""
+    phone = None
+    if not by_account:
+        try:
+            phone = normalize_phone(body.get("phone"))
+        except ValueError:
+            return interface_error(CODE_WRONG, "That code is not correct.")
     code = str(body.get("code", ""))
-    # Every live invitation for this phone, one per SACCO, locked in id order.
-    # The code's digest is tied to its membership, so the code itself says which
-    # SACCO is being joined. An unknown phone answers like a wrong code.
-    invited = db.session.execute(
-        select(SaccoMembership)
-        .where(
-            SaccoMembership.phone == phone,
-            # Only a live invitation can be joined: a cancelled or finished
-            # membership answers like an unknown phone.
-            SaccoMembership.status == MembershipStatus.INVITED,
+    # Every live invitation for this phone (or account), one per SACCO, locked in
+    # id order. The code's digest is tied to its membership, so the code itself
+    # says which SACCO is being joined. An unknown phone answers like a wrong code.
+    holder = (
+        SaccoMembership.user_id == g.user.id
+        if by_account
+        else SaccoMembership.phone == phone
+    )
+    invited = (
+        db.session.execute(
+            select(SaccoMembership)
+            .where(
+                holder,
+                # Only a live invitation can be joined: a cancelled or finished
+                # membership answers like an unknown phone.
+                SaccoMembership.status == MembershipStatus.INVITED,
+            )
+            .order_by(SaccoMembership.id)
+            .with_for_update()
         )
-        .order_by(SaccoMembership.id)
-        .with_for_update()
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     latest = []
     for candidate in invited:
         code_row = db.session.execute(
@@ -135,16 +151,17 @@ def join():
         return interface_error(exc.name, exc.message)
 
     user = g.user
-    existing = db.session.execute(
-        select(UserPhone).where(UserPhone.phone == phone)
-    ).scalar_one_or_none()
-    if existing is not None and existing.user_id != user.id:
-        db.session.rollback()  # code stays unspent
-        return error_response(409, "That phone belongs to another account.")
-    if existing is None:
-        db.session.add(
-            UserPhone(user_id=user.id, phone=phone, verified_at=datetime.now(UTC))
-        )
+    if phone is not None:
+        existing = db.session.execute(
+            select(UserPhone).where(UserPhone.phone == phone)
+        ).scalar_one_or_none()
+        if existing is not None and existing.user_id != user.id:
+            db.session.rollback()  # code stays unspent
+            return error_response(409, "That phone belongs to another account.")
+        if existing is None:
+            db.session.add(
+                UserPhone(user_id=user.id, phone=phone, verified_at=datetime.now(UTC))
+            )
     membership.user_id = user.id
     try:
         db.session.flush()
@@ -272,7 +289,14 @@ def join_rules():
         return error
     rules = sacco_rules.current_rules(membership.sacco_id)
     accepted = sacco_rules.has_accepted(membership.id, rules.id) if rules else None
-    return jsonify(rules=sacco_rules.rules_json(rules, accepted))
+    # The invitation, not the SACCO the reader is currently in: an officer who is
+    # signed into one SACCO may be joining another, and the screen must name the
+    # one the rules belong to.
+    sacco = db.session.get(Sacco, membership.sacco_id)
+    return jsonify(
+        rules=sacco_rules.rules_json(rules, accepted),
+        sacco={"id": sacco.id, "name": sacco.name} if sacco else None,
+    )
 
 
 @auth_bp.post("/join/rules/accept")
@@ -294,3 +318,44 @@ def join_accept_rules():
     _audit(membership, "rules.accept", f"rules:{rules.id} v{rules.version}")
     db.session.commit()
     return jsonify(rules=sacco_rules.rules_json(rules, True))
+
+
+@auth_bp.post("/join/rules/decline")
+@write_limit
+def join_decline_rules():
+    """Refuse the invitation after reading the rules, saying why.
+
+    The reason is required and is kept for the SACCO's officers. The membership
+    never becomes active and its join code is spent, so declining also ends the
+    invitation; an officer who invites again starts a fresh one.
+    """
+    if error := _signed_in():
+        return error
+    body = _body()
+    membership, error = _joining_membership(body)
+    if error:
+        return error
+    raw = body.get("reason")
+    reason = raw.strip() if isinstance(raw, str) else ""
+    if not reason:
+        return error_response(
+            400, "Say why you are declining. The SACCO's officers read your reason."
+        )
+    if len(reason) > DECLINE_REASON_MAX:
+        return error_response(
+            400, f"Keep the reason to {DECLINE_REASON_MAX} characters or fewer."
+        )
+    rules = sacco_rules.current_rules(membership.sacco_id)
+    if rules is not None:
+        version = body.get("version")
+        if type(version) is not int or version != rules.version:
+            return error_response(
+                409, "The rules changed. Read the current version first."
+            )
+    burn_codes(membership.id)
+    membership.status = MembershipStatus.DECLINED
+    membership.declined_at = datetime.now(UTC)
+    membership.decline_reason = reason
+    _audit(membership, "member.decline", f"declined: {reason[:200]}")
+    db.session.commit()
+    return jsonify(membership_id=membership.id, status="declined")

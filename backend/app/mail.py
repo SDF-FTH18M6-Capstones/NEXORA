@@ -7,6 +7,7 @@ only; production refuses it). MAIL_BACKEND=smtp sends through MAIL_SERVER.
 import logging
 import smtplib
 import threading
+from collections.abc import Callable
 from email.message import EmailMessage
 
 from flask import current_app
@@ -68,6 +69,49 @@ def send_text_email(to: str, subject: str, body: str) -> None:
         smtp.send_message(message)
 
 
+def send_join_code_email(to: str, code: str, sacco_name: str, minutes: int) -> None:
+    """Email a join code to the person an officer added by email."""
+    body = (
+        f"You were added to {sacco_name} on NEXORA.\n\n"
+        f"Your join code is {code}\n\n"
+        f"It works once and expires in {minutes} minutes. Sign in to NEXORA, open "
+        "Join with a code, and enter it. Do not share it with anyone.\n\n"
+        "If you did not expect this, ignore this email."
+    )
+    send_text_email(to, f"Your {sacco_name} join code", body)
+
+
+def _send_in_background(deliver: Callable[[], None]) -> None:
+    """A mail outage must never fail the request that asked for the email.
+
+    The log backend runs `deliver` inline. SMTP runs it on a background thread
+    with its own app context: a request for a known address would otherwise
+    take visibly longer than one for an unknown address.
+    """
+    if current_app.config["MAIL_BACKEND"] != "smtp":
+        deliver()
+        return
+    app = current_app._get_current_object()
+
+    def work() -> None:
+        with app.app_context():
+            deliver()
+
+    threading.Thread(target=work, daemon=True).start()
+
+
+def send_join_code_safely(to: str, code: str, sacco_name: str, minutes: int) -> None:
+    """Email a join code without letting a mail outage fail the request."""
+
+    def deliver() -> None:
+        try:
+            send_join_code_email(to, code, sacco_name, minutes)
+        except Exception:
+            log.exception("Could not send the join code email")
+
+    _send_in_background(deliver)
+
+
 def _send_logged(to: str, token: str, purpose: str) -> None:
     try:
         send_link_email(to, token, purpose)
@@ -76,18 +120,5 @@ def _send_logged(to: str, token: str, purpose: str) -> None:
 
 
 def send_safely(to: str, token: str, purpose: str = "verify") -> None:
-    """A mail outage must never fail the request that asked for the email.
-
-    SMTP goes out on a background thread: a request for a known address would
-    otherwise take visibly longer than one for an unknown address.
-    """
-    if current_app.config["MAIL_BACKEND"] != "smtp":
-        _send_logged(to, token, purpose)
-        return
-    app = current_app._get_current_object()
-
-    def work():
-        with app.app_context():
-            _send_logged(to, token, purpose)
-
-    threading.Thread(target=work, daemon=True).start()
+    """Email a single-use link without letting a mail outage fail the request."""
+    _send_in_background(lambda: _send_logged(to, token, purpose))

@@ -5,6 +5,7 @@ import { getConsent, giveConsent, withdrawConsent, getProfile, saveProfile } fro
 import { describe } from '../lib/errors.js';
 import ErrorBanner from './ErrorBanner.jsx';
 import Field from './Field.jsx';
+import Select from './Select.jsx';
 
 /* A member's own personal details. They are kept only with the member's consent and erased when it is withdrawn. */
 export default function MyDetails() {
@@ -38,9 +39,17 @@ export default function MyDetails() {
           <form className="flex flex-col gap-3" onSubmit={e => { e.preventDefault(); run(() => saveProfile(saccoId, mid, { full_name: value('full_name'), gender: value('gender'), date_of_birth: value('date_of_birth') }), 'Details saved'); }}>
             <Field id="my-full-name" label="Full name"><input value={value('full_name')} onChange={e => setEdit({ ...edit, full_name: e.target.value })} maxLength={120} /></Field>
             <Field id="my-gender" label="Gender">
-              <select value={value('gender')} onChange={e => setEdit({ ...edit, gender: e.target.value })}>
-                <option value="">Prefer not to say</option><option value="female">Female</option><option value="male">Male</option><option value="other">Other</option>
-              </select>
+              <Select
+                id="my-gender"
+                value={value('gender')}
+                onChange={gender => setEdit({ ...edit, gender })}
+                options={[
+                  { value: '', label: 'Prefer not to say' },
+                  { value: 'female', label: 'Female' },
+                  { value: 'male', label: 'Male' },
+                  { value: 'other', label: 'Other' },
+                ]}
+              />
             </Field>
             <Field id="my-dob" label="Date of birth"><input type="date" value={value('date_of_birth')} onChange={e => setEdit({ ...edit, date_of_birth: e.target.value })} /></Field>
             <div className="flex gap-2">

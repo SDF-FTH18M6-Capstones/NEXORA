@@ -1,7 +1,7 @@
 """Indexes for paging the audit log newest-first
 
-Revision ID: 0039
-Revises: 0038
+Revision ID: 0041
+Revises: 0040
 
 The audit log is read newest-first (created_at DESC, id DESC), per SACCO or
 platform-wide. Without a matching index each page sorts every row it matches.
@@ -10,8 +10,8 @@ The per-SACCO index starts with sacco_id, so it replaces the single-column one.
 
 from alembic import op
 
-revision = "0039"
-down_revision = "0038"
+revision = "0041"
+down_revision = "0040"
 branch_labels = None
 depends_on = None
 

@@ -10,6 +10,7 @@ from app.models.membership import MembershipRole, MembershipStatus
 from app.security.permissions import LEGACY_ROLE_CODES, ROLE_NAMES
 
 CREATE_FIELDS = {"email", "role", "status"}
+EMAIL_INVITE_FIELDS = {"email", "role", "invite"}
 # The legacy `role` values an invite may send, and the job titles the Add a
 # member page offers. Parsed here (this module is where the API's role field is
 # read) so that no route or service decides access by a role name.
@@ -92,6 +93,21 @@ def parse_create_member(data: dict) -> tuple[str, MembershipRole, MembershipStat
             data.get("status"), MembershipStatus, "status", MembershipStatus.ACTIVE
         ),
     )
+
+
+def parse_email_invite(data: dict) -> tuple[str, MembershipRole, str]:
+    """(email, legacy role, job title) for an invite whose join code is emailed.
+
+    The caller sends `invite: true` with an email, so the older request that adds
+    an email member as active (and refuses `status: invited`) keeps its meaning.
+    """
+    _reject_unknown(data, EMAIL_INVITE_FIELDS)
+    email = _email(data.get("email"))
+    try:
+        role, title = parse_invite_role(data.get("role", "member"))
+    except InvalidMember:
+        raise InvalidMember("A valid role is required.") from None
+    return email, role, title
 
 
 def parse_update_member(data: dict) -> dict:

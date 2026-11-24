@@ -19,7 +19,7 @@ class AuditLog(db.Model):
     __tablename__ = "audit_logs"
     __table_args__ = (
         CheckConstraint("btrim(action) <> ''", name="ck_audit_logs_action_not_blank"),
-        # Newest-first paging, per SACCO and platform-wide (migration 0039).
+        # Newest-first paging, per SACCO and platform-wide (migration 0041).
         Index(
             "ix_audit_logs_sacco_created",
             "sacco_id",

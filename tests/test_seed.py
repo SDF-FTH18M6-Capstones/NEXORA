@@ -1,11 +1,11 @@
-﻿# ruff: noqa: F811  (pytest fixtures imported from savings_support)
+# ruff: noqa: F811  (pytest fixtures imported from savings_support)
 """The dev seed script: idempotent, logins work, refuses non-dev databases."""
 
 import importlib.util
 from pathlib import Path
 
 import pytest
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
 
 from app.extensions import db
 from app.models.access import MembershipRoleLink, Role
@@ -39,7 +39,8 @@ def test_running_the_seed_twice_changes_nothing(schema_app):
     assert counts() == first
 
     users, saccos, memberships, accounts, transactions, _ = first
-    assert (users, saccos, memberships, accounts) == (18, 2, 16, 6)
+    # 16 memberships in their own SACCO, plus alpha-m1's second one in Beta.
+    assert (users, saccos, memberships, accounts) == (18, 2, 17, 7)
     assert transactions == 14  # 6 movements and 1 reversal per SACCO
     reversals = db.session.scalar(
         select(func.count())
@@ -101,9 +102,34 @@ def test_every_seeded_membership_holds_its_job_title(schema_app):
         "staff": {"secretary", "loans_officer", "finance_officer"},
         "member": {"member"},
     }
-    memberships = db.session.scalar(
-        select(func.count()).select_from(SaccoMembership)
-    )
-    assert len(rows) == memberships == 16
+    memberships = db.session.scalar(select(func.count()).select_from(SaccoMembership))
+    assert len(rows) == memberships == 17
     for membership_role, role_code in rows:
         assert role_code in expected[membership_role.value]
+
+
+def test_one_member_belongs_to_both_saccos_so_the_switcher_has_something_to_switch(
+    schema_app,
+):
+    seed_script.seed(schema_app, require_dev=False)
+    rows = db.session.execute(
+        text(
+            "SELECT s.name, m.status::text, (m.pin_hash IS NOT NULL) "
+            "FROM sacco_memberships m "
+            "JOIN users u ON u.id = m.user_id "
+            "JOIN saccos s ON s.id = m.sacco_id "
+            "WHERE u.email = 'alpha-m1@example.com' ORDER BY s.name"
+        )
+    ).all()
+    assert [tuple(row) for row in rows] == [
+        ("Alpha SACCO", "active", True),
+        ("Beta SACCO", "active", True),
+    ]
+    # Everyone else still belongs to exactly one SACCO.
+    others = db.session.execute(
+        text(
+            "SELECT count(*) FROM (SELECT user_id FROM sacco_memberships "
+            "GROUP BY user_id HAVING count(*) > 1) t"
+        )
+    ).scalar()
+    assert others == 1

@@ -964,13 +964,21 @@ paths:
               required: [setup_token]
       responses:
         '200':
-          description: The current rules and whether this member accepted them (`rules` is null if the SACCO has none).
+          description: The current rules and whether this member accepted them (`rules` is null if the SACCO has none), plus the SACCO whose invitation is being read.
           content:
             application/json:
               schema:
                 type: object
                 properties:
                   rules: {allOf: [{$ref: '#/components/schemas/SaccoRules'}], nullable: true}
+                  sacco:
+                    type: object
+                    nullable: true
+                    description: The SACCO the invitation belongs to, which the rules screen names.
+                    properties:
+                      id: {type: integer, example: 1}
+                      name: {type: string, example: Umoja SACCO}
+                    required: [id, name]
         '401': {description: "Missing or invalid access token, or the setup token is invalid or expired.", content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
         '403': {description: "The setup token belongs to someone else (NOT_ALLOWED).", content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
   /api/v1/auth/join/rules/accept:
@@ -1004,6 +1012,35 @@ paths:
         '401': {description: "Missing or invalid access token, or the setup token is invalid or expired.", content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
         '403': {description: "The setup token belongs to someone else (NOT_ALLOWED).", content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
         '404': {description: "The SACCO has no rules to accept.", content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
+        '409': {description: "The rules changed; read the current version first.", content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
+  /api/v1/auth/join/rules/decline:
+    post:
+      summary: Decline the SACCO's rules and refuse the invitation
+      description: '**Who:** the signed-in user who just joined, after reading the rules.
+
+        `reason` is required and is kept for the officers of the SACCO, who see it on the member
+        (`decline_reason`). The membership becomes `declined` and is never activated: its join code is
+        spent, so declining ends the invitation, and an officer must invite the person again to restart.
+        Audited as `member.decline`. **Rate limit:** 30 per minute.'
+      security:
+      - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                setup_token: {type: string}
+                version: {type: integer, example: 1, description: "The rules version that was read (required when the SACCO has rules)."}
+                reason: {type: string, maxLength: 500, description: "Why the invitation is refused, in the member's own words."}
+              required: [setup_token, reason]
+      responses:
+        '200':
+          description: '`{membership_id, status: declined}`.'
+        '400': {description: "The reason is missing or too long (validation_error).", content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
+        '401': {description: "Missing or invalid access token, or the setup token is invalid or expired.", content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
+        '403': {description: "The setup token belongs to someone else, or the membership is already set up (NOT_ALLOWED).", content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
         '409': {description: "The rules changed; read the current version first.", content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
   /api/v1/auth/sacco-login:
     post:
@@ -1618,6 +1655,136 @@ paths:
               required:
               - email
               - current_password
+  /api/v1/members/me/photo:
+    get:
+      summary: Read the caller's profile photo
+      description: >-
+        **Who:** the signed-in account owner. The photo is private to that account.
+
+
+        **Rate limit:** 120 per minute.
+      responses:
+        '200':
+          description: The caller's saved profile photo.
+          content:
+            image/jpeg:
+              schema:
+                type: string
+                format: binary
+            image/png:
+              schema:
+                type: string
+                format: binary
+            image/webp:
+              schema:
+                type: string
+                format: binary
+        '204':
+          description: No profile photo has been saved.
+        '401':
+          description: Missing, invalid or expired access token (`unauthorized`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '429':
+          description: Rate limit exceeded (`rate_limited`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      security:
+      - bearerAuth: []
+    put:
+      summary: Save the caller's profile photo
+      description: >-
+        **Who:** the signed-in account owner. Send a `photo` file using
+        `multipart/form-data`. JPEG, PNG and WebP images are accepted, up to 1.5 MB.
+
+
+        **Rate limit:** 30 per minute.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                photo:
+                  type: string
+                  format: binary
+              required:
+              - photo
+      responses:
+        '200':
+          description: The photo was saved to the caller's account.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  saved:
+                    type: boolean
+                required:
+                - saved
+        '400':
+          description: Missing, empty or unsupported image (`validation_error`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Missing, invalid or expired access token (`unauthorized`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '413':
+          description: The image is larger than 1.5 MB (`payload_too_large`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '429':
+          description: Rate limit exceeded (`rate_limited`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      security:
+      - bearerAuth: []
+    delete:
+      summary: Remove the caller's profile photo
+      description: '**Who:** the signed-in account owner.
+
+
+        **Rate limit:** 30 per minute.'
+      responses:
+        '200':
+          description: The photo was removed from the caller's account.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  deleted:
+                    type: boolean
+                required:
+                - deleted
+        '401':
+          description: Missing, invalid or expired access token (`unauthorized`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '429':
+          description: Rate limit exceeded (`rate_limited`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      security:
+      - bearerAuth: []
   /api/v1/saccos:
     get:
       summary: List SACCOs
@@ -2011,7 +2178,11 @@ paths:
         email yet. **Phone** (send `phone` and no `email`): creates an `invited` membership and answers 201
         with a one-time `join_code` and `expires_at`, shown once; the person joins with
         POST /auth/join. 409 if the phone was already invited to this SACCO. Every new membership
-        gets the job title its role implies (staff: secretary).'
+        gets the job title its role implies (staff: secretary). **Email invite** (send `email`,
+        `role` and `invite: true`): creates an `invited` membership for that verified account
+        and emails it a one-time join code. The code is never in the response (it carries
+        `id`, `email`, `role`, `title`, `status` and `expires_at`); the person joins with
+        POST /auth/join sending only the `code`. Same 404 and 409 answers as the email form.'
       responses:
         '201':
           description: Added.
@@ -3418,17 +3589,15 @@ paths:
       description: '**Who:** any active member of the SACCO (`sacco.view`), or the platform owner. Returns
         `details` (the live values, or `null` when the SACCO has not set any) and `pending` (the change
         waiting for a second officer, or `null`). `pending` is only filled for holders of `payin.manage`;
-        a member never sees a change before it is live. `scheduled` is the approved change still waiting
-        for its go-live time (24 hours after approval): holders of `payin.manage` get the change with
-        its values, everyone else only `{go_live_at}`, never the numbers. `updated_at` is when the live
-        values went live (approval plus 24 hours). Reading applies a change whose time has come.
+        a member never sees a change before it is live. An approval by a second officer takes effect at
+        once, so there is no window between approval and the values members see: `updated_at` is that approval.
         `bank_manual_confirm_only` is true when the bank uses a shared paybill.
 
 
         **Rate limit:** 120 per minute.'
       responses:
         '200':
-          description: '`{details, pending, scheduled}`. Members never get a pending change or the scheduled values.'
+          description: '`{details, pending}`. Members never get a pending change.'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
@@ -3533,24 +3702,23 @@ paths:
       schema:
         type: integer
     post:
-      summary: Approve a waiting change so it goes live in 24 hours
+      summary: Approve a waiting change, which puts it live at once
       description: '**Who:** holders of `payin.manage`, never the officer who proposed the change
         (403 `PAYIN_SAME_OFFICER`). The change is named by id, so nobody approves values that changed
         after they read them. The approver must have become an officer before the change was proposed
         (403 `PAYIN_NEW_OFFICER`), and the proposer must still be an officer (409). Officer since is the
         earliest `granted_at` of a title that carries `payin.manage` (editing other titles keeps it);
         an admin with no title rows counts from when the membership was created. Audited as
-        `payin.approve`. The change goes live 24 hours after approval (`go_live_at`), not at once; every
-        officer (the admin included) is emailed at approval, without the numbers; members get no email
-        and see `scheduled.go_live_at` in the app. Approving while another
-        approved change still waits replaces it (`payin.supersede`). Everyone is also emailed when someone gains
+        `payin.approve`. The approval is the moment it takes effect: the values members see change in the
+        same request, with no waiting period. Every officer (the admin included) is emailed, without the
+        numbers, and members get no email. Everyone is also emailed when someone gains
         `payin.manage` (member add, role or title change).
 
 
         **Rate limit:** 30 per minute.'
       responses:
         '200':
-          description: '`{change}` with `status: approved`, `approved_at` and `go_live_at`. Members keep seeing the current details until `go_live_at`.'
+          description: '`{change}` with `status: approved`, `approved_at` and `go_live_at` (the same moment). Members see the new details from now on.'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
@@ -3563,50 +3731,6 @@ paths:
           $ref: '#/components/responses/NotFound'
         '409':
           description: The change was already approved or replaced, or its proposer is no longer an officer (`conflict`).
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-        '423':
-          $ref: '#/components/responses/Locked'
-        '429':
-          description: Rate limit exceeded (`rate_limited`).
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-      security:
-      - bearerAuth: []
-  /api/v1/saccos/{sacco_id}/payment-details/changes/{change_id}/cancel:
-    parameters:
-    - $ref: '#/components/parameters/sacco_id'
-    - name: change_id
-      in: path
-      required: true
-      schema:
-        type: integer
-    post:
-      summary: Cancel an approved change before it goes live
-      description: '**Who:** any single holder of `payin.manage`, the proposer and the approver included.
-        No second approval is needed: stopping is the safe direction. Only an approved change still inside
-        its 24 hours can be cancelled; it becomes `cancelled`, never goes live, and the details members see
-        stay as they are. Audited as `payin.cancel`; the other officers (the admin included) are emailed,
-        without the numbers. A change that is live, replaced, already cancelled or still waiting for a
-        second officer answers 409.
-
-
-        **Rate limit:** 30 per minute.'
-      responses:
-        '200':
-          description: '`{change}` with `status: cancelled`.'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '409':
-          description: The change is not an approved change still waiting to go live (`conflict`).
           content:
             application/json:
               schema:
