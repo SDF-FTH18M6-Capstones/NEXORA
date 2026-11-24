@@ -1,4 +1,5 @@
 import Field from './Field.jsx';
+import Select from './Select.jsx';
 
 const Hint = ({ children }) => <p className="muted text-sm">{children}</p>;
 
@@ -12,11 +13,17 @@ export default function PayInForm({ value, onChange, errors = {}, disabled = fal
       <b>M-Pesa</b>
       <p className="muted text-sm">Leave the number empty if the SACCO takes no M-Pesa payments.</p>
       <Field id="payin-type" label="M-Pesa type" error={errors.mpesa_type}>
-        <select {...input('mpesaType')}>
-          <option value="paybill">Paybill</option>
-          <option value="till">Till (Buy Goods)</option>
-          <option value="pochi">Pochi la Biashara (phone number, shown only)</option>
-        </select>
+        <Select
+          id="payin-type"
+          value={value.mpesaType}
+          disabled={disabled}
+          onChange={mpesaType => onChange({ ...value, mpesaType })}
+          options={[
+            { value: 'paybill', label: 'Paybill' },
+            { value: 'till', label: 'Till (Buy Goods)' },
+            { value: 'pochi', label: 'Pochi la Biashara (phone number, shown only)' },
+          ]}
+        />
       </Field>
       <Field id="payin-number" label="Paybill, till or Pochi number" error={errors.mpesa_number}>
         <input {...input('mpesaNumber', { inputMode: 'numeric', placeholder: '400200', maxLength: 16 })} />

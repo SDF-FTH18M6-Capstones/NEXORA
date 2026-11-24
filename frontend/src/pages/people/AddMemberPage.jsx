@@ -4,6 +4,7 @@ import { useAsync } from '../../lib/useAsync.js';
 import { addMember, addMemberByEmail, listDeclined, listInvited } from '../../api/people.js';
 import ErrorBanner from '../../components/ErrorBanner.jsx';
 import Field from '../../components/Field.jsx';
+import Select from '../../components/Select.jsx';
 import StatusChip from '../../components/StatusChip.jsx';
 import { Body } from './shared.jsx';
 import { ROLE_LABEL } from './data.js';
@@ -172,9 +173,13 @@ export default function AddMemberPage() {
           </Field>
         )}
         <Field id="role" label="Role">
-          <select id="role" value={role} onChange={e => setRole(e.target.value)} disabled={busy}>
-            {ROLES.map(code => <option key={code} value={code}>{ROLE_LABEL[code]}</option>)}
-          </select>
+          <Select
+            id="role"
+            value={role}
+            disabled={busy}
+            onChange={setRole}
+            options={ROLES.map(code => ({ value: code, label: ROLE_LABEL[code] }))}
+          />
         </Field>
 
         <div>

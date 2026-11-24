@@ -118,6 +118,10 @@ def test_a_member_must_accept_the_rules_before_joining(schema_app):  # noqa: F81
         "/api/v1/auth/join/rules", json={"setup_token": token}, headers=me
     )
     assert shown.get_json()["rules"]["interest_percent"] == 10
+    # The screen names the SACCO whose invitation is being read.
+    named = shown.get_json()["sacco"]
+    assert named["id"] == s.sacco.id
+    assert named["name"].startswith("Savings Sacco")
     accepted = client.post(
         "/api/v1/auth/join/rules/accept",
         json={"setup_token": token, "version": 1},

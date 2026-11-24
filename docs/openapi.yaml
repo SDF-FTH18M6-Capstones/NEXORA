@@ -964,13 +964,21 @@ paths:
               required: [setup_token]
       responses:
         '200':
-          description: The current rules and whether this member accepted them (`rules` is null if the SACCO has none).
+          description: The current rules and whether this member accepted them (`rules` is null if the SACCO has none), plus the SACCO whose invitation is being read.
           content:
             application/json:
               schema:
                 type: object
                 properties:
                   rules: {allOf: [{$ref: '#/components/schemas/SaccoRules'}], nullable: true}
+                  sacco:
+                    type: object
+                    nullable: true
+                    description: The SACCO the invitation belongs to, which the rules screen names.
+                    properties:
+                      id: {type: integer, example: 1}
+                      name: {type: string, example: Umoja SACCO}
+                    required: [id, name]
         '401': {description: "Missing or invalid access token, or the setup token is invalid or expired.", content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
         '403': {description: "The setup token belongs to someone else (NOT_ALLOWED).", content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}}
   /api/v1/auth/join/rules/accept:
