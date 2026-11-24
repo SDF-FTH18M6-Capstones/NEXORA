@@ -42,6 +42,7 @@ from app.security.permissions import (
     is_admin_role,
     is_platform_owner,
     permissions_for,
+    role_codes_by_membership,
 )
 from app.security.tenant import (
     AccessDenied,
@@ -104,6 +105,7 @@ def my_saccos():
         .where(SaccoMembership.user_id == user.id)
         .order_by(Sacco.name, Sacco.id)
     ).all()
+    roles = role_codes_by_membership([m for m, _ in rows])
     return jsonify(
         saccos=[
             {
@@ -113,7 +115,7 @@ def my_saccos():
                 "currency": sacco.currency,
                 "membership_id": membership.id,
                 "membership_status": membership.status.value,
-                "roles": sorted(_role_codes(membership)),
+                "roles": sorted(roles[membership.id]),
             }
             for membership, sacco in rows
         ]
@@ -247,14 +249,18 @@ def my_permissions():
 # ---------------------------------------------------------------------------
 
 
-def _member_json(membership: SaccoMembership, email: str | None) -> dict:
+def _member_json(
+    membership: SaccoMembership, email: str | None, roles: set[str] | None = None
+) -> dict:
+    if roles is None:
+        roles = _role_codes(membership)
     return {
         "id": membership.id,
         "user_id": membership.user_id,
         "email": email,
         "phone": membership.phone,
         "role": membership.role.value,
-        "roles": sorted(_role_codes(membership)),
+        "roles": sorted(roles),
         "status": membership.status.value,
         "created_at": membership.created_at.isoformat(),
         # Why a refused invitation was refused, in the person's own words.
@@ -304,7 +310,9 @@ def _members(sacco_id: int, membership_id: int | None = None, lock: bool = False
 @read_limit
 @permission_scoped("member.view")
 def list_members(sacco_id):
-    return jsonify(members=[_member_json(*row) for row in _members(sacco_id)])
+    rows = _members(sacco_id)
+    roles = role_codes_by_membership([m for m, _ in rows])
+    return jsonify(members=[_member_json(m, e, roles[m.id]) for m, e in rows])
 
 
 @saccos_bp.get("/<int:sacco_id>/members/<int:membership_id>")

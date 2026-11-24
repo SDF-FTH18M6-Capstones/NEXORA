@@ -1,4 +1,7 @@
-"""NEXORA configuration. Secrets and connection strings come from environment variables only."""
+"""NEXORA configuration.
+
+Secrets and connection strings come from environment variables only.
+"""
 
 import os
 from datetime import timedelta
@@ -19,6 +22,9 @@ class Config:
     SECRET_KEY = os.environ.get("SECRET_KEY", "")
     SQLALCHEMY_DATABASE_URI = database_url(os.environ.get("DATABASE_URL", ""))
     SQLALCHEMY_TRACK_MODIFICATIONS = False
+    # A managed Postgres drops idle connections; without this the first request
+    # after a quiet spell gets a dead pooled connection and fails with a 500.
+    SQLALCHEMY_ENGINE_OPTIONS = {"pool_pre_ping": True}
     # Reverse proxies in front of the app (0 = none). Per-IP rate limits need the
     # real client address, so set this to the proxy count when deployed behind one.
     TRUSTED_PROXIES = os.environ.get("TRUSTED_PROXIES", "").strip() or "0"
@@ -75,7 +81,7 @@ class Config:
 
 
 class TestConfig(Config):
-    """Used by pytest. Points at a separate database so tests never touch development data."""
+    """Used by pytest. A separate database, so tests never touch development data."""
 
     TESTING = True
     RATELIMIT_ENABLED = False  # tests make many logins from one address
