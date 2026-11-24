@@ -573,10 +573,6 @@ def add_member(sacco_id):
     db.session.commit()
     payin.announce_new_officers(sacco_id, officers_before, g.access.user.email)
     return jsonify(_member_json(membership, target.email)), 201
-    if not is_admin_role(role) and not can(g.access.user, sacco_id, "member.manage"):
-        return error_response(
-            403, "Adding or changing members needs member.manage (the SACCO admin)."
-        )
 
 
 def _reset_titles(membership: SaccoMembership) -> None:
