@@ -49,6 +49,13 @@ services:
         sync: false
       - key: MAIL_PASSWORD
         sync: false
+      # Help bot. Without the key the bot answers 503; nothing else is affected.
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: GEMINI_MODEL
+        value: gemini-3.5-flash-lite
+      - key: ASSISTANT_DAILY_CAP   # keep below the free requests per day in AI Studio
+        value: "800"
       # M-Pesa. Off until the Deployment section of README.md is complete.
       - key: DARAJA_ENABLED
         value: "0"

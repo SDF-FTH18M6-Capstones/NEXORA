@@ -59,6 +59,16 @@ class Config:
     MAIL_PASSWORD = os.environ.get("MAIL_PASSWORD", "")
     FRONTEND_URL = os.environ.get("FRONTEND_URL", "http://localhost:5173")
 
+    # Help bot (Gemini free tier). The key lives only in the environment; with no
+    # key the bot answers 503 and the rest of the app is unaffected. The daily cap
+    # sits below the provider's free requests-per-day, so we refuse before it does.
+    # Without Redis (in-memory fallback) each worker counts alone, so the real cap
+    # is this number times the workers.
+    GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
+    GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-3.5-flash-lite")
+    ASSISTANT_TIMEOUT = int(os.environ.get("ASSISTANT_TIMEOUT", "8"))
+    ASSISTANT_DAILY_CAP = int(os.environ.get("ASSISTANT_DAILY_CAP", "800"))
+
     # M-Pesa STK push. Off unless DARAJA_ENABLED=1. DARAJA_ENV picks Safaricom's
     # sandbox (default) or live API; with APP_ENV=production only the live API is
     # allowed (see _check_daraja_settings in app/__init__.py).

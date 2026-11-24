@@ -2605,3 +2605,38 @@ Response **200**: The request after the change.
 ```
 
 Error statuses: 400, 401, 403, 404, 409
+
+## POST /api/v1/assistant/chat
+
+**Ask the help assistant**
+
+**Who:** anyone. Send a Bearer token to let the assistant see the caller's own SACCOs and balances; without one it answers from the FAQ only.
+
+**Rate limit:** 10 per minute and 30 per day per IP, 20 per hour per person, and a shared daily cap (`ASSISTANT_DAILY_CAP`).
+
+Nothing is stored. The model gets no ids or email, only the question, the FAQ and the caller's own SACCO names, roles, statuses and balances. Answers can be wrong: the page is the official figure. Needs `GEMINI_API_KEY`; without it the route answers 503.
+
+Request body:
+
+```json
+{
+  "message": "message",
+  "history": [
+    {
+      "role": "user",
+      "text": "text"
+    }
+  ]
+}
+```
+
+Response **200**: The assistant's plain-text answer.
+
+```json
+{
+  "reply": "reply",
+  "signed_in": true
+}
+```
+
+Error statuses: 400, 401, 429, 503
