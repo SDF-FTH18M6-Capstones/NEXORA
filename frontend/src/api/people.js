@@ -28,6 +28,12 @@ export async function listInvited(saccoId) {
   return listMembers(saccoId).then(rows => rows.filter(m => m.status === 'invited'));
 }
 
+/* People who read the rules and refused the invitation, with the reason they gave. */
+export async function listDeclined(saccoId) {
+  if (MOCK) { await mockDelay(); return members.filter(m => m.status === 'declined'); }
+  return listMembers(saccoId).then(rows => rows.filter(m => m.status === 'declined'));
+}
+
 export async function addMember(saccoId, { phone, role }) {
   if (MOCK) {
     await mockDelay();

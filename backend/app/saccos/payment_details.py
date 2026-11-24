@@ -29,9 +29,6 @@ log = logging.getLogger(__name__)
 
 PERMISSION = "payin.manage"
 MAX_PROPOSALS_PER_HOUR = 10
-# An approved change waits this long before members see it, so a change nobody
-# expected can be questioned while the old details still stand.
-GO_LIVE_DELAY = timedelta(hours=24)
 FIELDS = (
     "mpesa_type",
     "mpesa_number",
@@ -283,21 +280,6 @@ def live_details(sacco_id: int) -> SaccoPaymentDetails | None:
     ).scalar_one_or_none()
 
 
-def waiting_change(sacco_id: int) -> SaccoPaymentDetailsChange | None:
-    """The approved change whose go-live time has not come yet (call
-    `apply_due` first, so anything already due is live and not waiting)."""
-    return db.session.execute(
-        select(SaccoPaymentDetailsChange)
-        .where(
-            SaccoPaymentDetailsChange.sacco_id == sacco_id,
-            SaccoPaymentDetailsChange.status == "approved",
-            SaccoPaymentDetailsChange.go_live_at > datetime.now(UTC),
-        )
-        .order_by(SaccoPaymentDetailsChange.go_live_at.desc())
-        .limit(1)
-    ).scalar_one_or_none()
-
-
 def _due_change(sacco_id: int) -> SaccoPaymentDetailsChange | None:
     live = live_details(sacco_id)
     query = (
@@ -316,11 +298,12 @@ def _due_change(sacco_id: int) -> SaccoPaymentDetailsChange | None:
 
 
 def apply_due(sacco_id: int) -> None:
-    """Put the newest approved change whose delay has passed onto the live row.
+    """Put an approved change that is not live yet onto the live row.
 
-    There is no background job: whoever reads or changes the details next
-    applies it. Members only ever see `live_details`, so nothing shows early.
-    Commits only when something went live.
+    Approval applies a change at once, so this normally finds nothing; it also
+    finishes a change approved while a go-live delay still existed. There is no
+    background job: whoever reads the details next applies it. Commit only when
+    something went live.
     """
     if _due_change(sacco_id) is None:
         return

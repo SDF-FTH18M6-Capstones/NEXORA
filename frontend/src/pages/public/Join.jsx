@@ -7,7 +7,7 @@ import RulesView from '../../components/RulesView.jsx';
 import { describe } from '../../lib/errors.js';
 import { useSession } from '../../lib/session.jsx';
 import { joinPinRequest, joinRequest } from '../../api/auth.js';
-import { joinAcceptRules, joinRules } from '../../api/rules.js';
+import { joinAcceptRules, joinDeclineRules, joinRules } from '../../api/rules.js';
 
 function messageFor(error) {
   const serverMessage = String(error && error.message || '');
@@ -51,6 +51,8 @@ export default function Join() {
   const [setup, setSetup] = useState(null);
   const [rules, setRules] = useState(null);
   const [accepted, setAccepted] = useState(false);
+  const [declining, setDeclining] = useState(false);
+  const [reason, setReason] = useState('');
   const [pin, setPin] = useState('');
   const [repeatPin, setRepeatPin] = useState('');
   const [error, setError] = useState('');
@@ -108,6 +110,34 @@ export default function Join() {
     try {
       await joinAcceptRules(setup.setup_token, rules.version);
       setAccepted(true);
+    } catch (failure) {
+      setError(describe(failure).text);
+    } finally {
+      setSending(false);
+    }
+  }
+
+  /* Refusing the invitation: the reason is required and goes to the officers.
+   * The join code is spent, so the invitation ends here. */
+  async function declineRules(event) {
+    event.preventDefault();
+    setError('');
+    if (!reason.trim()) {
+      setError('Say why you are declining. The SACCO\u2019s officers read your reason.');
+      return;
+    }
+    setSending(true);
+    try {
+      await joinDeclineRules(setup.setup_token, rules.version, reason.trim());
+      setDeclining(false);
+      setReason('');
+      setAccepted(false);
+      setRules(null);
+      setSetup(null);
+      setCode('');
+      setStep(1);
+      setNoticeHasEnterLink(false);
+      setNotice('You declined this invitation. Your reason was sent to the SACCO\u2019s officers. An admin can invite you again if you change your mind.');
     } catch (failure) {
       setError(describe(failure).text);
     } finally {
@@ -202,7 +232,7 @@ export default function Join() {
           {step === 1
             ? 'Enter the 6-digit code from your email. If your admin added your phone number instead, enter that number too.'
             : needsRules
-              ? 'Every fee, fine and rule is below. You join only after you accept them.'
+              ? 'Every fee, fine and rule is below. You join only after you accept them. If you do not accept them, decline and tell the officers why.'
               : 'Choose a 4-digit PIN for this SACCO.'}
         </p>
       </div>
@@ -259,9 +289,52 @@ export default function Join() {
           <div className="flex flex-col gap-4">
             <RulesView rules={rules} />
             {error && <ErrorBanner>{error}</ErrorBanner>}
-            <button type="button" className="btn" disabled={sending} onClick={acceptRulesStep}>
-              {sending ? 'Saving...' : 'I have read all the rules and accept them'}
-            </button>
+            <div className="flex flex-wrap gap-2">
+              <button type="button" className="btn" disabled={sending} onClick={acceptRulesStep}>
+                {sending ? 'Saving...' : 'I have read all the rules and accept them'}
+              </button>
+              <button
+                type="button"
+                className="btn ghost"
+                disabled={sending}
+                onClick={() => {
+                  setError('');
+                  setDeclining(open => !open);
+                }}
+              >
+                {declining ? 'Keep reading the rules' : 'Decline these rules'}
+              </button>
+            </div>
+            {declining && (
+              <form className="flex flex-col gap-1" noValidate onSubmit={declineRules}>
+                <Field
+                  id="join-decline-reason"
+                  label="Why are you declining? The SACCO's officers will read this."
+                  error={null}
+                >
+                  <textarea
+                    rows={3}
+                    maxLength={500}
+                    value={reason}
+                    onChange={event => {
+                      setReason(event.target.value);
+                      setError('');
+                    }}
+                    required
+                  />
+                </Field>
+                <button
+                  className="btn warn block"
+                  type="submit"
+                  disabled={sending || !reason.trim()}
+                >
+                  {sending ? 'Sending...' : 'Send my reason and decline'}
+                </button>
+                <p className="note">
+                  Your invitation ends here. You cannot set a PIN unless an admin invites you again.
+                </p>
+              </form>
+            )}
           </div>
         ) : (
           <form className="flex flex-col gap-1" noValidate onSubmit={submitPin}>

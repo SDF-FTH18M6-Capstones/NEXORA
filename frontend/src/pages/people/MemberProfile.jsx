@@ -61,10 +61,16 @@ export default function MemberProfile({ membershipId, onBack }) {
                 <h2 className="font-serif text-xl">{data.email || data.phone}</h2>
                 <p className="muted text-sm">Joined {when(data.created_at)}</p>
               </div>
-              <StatusChip status={data.status === 'active' ? 'Active' : data.status === 'invited' ? 'Invited' : 'Inactive'} />
+              <StatusChip status={data.status === 'active' ? 'Active' : data.status === 'invited' ? 'Invited' : data.status === 'declined' ? 'Declined' : 'Inactive'} />
             </div>
 
             {notice && <ErrorBanner>{notice}</ErrorBanner>}
+
+            {data.status === 'declined' && data.decline_reason && (
+              <ErrorBanner kind="info">
+                They declined the invitation: “{data.decline_reason}”
+              </ErrorBanner>
+            )}
 
             {can('member.manage') && (
               <div className="neo-stack tight">
@@ -136,7 +142,7 @@ export default function MemberProfile({ membershipId, onBack }) {
                       }}
                     />
                   )}
-                  {data.status === 'invited' && (
+                  {(data.status === 'invited' || data.status === 'declined') && (
                     <button
                       type="button"
                       className="btn small ghost"

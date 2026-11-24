@@ -274,7 +274,7 @@ python -c "import secrets; print(secrets.token_urlsafe(48))"
 
 ### 3. Each SACCO before it takes live prompts
 
-- [ ] The SACCO's officers have approved its pay-in details (two officers: one proposes, another approves; a change waits 24 hours before it goes live).
+- [ ] The SACCO's officers have approved its pay-in details (two officers: one proposes, another approves, and the approval takes effect at once).
 - [ ] The SACCO admin saved its **own** Daraja shortcode, consumer key, consumer secret and passkey (`PUT /saccos/{id}/daraja-settings`). In production there is no fallback to anything else.
 - [ ] For a **paybill**, the saved shortcode equals the approved paybill (a mismatch answers 409 and no prompt is sent).
 - [ ] For a **till**, the saved shortcode is the till's head-office number and the approved number is the till. Prompts go to the approved till.

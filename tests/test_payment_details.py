@@ -50,29 +50,7 @@ def read(client, user, s):
     return client.get(url(s), headers=auth(user))
 
 
-def cancel(client, user, s, change_id):
-    return client.post(url(s, f"/changes/{change_id}/cancel"), headers=auth(user))
 
-
-def go_live(change_id):
-    """Pretend the 24h delay has passed, so the next read applies the change."""
-    db.session.execute(
-        text(
-            "UPDATE sacco_payment_detail_changes SET "
-            "approved_at = approved_at - interval '25 hours', "
-            "go_live_at = go_live_at - interval '25 hours' WHERE id = :i"
-        ),
-        {"i": change_id},
-    )
-    db.session.commit()
-
-
-def approve_and_wait(client, user, s, change_id):
-    """Approve, then let the go-live delay pass. Returns the approve response."""
-    done = approve(client, user, s, change_id)
-    assert done.status_code == 200, done.json
-    go_live(change_id)
-    return done
 
 
 @pytest.fixture
@@ -202,7 +180,7 @@ def test_a_sacco_may_use_mpesa_only_or_bank_only(schema_app):  # noqa: F811
 def test_a_proposal_is_not_live_until_approved(schema_app, mails):  # noqa: F811
     s = new_sacco()
     c = schema_app.test_client()
-    empty = {"details": None, "pending": None, "scheduled": None}
+    empty = {"details": None, "pending": None}
     assert read(c, s.member, s).json == empty
 
     made = propose(c, s.admin, s)
@@ -218,21 +196,21 @@ def test_a_proposal_is_not_live_until_approved(schema_app, mails):  # noqa: F811
         assert waiting["details"] is None
         assert waiting["pending"]["id"] == change["id"]
 
-    approve_and_wait(c, s.finance, s, change["id"])
+    done = approve(c, s.finance, s, change["id"])
+    assert done.status_code == 200, done.json
+    # The second officer's approval is the moment it takes effect.
     live = read(c, s.member, s).json
-    assert live["pending"] is None and live["scheduled"] is None
+    assert live["pending"] is None
     assert live["details"]["mpesa_number"] == "400200"
     assert live["details"]["bank_account_number"] == "0123456789"
 
 
-def test_updated_at_is_the_go_live_time_not_the_proposal_or_approval_time(  # noqa: F811
-    schema_app,  # noqa: F811
-    mails,
-):
+def test_updated_at_is_the_moment_the_second_officer_approved(schema_app, mails):  # noqa: F811
     s = new_sacco()
     c = schema_app.test_client()
     change = propose(c, s.admin, s).json["change"]
-    approve_and_wait(c, s.finance, s, change["id"])
+    done = approve(c, s.finance, s, change["id"])
+    assert done.status_code == 200, done.json
     live = read(c, s.member, s).json["details"]
     db.session.expire_all()
     row = db.session.execute(
@@ -244,56 +222,46 @@ def test_updated_at_is_the_go_live_time_not_the_proposal_or_approval_time(  # no
     ).one()
     stamp = datetime.fromisoformat(live["updated_at"])
     assert stamp == row.go_live_at
-    assert row.go_live_at - row.approved_at == logic.GO_LIVE_DELAY
+    # Live at approval: no waiting period between the two.
+    assert row.go_live_at == row.approved_at
+    assert row.approved_at > row.proposed_at
 
 
-def test_an_approved_change_waits_24_hours_and_members_only_see_when(  # noqa: F811
+def test_a_second_officers_approval_changes_what_members_see_at_once(  # noqa: F811
     schema_app,  # noqa: F811
     mails,
 ):
     s = new_sacco()
     c = schema_app.test_client()
     first = propose(c, s.admin, s).json["change"]
-    approve_and_wait(c, s.finance, s, first["id"])
+    assert approve(c, s.finance, s, first["id"]).status_code == 200
+    assert read(c, s.member, s).json["details"]["mpesa_number"] == "400200"
+
     second = propose(c, s.finance, s, mpesa_number="400300").json["change"]
     done = approve(c, s.admin, s, second["id"])
     assert done.status_code == 200, done.json
     change = done.json["change"]
-    gap = datetime.fromisoformat(change["go_live_at"]) - datetime.fromisoformat(
-        change["approved_at"]
-    )
-    assert gap == logic.GO_LIVE_DELAY
+    assert change["go_live_at"] == change["approved_at"]
 
-    # The old number stands. A member learns that a change is coming and when,
-    # never what it is.
+    # No waiting: the new number is what members read now, and nothing is left
+    # pending or coming later.
     seen = read(c, s.member, s).json
-    assert seen["details"]["mpesa_number"] == "400200"
+    assert seen["details"]["mpesa_number"] == "400300"
     assert seen["pending"] is None
-    assert list(seen["scheduled"]) == ["go_live_at"]
-    assert datetime.fromisoformat(
-        seen["scheduled"]["go_live_at"]
-    ) == datetime.fromisoformat(change["go_live_at"])
-    assert "400300" not in str(seen)
-    # An officer sees the values that are scheduled.
-    waiting = read(c, s.finance, s).json["scheduled"]
-    assert waiting["id"] == second["id"]
-    assert waiting["values"]["mpesa_number"] == "400300"
-
-    go_live(second["id"])
-    after = read(c, s.member, s).json
-    assert after["details"]["mpesa_number"] == "400300"
-    assert after["scheduled"] is None
+    assert "scheduled" not in seen
 
 
-def test_the_first_ever_details_also_wait_for_the_delay(schema_app, mails):  # noqa: F811
+def test_the_first_ever_details_are_live_at_approval(schema_app, mails):  # noqa: F811
     s = new_sacco()
     c = schema_app.test_client()
-    approve(c, s.finance, s, propose(c, s.admin, s).json["change"]["id"])
+    approved = approve(c, s.finance, s, propose(c, s.admin, s).json["change"]["id"])
+    assert approved.status_code == 200
     seen = read(c, s.member, s).json
-    assert seen["details"] is None and seen["scheduled"] is not None
+    assert seen["details"] is not None
+    assert seen["details"]["mpesa_number"] == "400200"
 
 
-def test_a_newer_approval_replaces_a_change_still_waiting(schema_app, mails):  # noqa: F811
+def test_a_newer_approval_replaces_the_details_in_one_go(schema_app, mails):  # noqa: F811
     s = new_sacco()
     c = schema_app.test_client()
     old = propose(c, s.admin, s, mpesa_number="400111").json["change"]
@@ -301,17 +269,8 @@ def test_a_newer_approval_replaces_a_change_still_waiting(schema_app, mails):  #
     new = propose(c, s.admin, s, mpesa_number="400222").json["change"]
     approve(c, s.finance, s, new["id"])
 
-    status = dict(
-        db.session.execute(
-            text("SELECT id, status FROM sacco_payment_detail_changes")
-        ).all()
-    )
-    assert status[old["id"]] == "superseded" and status[new["id"]] == "approved"
-    assert read(c, s.finance, s).json["scheduled"]["id"] == new["id"]
-
-    # Once the delay has passed, only the newer one goes live, never the old one.
-    go_live(new["id"])
-    go_live(old["id"])
+    # Both approvals are visible in the audit trail, and the newer values are
+    # the ones members read: no older change can land on top of them.
     assert read(c, s.member, s).json["details"]["mpesa_number"] == "400222"
     actions = [
         r.action
@@ -319,7 +278,12 @@ def test_a_newer_approval_replaces_a_change_still_waiting(schema_app, mails):  #
         .filter(AuditLog.sacco_id == s.sacco.id, AuditLog.action.like("payin.%"))
         .order_by(AuditLog.id)
     ]
-    assert actions.count("payin.supersede") == 1
+    assert actions == [
+        "payin.propose",
+        "payin.approve",
+        "payin.propose",
+        "payin.approve",
+    ]
 
 
 def test_the_database_refuses_a_go_live_before_the_approval(schema_app, mails):  # noqa: F811
@@ -345,123 +309,23 @@ def _approved(c, s, **overrides):
     return change
 
 
-def test_any_single_officer_can_cancel_an_approved_change_and_it_never_goes_live(
-    schema_app,  # noqa: F811
-    mails,
-):
-    # The proposer, the approver and a third officer may each cancel alone.
-    for canceller in ("admin", "finance", "third"):
-        s = new_sacco()
-        third = officer(s, "finance_officer")
-        who = {"admin": s.admin, "finance": s.finance, "third": third}[canceller]
-        c = schema_app.test_client()
-        live = _approved(c, s)
-        go_live(live["id"])
-        assert read(c, s.member, s).json["details"]["mpesa_number"] == "400200"
-        change = _approved(c, s, mpesa_number="400999")
-        assert read(c, s.member, s).json["scheduled"] is not None
-
-        done = cancel(c, who, s, change["id"])
-        assert done.status_code == 200, done.json
-        assert done.json["change"]["status"] == "cancelled"
-        seen = read(c, s.member, s).json
-        assert seen["scheduled"] is None
-        assert seen["details"]["mpesa_number"] == "400200"
-
-        # Even after its go-live time has passed, the cancelled change never
-        # goes live: the existing details stay.
-        go_live(change["id"])
-        after = read(c, s.member, s).json
-        assert after["details"]["mpesa_number"] == "400200"
-        assert read(c, s.finance, s).json["scheduled"] is None
-
-
-def test_a_cancelled_first_change_leaves_the_details_unset(schema_app, mails):  # noqa: F811
+def test_the_same_values_cannot_be_proposed_again_once_live(schema_app, mails):  # noqa: F811
     s = new_sacco()
     c = schema_app.test_client()
-    change = _approved(c, s)
-    assert cancel(c, s.admin, s, change["id"]).status_code == 200
-    go_live(change["id"])
-    assert read(c, s.member, s).json["details"] is None
-
-
-def test_a_cancel_is_audited_and_alerts_the_other_officers_only(schema_app, mails):  # noqa: F811
-    s = new_sacco()
-    secretary = officer(s, "secretary")
-    c = schema_app.test_client()
-    change = _approved(c, s)
-    mails.clear()
-
-    assert cancel(c, s.finance, s, change["id"]).status_code == 200
-    admin_email = db.session.get(User, s.admin.id).email
-    finance_email = db.session.get(User, s.finance.id).email
-    assert [to for to, _, _ in mails] == [admin_email]  # not the one who cancelled
-    assert "cancelled" in mails[0][1]
-    assert finance_email in mails[0][2]
-    assert "400200" not in mails[0][2] and "0123456789" not in mails[0][2]
-    assert db.session.get(User, secretary.id).email not in [to for to, _, _ in mails]
-
-    row = (
-        db.session.query(AuditLog)
-        .filter(AuditLog.sacco_id == s.sacco.id, AuditLog.action == "payin.cancel")
-        .one()
-    )
-    assert row.actor_id == s.finance.id and row.target == f"change:{change['id']}"
-
-
-def test_only_an_approved_change_still_waiting_can_be_cancelled(schema_app, mails):  # noqa: F811
-    s = new_sacco()
-    c = schema_app.test_client()
-    # Still waiting for a second officer.
-    pending = propose(c, s.admin, s).json["change"]
-    assert cancel(c, s.finance, s, pending["id"]).status_code == 409
-    approve(c, s.finance, s, pending["id"])
-    # Cancelled once; a second cancel is refused.
-    assert cancel(c, s.finance, s, pending["id"]).status_code == 200
-    assert cancel(c, s.admin, s, pending["id"]).status_code == 409
-    # Replaced by a newer approval.
-    old = _approved(c, s, mpesa_number="400111")
-    _approved(c, s, mpesa_number="400222")
-    assert cancel(c, s.admin, s, old["id"]).status_code == 409
-    # Already live.
-    live = _approved(c, s, mpesa_number="400333")
-    go_live(live["id"])
-    late = cancel(c, s.admin, s, live["id"])
-    assert late.status_code == 409
-    assert read(c, s.member, s).json["details"]["mpesa_number"] == "400333"
-    assert cancel(c, s.admin, s, 999999).status_code == 404
-
-
-def test_only_officers_of_this_sacco_can_cancel(schema_app, mails):  # noqa: F811
-    s, other = new_sacco(), new_sacco()
-    c = schema_app.test_client()
-    change = _approved(c, s)
-    assert cancel(c, s.member, s, change["id"]).status_code == 403
-    for outsider in (other.admin, other.finance):
-        assert cancel(c, outsider, s, change["id"]).status_code == 404
-    assert read(c, s.admin, s).json["scheduled"]["id"] == change["id"]
-
-
-def test_a_new_change_can_be_proposed_after_a_cancel(schema_app, mails):  # noqa: F811
-    s = new_sacco()
-    c = schema_app.test_client()
-    change = _approved(c, s)
-    cancel(c, s.admin, s, change["id"])
-    again = propose(c, s.admin, s)  # the same values: nothing is live, so allowed
-    assert again.status_code == 201
-    approve_and_wait(c, s.finance, s, again.json["change"]["id"])
-    assert read(c, s.member, s).json["details"]["mpesa_number"] == "400200"
+    _approved(c, s)
+    again = propose(c, s.admin, s)  # nothing changed, so there is nothing to approve
+    assert again.status_code == 409
 
 
 def test_a_second_change_replaces_the_live_values(schema_app, mails):  # noqa: F811
     s = new_sacco()
     c = schema_app.test_client()
     first = propose(c, s.admin, s).json["change"]
-    approve_and_wait(c, s.finance, s, first["id"])
+    approve(c, s.finance, s, first["id"])
     second = propose(c, s.finance, s, mpesa_number="400300").json["change"]
     # Still the old number until the other officer approves.
     assert read(c, s.member, s).json["details"]["mpesa_number"] == "400200"
-    approve_and_wait(c, s.admin, s, second["id"])
+    approve(c, s.admin, s, second["id"])
     assert read(c, s.member, s).json["details"]["mpesa_number"] == "400300"
     db.session.expire_all()
     assert (
@@ -476,7 +340,7 @@ def test_a_second_change_replaces_the_live_values(schema_app, mails):  # noqa: F
 def test_proposing_what_is_already_live_is_refused(schema_app, mails):  # noqa: F811
     s = new_sacco()
     c = schema_app.test_client()
-    approve_and_wait(c, s.finance, s, propose(c, s.admin, s).json["change"]["id"])
+    approve(c, s.finance, s, propose(c, s.admin, s).json["change"]["id"])
     same = propose(c, s.admin, s)
     assert same.status_code == 409
     assert "already see" in same.json["error"]["message"]
@@ -621,7 +485,7 @@ def test_someone_from_another_sacco_gets_404_everywhere(schema_app, mails):  # n
     other = new_sacco()
     c = schema_app.test_client()
     change = propose(c, s.admin, s).json["change"]
-    approve_and_wait(c, s.finance, s, change["id"])
+    approve(c, s.finance, s, change["id"])
     pending = propose(c, s.admin, s, mpesa_number="400555").json["change"]
 
     for outsider in (other.member, other.admin, other.finance):
@@ -637,7 +501,7 @@ def test_someone_from_another_sacco_gets_404_everywhere(schema_app, mails):  # n
 def test_each_sacco_has_its_own_details(schema_app, mails):  # noqa: F811
     a, b = new_sacco(), new_sacco()
     c = schema_app.test_client()
-    approve_and_wait(c, a.finance, a, propose(c, a.admin, a).json["change"]["id"])
+    approve(c, a.finance, a, propose(c, a.admin, a).json["change"]["id"])
     assert read(c, b.member, b).json["details"] is None
     assert read(c, a.member, a).json["details"] is not None
 
@@ -661,7 +525,7 @@ def test_a_shared_bank_paybill_is_marked_manual_confirm_only(schema_app, mails):
         c, s.admin, s, bank_uses_shared_paybill=True, bank_paybill_number="247247"
     ).json["change"]
     assert shared["values"]["bank_manual_confirm_only"] is True
-    approve_and_wait(c, s.finance, s, shared["id"])
+    approve(c, s.finance, s, shared["id"])
     live = read(c, s.member, s).json["details"]
     assert live["bank_manual_confirm_only"] is True
     assert live["bank_paybill_number"] == "247247"
@@ -676,7 +540,7 @@ def test_every_proposal_and_approval_is_audited_without_the_numbers(schema_app, 
     c = schema_app.test_client()
     first = propose(c, s.admin, s).json["change"]
     second = propose(c, s.finance, s, mpesa_number="400300").json["change"]
-    approved = approve(c, s.admin, s, second["id"])
+    approve(c, s.admin, s, second["id"])
     rows = (
         db.session.query(AuditLog)
         .filter(AuditLog.sacco_id == s.sacco.id, AuditLog.action.like("payin.%"))
@@ -691,8 +555,7 @@ def test_every_proposal_and_approval_is_audited_without_the_numbers(schema_app, 
     ]
     assert rows[0].target.startswith(f"change:{first['id']} fields:")
     assert "mpesa_number" in rows[0].target
-    go_live_at = approved.json["change"]["go_live_at"]
-    assert rows[3].target == f"change:{second['id']} go_live_at:{go_live_at}"
+    assert rows[3].target == f"change:{second['id']}"
     everything = " ".join(r.target for r in rows)
     assert "400200" not in everything and "0123456789" not in everything
 
@@ -727,10 +590,9 @@ def test_every_officer_and_only_officers_are_emailed(schema_app, mails):  # noqa
 
     mails.clear()
     approve(c, s.finance, s, change["id"])
-    # Officers (the admin included) only: members see the in-app notice, and a
-    # secretary or a member is not emailed.
+    # Officers (the admin included) only: a secretary or a member is not emailed.
     assert sorted(to for to, _, _ in mails) == sorted([admin_email, finance_email])
-    assert "24 hours" in mails[0][1]
+    assert "have changed" in mails[0][1]
     assert "400200" not in mails[0][2] and "0123456789" not in mails[0][2]
 
 
@@ -758,7 +620,7 @@ def test_a_mail_outage_does_not_fail_or_undo_the_change(schema_app, monkeypatch)
     c = schema_app.test_client()
     made = propose(c, s.admin, s)
     assert made.status_code == 201
-    approve_and_wait(c, s.finance, s, made.json["change"]["id"])
+    approve(c, s.finance, s, made.json["change"]["id"])
     assert read(c, s.member, s).json["details"] is not None
 
 

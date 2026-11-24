@@ -12,6 +12,7 @@ from app import auth_bp
 from app.auth.join import (
     MAX_ATTEMPTS,
     JoinError,
+    burn_codes,
     check_code,
     digest_code,
     normalize_phone,
@@ -30,6 +31,7 @@ from app.savings.validation import MAX_ID
 from app.security.tenant import AccessDenied, current_user
 
 SETUP_TTL = 600  # seconds the setup token stays valid
+DECLINE_REASON_MAX = 500
 
 
 def _serializer():
@@ -309,3 +311,44 @@ def join_accept_rules():
     _audit(membership, "rules.accept", f"rules:{rules.id} v{rules.version}")
     db.session.commit()
     return jsonify(rules=sacco_rules.rules_json(rules, True))
+
+
+@auth_bp.post("/join/rules/decline")
+@write_limit
+def join_decline_rules():
+    """Refuse the invitation after reading the rules, saying why.
+
+    The reason is required and is kept for the SACCO's officers. The membership
+    never becomes active and its join code is spent, so declining also ends the
+    invitation; an officer who invites again starts a fresh one.
+    """
+    if error := _signed_in():
+        return error
+    body = _body()
+    membership, error = _joining_membership(body)
+    if error:
+        return error
+    raw = body.get("reason")
+    reason = raw.strip() if isinstance(raw, str) else ""
+    if not reason:
+        return error_response(
+            400, "Say why you are declining. The SACCO's officers read your reason."
+        )
+    if len(reason) > DECLINE_REASON_MAX:
+        return error_response(
+            400, f"Keep the reason to {DECLINE_REASON_MAX} characters or fewer."
+        )
+    rules = sacco_rules.current_rules(membership.sacco_id)
+    if rules is not None:
+        version = body.get("version")
+        if type(version) is not int or version != rules.version:
+            return error_response(
+                409, "The rules changed. Read the current version first."
+            )
+    burn_codes(membership.id)
+    membership.status = MembershipStatus.DECLINED
+    membership.declined_at = datetime.now(UTC)
+    membership.decline_reason = reason
+    _audit(membership, "member.decline", f"declined: {reason[:200]}")
+    db.session.commit()
+    return jsonify(membership_id=membership.id, status="declined")

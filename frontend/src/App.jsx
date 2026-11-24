@@ -132,7 +132,10 @@ function SessionProvider({ children }) {
       return;
     }
 
-    if (!['/', '/login', '/register', '/verify', '/forgot', '/reset', '/logout'].includes(location.pathname)) {
+    if (![
+      '/', '/login', '/register', '/verify', '/verify-email',
+      '/forgot', '/reset', '/reset-password', '/logout',
+    ].includes(location.pathname)) {
       pendingReturnToRef.current = location.pathname + location.search;
     }
   }, [location.pathname, location.search, session]);
@@ -428,6 +431,12 @@ function AppRouter() {
     ['forgot', 'Forgot password'],
     ['reset', 'Reset password'],
   ];
+  // Emailed links use the API's page names (see backend/app/mail.py), so the
+  // address in the mail opens the same page as the short route above.
+  const emailedRoutes = [
+    ['verify-email', 'verify', 'Verify your email'],
+    ['reset-password', 'reset', 'Reset password'],
+  ];
   const protectedExtras = [
     // The API links the code to the account making the request (POST /auth/join
     // reads g.user), so this page needs a session: RequireAuth sends a visitor
@@ -448,6 +457,11 @@ function AppRouter() {
 
           {publicRoutes.map(([path, title]) => {
             const Page = path === 'login' ? LoginPage : makeLazyPage(path, title);
+            return <Route key={path} path={'/' + path} element={<Page />} />;
+          })}
+
+          {emailedRoutes.map(([path, page, title]) => {
+            const Page = makeLazyPage(page, title);
             return <Route key={path} path={'/' + path} element={<Page />} />;
           })}
 

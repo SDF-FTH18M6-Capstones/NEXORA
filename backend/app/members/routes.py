@@ -257,6 +257,11 @@ def _member_json(membership: SaccoMembership, email: str | None) -> dict:
         "roles": sorted(_role_codes(membership)),
         "status": membership.status.value,
         "created_at": membership.created_at.isoformat(),
+        # Why a refused invitation was refused, in the person's own words.
+        "declined_at": membership.declined_at.isoformat()
+        if membership.declined_at
+        else None,
+        "decline_reason": membership.decline_reason,
     }
 
 
@@ -345,9 +350,15 @@ def _invite_member(sacco_id):
     ).scalar_one_or_none()
     reissued = membership is not None
     if reissued:
-        if membership.status is not MembershipStatus.INVITED:
+        if membership.status not in (
+            MembershipStatus.INVITED,
+            MembershipStatus.DECLINED,
+        ):
             db.session.rollback()
             return error_response(409, "That phone already belongs to this SACCO.")
+        # Inviting a person who declined starts over: the reason is history now.
+        membership.declined_at = membership.decline_reason = None
+        membership.status = MembershipStatus.INVITED
         if is_admin_role(membership.role) and not can(
             g.access.user, sacco_id, "admin.manage"
         ):
@@ -441,9 +452,15 @@ def _invite_member_by_email(sacco_id):
     ).scalar_one_or_none()
     reissued = membership is not None
     if reissued:
-        if membership.status is not MembershipStatus.INVITED:
+        if membership.status not in (
+            MembershipStatus.INVITED,
+            MembershipStatus.DECLINED,
+        ):
             db.session.rollback()
             return error_response(409, "That user is already a member of this SACCO.")
+        # Inviting a person who declined starts over: the reason is history now.
+        membership.declined_at = membership.decline_reason = None
+        membership.status = MembershipStatus.INVITED
         if is_admin_role(membership.role) and not can(
             g.access.user, sacco_id, "admin.manage"
         ):
@@ -556,10 +573,6 @@ def add_member(sacco_id):
     db.session.commit()
     payin.announce_new_officers(sacco_id, officers_before, g.access.user.email)
     return jsonify(_member_json(membership, target.email)), 201
-    if not is_admin_role(role) and not can(g.access.user, sacco_id, "member.manage"):
-        return error_response(
-            403, "Adding or changing members needs member.manage (the SACCO admin)."
-        )
 
 
 def _reset_titles(membership: SaccoMembership) -> None:
@@ -630,9 +643,13 @@ def update_member(sacco_id, membership_id):
     if new_status is not None and new_status is not membership.status:
         if new_status is MembershipStatus.INVITED:
             # Agreed rule: only inactive -> invited, a re-add by phone with a
-            # fresh join code. An active member never goes back to invited.
-            inactive = membership.status is MembershipStatus.INACTIVE
-            if not inactive or not membership.phone:
+            # fresh join code. A person who declined can be invited again the
+            # same way. An active member never goes back to invited.
+            idle = membership.status in (
+                MembershipStatus.INACTIVE,
+                MembershipStatus.DECLINED,
+            )
+            if not idle or not membership.phone:
                 db.session.rollback()
                 return error_response(
                     409,
@@ -669,6 +686,7 @@ def update_member(sacco_id, membership_id):
         # A re-add starts over: the person joins and sets a new PIN, and holds
         # only the default title of their role until an admin gives more.
         _reset_titles(membership)
+        membership.declined_at = membership.decline_reason = None
         membership.pin_hash = None
         membership.pin_attempts = 0
         membership.pin_locked_until = None
