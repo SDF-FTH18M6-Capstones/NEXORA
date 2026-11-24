@@ -4920,3 +4920,77 @@ paths:
           $ref: '#/components/responses/Conflict'
       security:
       - bearerAuth: []
+  /api/v1/assistant/chat:
+    post:
+      summary: Ask the help assistant
+      description: '**Who:** anyone. Send a Bearer token to let the assistant see the caller''s own SACCOs
+        and balances; without one it answers from the FAQ only.
+
+
+        **Rate limit:** 10 per minute and 30 per day per IP, 20 per hour per person, and a shared daily
+        cap (`ASSISTANT_DAILY_CAP`).
+
+
+        Nothing is stored. The model gets no ids or email, only the question, the FAQ and the caller''s
+        own SACCO names, roles, statuses and balances. Answers can be wrong: the page is the official
+        figure. Needs `GEMINI_API_KEY`; without it the route answers 503.'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                message:
+                  type: string
+                  maxLength: 500
+                history:
+                  type: array
+                  maxItems: 6
+                  items:
+                    type: object
+                    properties:
+                      role:
+                        type: string
+                        enum:
+                        - user
+                        - assistant
+                      text:
+                        type: string
+                        maxLength: 1200
+              required:
+              - message
+      responses:
+        '200':
+          description: The assistant's plain-text answer.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  reply:
+                    type: string
+                  signed_in:
+                    type: boolean
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          description: A Bearer token was sent but is invalid or expired (`unauthorized`). No header at all
+            is an anonymous call, not an error.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '429':
+          description: Rate limit exceeded (`rate_limited`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: '`assistant_busy` (the free daily limit is used up) or `assistant_unavailable` (no
+            key, timeout or provider error). The message is generic.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'

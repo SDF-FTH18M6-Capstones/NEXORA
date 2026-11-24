@@ -30,6 +30,7 @@ members_bp = Blueprint("members", __name__, url_prefix="/members")
 loans_bp = Blueprint("loans", __name__, url_prefix="/loans")
 support_bp = Blueprint("support", __name__, url_prefix="/support-access")
 daraja_bp = Blueprint("daraja", __name__, url_prefix="/daraja")
+assistant_bp = Blueprint("assistant", __name__, url_prefix="/assistant")
 
 BLUEPRINTS = (
     auth_bp,
@@ -40,6 +41,7 @@ BLUEPRINTS = (
     loans_bp,
     support_bp,
     daraja_bp,
+    assistant_bp,
 )
 MAX_ID = 2**31 - 1  # ids are 32-bit integers in Postgres
 
@@ -77,6 +79,11 @@ class IdConverter(IntegerConverter):
 
 def _json_http_error(exc: HTTPException):
     """Every HTTP error (404, 405, 413, ...) answers in the API's JSON shape."""
+    # A limiter callback may attach its own response with another status (the help
+    # bot's 503 "daily limit reached"); it is already in the JSON shape.
+    embedded = getattr(exc, "response", None)
+    if embedded is not None and embedded.status_code != exc.code:
+        return embedded
     if exc.code == 429:
         message = "Too many requests. Try again later."
     else:
@@ -121,6 +128,7 @@ def create_app(config_class=Config):
     # Import models so Alembic's autogenerate can see every table.
     from app.admin import owners as admin_owners  # noqa: F401
     from app.admin import routes as admin_routes  # noqa: F401
+    from app.assistant import routes as assistant_routes  # noqa: F401
 
     # Importing the routes attaches them to auth_bp.
     from app.auth import routes  # noqa: F401

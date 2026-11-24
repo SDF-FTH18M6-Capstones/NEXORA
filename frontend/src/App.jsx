@@ -7,6 +7,7 @@ import {
   useLocation,
   useNavigate,
 } from 'react-router-dom';
+import ChatWidget from './components/ChatWidget.jsx';
 import ErrorPage from './components/ErrorPage.jsx';
 import { LogoDefs } from './components/Logo.jsx';
 import { describe } from './lib/errors.js';
@@ -419,6 +420,7 @@ function SessionProvider({ children }) {
       >
         {toastMessage ? toastMessage.text : ''}
       </div>
+      <ChatWidget />
     </SessionContext.Provider>
   );
 }
