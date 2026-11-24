@@ -289,7 +289,14 @@ def join_rules():
         return error
     rules = sacco_rules.current_rules(membership.sacco_id)
     accepted = sacco_rules.has_accepted(membership.id, rules.id) if rules else None
-    return jsonify(rules=sacco_rules.rules_json(rules, accepted))
+    # The invitation, not the SACCO the reader is currently in: an officer who is
+    # signed into one SACCO may be joining another, and the screen must name the
+    # one the rules belong to.
+    sacco = db.session.get(Sacco, membership.sacco_id)
+    return jsonify(
+        rules=sacco_rules.rules_json(rules, accepted),
+        sacco={"id": sacco.id, "name": sacco.name} if sacco else None,
+    )
 
 
 @auth_bp.post("/join/rules/accept")

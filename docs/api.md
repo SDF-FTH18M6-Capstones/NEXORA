@@ -137,11 +137,15 @@ Request body:
 }
 ```
 
-Response **200**: The current rules and whether this member accepted them (`rules` is null if the SACCO has none).
+Response **200**: The current rules and whether this member accepted them (`rules` is null if the SACCO has none), plus the SACCO whose invitation is being read.
 
 ```json
 {
-  "rules": "rules"
+  "rules": "rules",
+  "sacco": {
+    "id": 1,
+    "name": "name"
+  }
 }
 ```
 

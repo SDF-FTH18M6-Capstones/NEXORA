@@ -34,8 +34,8 @@ export async function voteOnProposal(saccoId, proposalId, approve) {
 
 /* The rules of the SACCO being joined, read with the setup token before the PIN step. */
 export async function joinRules(setupToken) {
-  if (MOCK) { await mockDelay(); return null; }
-  return (await http.post('/auth/join/rules', { body: { setup_token: setupToken } })).rules;
+  if (MOCK) { await mockDelay(); return { rules: null, sacco: null }; }
+  return http.post('/auth/join/rules', { body: { setup_token: setupToken } });
 }
 export async function joinAcceptRules(setupToken, version) {
   if (MOCK) { await mockDelay(); return null; }

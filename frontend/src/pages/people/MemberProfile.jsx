@@ -57,9 +57,15 @@ export default function MemberProfile({ membershipId, onBack }) {
           <>
             <div className="neo-search">
               <div className="grow">
-                <div className="eyebrow">Member</div>
+                <div className="eyebrow">
+                  {data.status === 'declined' ? 'Declined invitation' : 'Member'}
+                </div>
                 <h2 className="font-serif text-xl">{data.email || data.phone}</h2>
-                <p className="muted text-sm">Joined {when(data.created_at)}</p>
+                <p className="muted text-sm">
+                  {data.status === 'declined'
+                    ? `Invited ${when(data.created_at)} \u00b7 declined ${when(data.declined_at)}`
+                    : `Joined ${when(data.created_at)}`}
+                </p>
               </div>
               <StatusChip status={data.status === 'active' ? 'Active' : data.status === 'invited' ? 'Invited' : data.status === 'declined' ? 'Declined' : 'Inactive'} />
             </div>
@@ -72,7 +78,9 @@ export default function MemberProfile({ membershipId, onBack }) {
               </ErrorBanner>
             )}
 
-            {can('member.manage') && (
+            {/* A declined person never joined: roles and share capital do not apply
+             * until an officer invites them again and they accept. */}
+            {can('member.manage') && data.status !== 'declined' && (
               <div className="neo-stack tight">
                 <b>Roles in this SACCO</b>
                 <div className="flex flex-wrap gap-2">
@@ -163,7 +171,9 @@ export default function MemberProfile({ membershipId, onBack }) {
             )}
           </>
         )}
-        {can('member.manage') && <MemberDetails membershipId={membershipId} />}
+        {can('member.manage') && data && data.status !== 'declined' && (
+          <MemberDetails membershipId={membershipId} />
+        )}
       </Body>
     </section>
   );
