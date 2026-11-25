@@ -293,6 +293,25 @@ def test_provider_http_errors_map_to_kinds(monkeypatch, app, status, kind):
     assert caught.value.kind == kind
 
 
+def test_an_answer_split_over_several_parts_is_joined(monkeypatch, app):
+    class Reply:
+        def read(self):
+            parts = [{"text": "A SAC"}, {"text": "CO officer "}, {"text": "adds you."}]
+            parts.insert(1, {"text": "private reasoning", "thought": True})
+            return json.dumps({"candidates": [{"content": {"parts": parts}}]}).encode()
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+    monkeypatch.setattr(chat.urllib.request, "urlopen", lambda r, timeout: Reply())
+    with app.app_context():
+        reply = chat.generate("sys", [{"role": "user", "text": "q"}])
+    assert reply == "A SACCO officer adds you."
+
+
 def test_a_timeout_or_garbage_reply_is_down(monkeypatch, app):
     def slow(request, timeout):
         raise TimeoutError
