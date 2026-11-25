@@ -70,6 +70,13 @@
   }
   /* Only the top bar scrolls OVER other content, so it is the only card that still frosts what is behind it. */
   .topbar.glass { -webkit-backdrop-filter: blur(1rem) saturate(140%); backdrop-filter: blur(1rem) saturate(140%); }
+  /* The help panel floats over live page text, so it is nearly opaque: 64% white let
+     the page show through the answers and made them hard to read. */
+  .chat-panel {
+    background: color-mix(in srgb, var(--pop) 94%, transparent);
+    -webkit-backdrop-filter: blur(14px) saturate(120%);
+    backdrop-filter: blur(14px) saturate(120%);
+  }
   .tilt { transform: perspective(62rem) rotateX(var(--rx, 0deg)) rotateY(var(--ry, 0deg)); transition: transform .5s var(--ease); will-change: transform; overflow: hidden; }
   .tilt::after { content: ""; position: absolute; inset: 0; pointer-events: none; border-radius: inherit; background: radial-gradient(circle at var(--gx, 50%) var(--gy, 50%), rgba(255, 255, 255, .45), transparent 44%); opacity: var(--glare, 0); transition: opacity .4s; }
   .tilt:hover { --glare: 1; }
@@ -276,8 +283,18 @@
   .role-menu b { font-size: .86rem; }
   .role-menu .tick { color: var(--teal); font-weight: 700; }
   .lb-s { font-size: .72rem; font-weight: 600; color: var(--muted); }
-  .chip.pick { cursor: pointer; min-height: 2.2rem; padding: 0 .9rem; font-size: .82rem; transition: background .25s, color .25s; }
+  .chip.pick { position: relative; cursor: pointer; min-height: 2.2rem; padding: 0 .9rem; font-size: .82rem; transition: background .25s, color .25s, border-color .25s; }
   .chip.pick[aria-pressed="true"] { background: var(--teal); border-color: var(--teal); color: #fff; }
+  /* One job title per member: the input is a radio, drawn as a theme-coloured tick
+     instead of the browser's blue checkbox. */
+  .chip.pick input { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+  .chip.pick .tick { width: 1.05rem; height: 1.05rem; border-radius: .35rem; border: 1.5px solid color-mix(in srgb, var(--ink) 35%, transparent); display: inline-grid; place-items: center; background: transparent; transition: background .2s, border-color .2s; }
+  .chip.pick .tick::after { content: ""; width: .28rem; height: .52rem; margin-top: -.1rem; border-right: 2px solid var(--cream); border-bottom: 2px solid var(--cream); transform: rotate(45deg) scale(0); transition: transform .15s ease; }
+  .chip.pick.on { border-color: var(--teal); background: color-mix(in srgb, var(--teal) 12%, transparent); }
+  .chip.pick.on .tick { background: var(--teal); border-color: var(--teal); }
+  .chip.pick.on .tick::after { transform: rotate(45deg) scale(1); }
+  .chip.pick input:focus-visible + .tick { outline: 2px solid var(--teal); outline-offset: 2px; }
+  .chip.pick input:disabled + .tick { opacity: .5; }
   .bar-track { height: .7rem; border-radius: 999px; background: color-mix(in srgb, var(--ink) 12%, transparent); overflow: hidden; }
   .bar-track i { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, var(--saffron), var(--teal-2)); animation: grow-x 1.2s var(--ease) both; transform-origin: left; }
   @keyframes grow-x { from { transform: scaleX(0); } }
@@ -289,7 +306,7 @@
   .photo-big { width: min(21rem, 70vw); aspect-ratio: 1; border-radius: 1.6rem; display: grid; place-items: center; color: #fff; font-family: var(--font-head); font-size: 5rem; background: linear-gradient(145deg, var(--teal-2), var(--teal)) center / cover; }
   .seg { display: inline-flex; padding: .25rem; border-radius: 999px; background: color-mix(in srgb, var(--ink) 8%, transparent); border: 1px solid var(--edge); }
   .seg button { border: 0; background: transparent; min-height: 2.1rem; padding: 0 1rem; border-radius: 999px; font-weight: 600; color: var(--muted); transition: all .35s var(--ease); }
-  .seg button[aria-selected="true"] { background: #fff; color: var(--teal); box-shadow: 0 .4rem 1rem -.5rem rgba(15, 76, 71, .6); }
+  .seg button[aria-selected="true"], .seg button[aria-pressed="true"] { background: #fff; color: var(--teal); box-shadow: 0 .4rem 1rem -.5rem rgba(15, 76, 71, .6); }
   .spacer { flex: 1; }
   .grid12 { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: var(--gap); }
   .s12 { grid-column: span 12; } .s8 { grid-column: span 8; } .s7 { grid-column: span 7; } .s6 { grid-column: span 6; }
@@ -390,6 +407,8 @@
     .topbar h1 { width: 100%; }
     .float { display: none; }
     .lnav { padding-left: 1rem; }
+    /* Role chips are tapped, not hovered: 2.75rem is the 44px touch target. */
+    .chip.pick { min-height: 2.75rem; padding-inline: 1rem; }
   }
   @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after { animation: none !important; transition: none !important; }

@@ -20,8 +20,13 @@ from app.auth.routes import _body, _text
 from app.errors import error_response
 from app.extensions import db
 from app.models.audit import AuditLog
-from app.models.membership import MembershipStatus, SaccoMembership
+from app.models.membership import (
+    MembershipRole,
+    MembershipStatus,
+    SaccoMembership,
+)
 from app.models.sacco import Sacco, SaccoStatus
+from app.models.user import User
 from app.saccos import registration
 from app.security.tenant import permission_scoped
 
@@ -188,6 +193,44 @@ def activate_sacco(sacco_id):
 @platform_owner_required
 def deactivate_sacco(sacco_id):
     return _set_status(sacco_id, SaccoStatus.SUSPENDED, "sacco.deactivate")
+
+
+@saccos_bp.get("/<int:sacco_id>/admins")
+@read_limit
+@platform_owner_required
+def list_sacco_admins(sacco_id):
+    """Who runs this SACCO, for the platform owner's own screen.
+
+    A SACCO made earlier may already have an admin, may still have none, or may
+    have an invitation nobody has accepted yet. Only the owner reads this: the
+    SACCO's own members never see the platform's view of their staff.
+    """
+    if db.session.get(Sacco, sacco_id) is None:
+        return error_response(404, "Not found.")
+    rows = db.session.execute(
+        select(SaccoMembership, User.email)
+        .outerjoin(User, User.id == SaccoMembership.user_id)
+        .where(
+            SaccoMembership.sacco_id == sacco_id,
+            SaccoMembership.role == MembershipRole.SACCO_ADMIN,
+        )
+        .order_by(SaccoMembership.id)
+    ).all()
+    admins = [
+        {
+            "id": membership.id,
+            "email": email,
+            "phone": membership.phone,
+            "status": membership.status.value,
+            "created_at": membership.created_at.isoformat(),
+        }
+        for membership, email in rows
+    ]
+    # `has_admin` counts an accepted admin only; an invitation is not an admin yet.
+    has_admin = any(
+        admin["status"] == MembershipStatus.ACTIVE.value for admin in admins
+    )
+    return jsonify(admins=admins, has_admin=has_admin)
 
 
 @saccos_bp.get("/<int:sacco_id>")

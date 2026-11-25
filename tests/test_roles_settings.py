@@ -73,6 +73,46 @@ def test_admin_gives_a_member_a_job_title(schema_app):  # noqa: F811
     assert got.json["roles"] == ["loans_officer", "member"]
 
 
+def test_an_officer_title_keeps_the_member_role_and_its_permissions(
+    schema_app,  # noqa: F811
+):
+    """The member screen sends the officer title together with `member`.
+
+    An officer title alone carries no savings.request or loan.request, so an
+    officer would lose their own savings page. Both titles stack, and `can()`
+    unions them.
+    """
+    s = Setup()
+    client = schema_app.test_client()
+    officer, mid = new_member(s)
+    perms_url = f"/api/v1/members/me/permissions?sacco_id={s.sacco.id}"
+
+    def held():
+        resp = client.get(perms_url, headers=auth(officer))
+        assert resp.status_code == 200, resp.json
+        return resp.json
+
+    only_title = client.put(
+        roles_url(s, mid), json={"roles": ["secretary"]}, headers=auth(s.admin)
+    )
+    assert only_title.status_code == 200, only_title.json
+    assert "audit.view" in held()["permissions"]
+    assert "savings.request" not in held()["permissions"]
+
+    stacked = client.put(
+        roles_url(s, mid),
+        json={"roles": ["secretary", "member"]},
+        headers=auth(s.admin),
+    )
+    assert stacked.status_code == 200, stacked.json
+    kept = held()
+    assert kept["roles"] == ["member", "secretary"]
+    assert {"savings.request", "loan.request", "loan.repay"} <= set(
+        kept["permissions"]
+    )
+    assert "audit.view" in kept["permissions"]
+
+
 @pytest.mark.parametrize(
     ("body", "status"),
     [
