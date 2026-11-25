@@ -20,14 +20,11 @@ from app.auth.routes import _body, _text
 from app.errors import error_response
 from app.extensions import db
 from app.models.audit import AuditLog
-from app.models.membership import (
-    MembershipRole,
-    MembershipStatus,
-    SaccoMembership,
-)
+from app.models.membership import MembershipStatus, SaccoMembership
 from app.models.sacco import Sacco, SaccoStatus
 from app.models.user import User
 from app.saccos import registration
+from app.security.permissions import role_codes_by_membership
 from app.security.tenant import permission_scoped
 
 MAX_NAME_LENGTH = 255
@@ -210,12 +207,12 @@ def list_sacco_admins(sacco_id):
     rows = db.session.execute(
         select(SaccoMembership, User.email)
         .outerjoin(User, User.id == SaccoMembership.user_id)
-        .where(
-            SaccoMembership.sacco_id == sacco_id,
-            SaccoMembership.role == MembershipRole.SACCO_ADMIN,
-        )
+        .where(SaccoMembership.sacco_id == sacco_id)
         .order_by(SaccoMembership.id)
     ).all()
+    # Titles decide, exactly as `can()` does; the legacy role column is the
+    # fallback inside `role_codes_by_membership` for rows that predate titles.
+    codes = role_codes_by_membership([membership for membership, _ in rows])
     admins = [
         {
             "id": membership.id,
@@ -225,6 +222,7 @@ def list_sacco_admins(sacco_id):
             "created_at": membership.created_at.isoformat(),
         }
         for membership, email in rows
+        if "sacco_admin" in codes[membership.id]
     ]
     # `has_admin` counts an accepted admin only; an invitation is not an admin yet.
     has_admin = any(
