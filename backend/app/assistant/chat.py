@@ -136,7 +136,10 @@ def generate(system: str, turns: list[dict]) -> str:
     try:
         with urllib.request.urlopen(request, timeout=config["ASSISTANT_TIMEOUT"]) as r:
             data = json.loads(r.read())
-        return data["candidates"][0]["content"]["parts"][0]["text"]
+        # One answer can arrive split over several parts; reading only the first
+        # gave a reply cut off after a few characters. Thought parts are not answers.
+        parts = data["candidates"][0]["content"]["parts"]
+        return "".join(p.get("text", "") for p in parts if not p.get("thought"))
     except urllib.error.HTTPError as exc:
         log.warning("Assistant provider answered HTTP %s", exc.code)
         raise AssistantUnavailable("quota" if exc.code == 429 else "down") from None
