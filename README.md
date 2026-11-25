@@ -187,6 +187,28 @@ git diff development frontend --name-only
 git diff development backend  --name-only
 ```
 
+### Project board
+
+Work is tracked on the [NEXORA/NEX board](https://github.com/orgs/SDF-FTH18M6-Capstones/projects/9). Status has two finished columns, so how an item finished does not decide where it goes:
+
+| Column | Means |
+|--------|-------|
+| Backlog, Ready, In progress, In review | not finished yet |
+| rejected | will not be done |
+| Frontend Done | finished, and the work sat in `frontend/` |
+| Backend Done | finished, and the work sat in `backend/`, `tests/` or `docs/` |
+| Both halves | finished, and it needed real changes on both sides |
+
+**Closing an issue or merging a pull request no longer moves its card.** The built-in "Item closed" and "Pull request merged" workflows are switched off, because each can only set one fixed column and cannot tell which half a change belongs to. Move the card by hand when the work closes.
+
+To choose a column, count changed lines per side in the pull request (additions plus deletions):
+
+- **frontend** - files under `frontend/`, except `package-lock.json`, `package.json`, `vite.config.js`, `vercel.json` and the eslint config.
+- **backend** - files under `backend/`, except test files.
+- **neither** - everything under `tests/`, plus `docs/` and root config.
+
+Use **Both halves** when each side has at least 10 lines and the smaller side is at least 15% of the larger. Otherwise the larger side owns it, and an exact tie goes to Backend. Leave tests out of the count: counting them as backend is what once made frontend-heavy pull requests look backend-only.
+
 ## Troubleshooting
 
 | Problem | Fix |
