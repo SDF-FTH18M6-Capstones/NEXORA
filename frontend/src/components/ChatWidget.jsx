@@ -75,7 +75,7 @@ function ChatPanel({ owner }) {
     <div className="fixed bottom-4 right-4 z-50 flex flex-col items-end gap-3">
       {open && (
         <section
-          className="glass flex max-h-[70vh] w-[min(22rem,calc(100vw-2rem))] flex-col gap-2 p-3"
+          className="glass chat-panel flex max-h-[70vh] w-[min(22rem,calc(100vw-2rem))] flex-col gap-2 p-3"
           role="dialog"
           aria-label="NEXORA assistant"
         >

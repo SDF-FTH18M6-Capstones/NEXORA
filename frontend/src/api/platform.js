@@ -82,7 +82,13 @@ export async function removeOwner(userId) {
   return http.del(`/admin/owners/${userId}`);
 }
 
-/* The platform owner makes the first SACCO admin: only they hold admin.manage. */
+/* Who administers this SACCO. Owner-only: the SACCO's own members cannot read it. */
+export async function listSaccoAdmins(saccoId) {
+  if (MOCK) { await mockDelay(); return { admins: [], has_admin: false }; }
+  return http.get(`/saccos/${saccoId}/admins`);
+}
+
+/* The platform owner makes a SACCO admin: only they hold admin.manage. */
 export async function inviteFirstAdmin(saccoId, phone) {
   if (MOCK) {
     await mockDelay();
@@ -101,6 +107,27 @@ export async function inviteFirstAdmin(saccoId, phone) {
     };
   }
   return http.post(`/saccos/${saccoId}/members`, { body: { phone, role: 'sacco_admin' } });
+}
+
+/* Same admin invite by email: the join code is mailed to that account, so the
+ * response never carries it. The account must exist and have verified its email. */
+export async function inviteFirstAdminByEmail(saccoId, email) {
+  if (MOCK) {
+    await mockDelay();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(email))) {
+      throw new ApiError(400, 'validation_error', 'Enter an email address.');
+    }
+    return {
+      id: 2000 + Number(saccoId),
+      email: String(email),
+      role: 'sacco_admin',
+      status: 'invited',
+      expires_at: new Date(Date.now() + 15 * 60000).toISOString(),
+    };
+  }
+  return http.post(`/saccos/${saccoId}/members`, {
+    body: { email, role: 'sacco_admin', invite: true },
+  });
 }
 
 export async function askForAccess(saccoId, { reason, scope }) {

@@ -23,10 +23,20 @@ export default function MemberProfile({ membershipId, onBack }) {
   const [busy, setBusy] = useState(false);
   const [askingOff, setAskingOff] = useState(false);
 
-  const roles = picked ?? (data ? data.roles : []);
-  const toggle = code => setPicked(
-    roles.includes(code) ? roles.filter(r => r !== code) : [...roles, code],
-  );
+  const roles = data ? data.roles : [];
+  // One person holds one job title here, so the chips act as a radio group: picking
+  // one replaces the other titles. An officer title wins over the base "member"
+  // when a membership carries both.
+  const currentRole = picked
+    ?? roles.find(code => TITLES.includes(code) && code !== 'member')
+    ?? roles.find(code => TITLES.includes(code))
+    ?? null;
+
+  // Titles stack: `can()` unions them, and an officer title alone carries no
+  // savings.request or loan.request, so an officer keeps the base member role.
+  const wantedTitles = !currentRole || currentRole === 'member'
+    ? ['member']
+    : [currentRole, 'member'];
 
   async function run(action, message) {
     setBusy(true);
@@ -88,13 +98,16 @@ export default function MemberProfile({ membershipId, onBack }) {
                     <span className="chip up">SACCO admin (only the platform owner changes this)</span>
                   )}
                   {TITLES.map(code => (
-                    <label key={code} className="chip pick">
+                    <label key={code} className={`chip pick${currentRole === code ? ' on' : ''}`}>
                       <input
-                        type="checkbox"
-                        checked={roles.includes(code)}
-                        onChange={() => toggle(code)}
+                        type="radio"
+                        name={`role-${data.id}`}
+                        value={code}
+                        checked={currentRole === code}
+                        onChange={() => setPicked(code)}
                         disabled={busy}
                       />
+                      <span className="tick" aria-hidden="true" />
                       {ROLE_LABEL[code]}
                     </label>
                   ))}
@@ -103,8 +116,8 @@ export default function MemberProfile({ membershipId, onBack }) {
                   <button
                     type="button"
                     className="btn small"
-                    disabled={busy || !picked || roles.length === 0}
-                    onClick={() => run(() => setRoles(saccoId, data.id, roles), 'Roles saved')}
+                    disabled={busy || !picked}
+                    onClick={() => run(() => setRoles(saccoId, data.id, wantedTitles), 'Roles saved')}
                   >
                     Save roles
                   </button>
