@@ -133,7 +133,7 @@ export default function PfSaccoDetail({ saccoId, onBack }) {
               <form className="neo-stack tight" onSubmit={inviteAdmin}>
                 <div className="neo-stack tight">
                   <b className="lb-s">Invite by</b>
-                  <div className="seg" role="group" aria-label="Invite by">
+                  <div className="seg seg-fit" role="group" aria-label="Invite by">
                     <button
                       type="button"
                       aria-pressed={adminChannel === 'phone'}
