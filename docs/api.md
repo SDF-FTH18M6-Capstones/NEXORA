@@ -728,6 +728,37 @@ Response **200**: Updated.
 
 Error statuses: 400, 401, 403, 404, 409, 423, 429
 
+## GET /api/v1/saccos/{sacco_id}/admins
+
+**List a SACCO's administrators**
+
+**Who:** platform owner
+
+**Rate limit:** 120 per minute.
+
+Names the admins a SACCO already has, so the owner can tell whether one exists before inviting a first admin long after the SACCO was created. An invitation nobody has accepted is listed with status `invited` and is not counted by `has_admin`.
+
+Parameters: `sacco_id` (path, integer)
+
+Response **200**: The SACCO's administrators, and whether one has accepted.
+
+```json
+{
+  "admins": [
+    {
+      "id": 1,
+      "email": "member@example.com",
+      "phone": "+254700000000",
+      "status": "active",
+      "created_at": "2026-11-18T09:00:00Z"
+    }
+  ],
+  "has_admin": true
+}
+```
+
+Error statuses: 401, 403, 404, 429
+
 ## POST /api/v1/saccos/{sacco_id}/activate
 
 **Set a SACCO active**
