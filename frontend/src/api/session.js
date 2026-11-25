@@ -176,7 +176,10 @@ async function withPlatformOwnerFlag(user) {
   if (memberships.some(item => item.status === 'active')) return user;
   try {
     const response = await askPermissions(null);
-    if (response && Array.isArray(response.permissions) && response.permissions.includes('platform')) {
+    // The reply is a permission list only for an owner; it never contains the word 'platform'
+    // (the API names permissions by what they allow: sacco.manage, admin.manage, ...), so a 200
+    // with a list is the answer, whatever the names in it are.
+    if (response && Array.isArray(response.permissions)) {
       return { ...user, is_platform_owner: true };
     }
   } catch (error) {
