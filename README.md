@@ -168,6 +168,25 @@ If your database password contains special characters (`@`, `#`, `/`, `:`), URL-
 - Shared files (for example `App.jsx`, `vite.config.js`, `app.py`) are agreed with the team before changes.
 - Tasks and blockers are tracked in GitHub Projects.
 
+### Frontend and backend submission branches
+
+The final submission is split in two so each half can be handed in on its own. `frontend` and `backend` are both cut from `development`, and each one changes only its own side:
+
+| Branch     | What it carries                                                        |
+|------------|------------------------------------------------------------------------|
+| `frontend` | `frontend/` only: the React app, its styles and the API client          |
+| `backend`  | `backend/`, `tests/` and `docs/`: the Flask API, route tests and API docs |
+
+Neither branch writes to `development` or `main`. To see exactly what one half contains:
+
+```bash
+# from the repository root
+git checkout frontend && git diff development --name-only   # frontend/ only
+git checkout backend  && git diff development --name-only   # backend/, tests/, docs/ only
+```
+
+A change that belongs to both halves is committed to each branch separately, so the two diffs never borrow each other's files.
+
 ## Troubleshooting
 
 | Problem | Fix |
