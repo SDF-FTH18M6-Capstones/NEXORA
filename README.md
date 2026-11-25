@@ -168,24 +168,24 @@ If your database password contains special characters (`@`, `#`, `/`, `:`), URL-
 - Shared files (for example `App.jsx`, `vite.config.js`, `app.py`) are agreed with the team before changes.
 - Tasks and blockers are tracked in GitHub Projects.
 
-### Frontend and backend submission branches
+### Branches
 
-The final submission is split in two so each half can be handed in on its own. `frontend` and `backend` are both cut from `development`, and each one changes only its own side:
+`main` is the release branch: it holds the whole project and is what will be used once everything is finished. `development` is the default branch and the one we integrate and test on, so it also holds everything; nothing goes into `main` until the work is finished there.
 
-| Branch     | What it carries                                                        |
-|------------|------------------------------------------------------------------------|
-| `frontend` | `frontend/` only: the React app, its styles and the API client          |
-| `backend`  | `backend/`, `tests/` and `docs/`: the Flask API, route tests and API docs |
+`frontend` and `backend` are the two hand-in copies. Each is a complete copy of the repository, configuration, docs, tests and the other half's code included, with its own half's work on top:
 
-Neither branch writes to `development` or `main`. To see exactly what one half contains:
+| Branch     | Leads with                                                                        |
+|------------|-----------------------------------------------------------------------------------|
+| `frontend` | `frontend/`: the React app, its styles and the API client                          |
+| `backend`  | `backend/`, `tests/` and `docs/`: the Flask API, its tests and the API reference   |
+
+To see what a hand-in copy adds on top of `development`:
 
 ```bash
 # from the repository root
-git checkout frontend && git diff development --name-only   # frontend/ only
-git checkout backend  && git diff development --name-only   # backend/, tests/, docs/ only
+git diff development frontend --name-only
+git diff development backend  --name-only
 ```
-
-A change that belongs to both halves is committed to each branch separately, so the two diffs never borrow each other's files.
 
 ## Troubleshooting
 
