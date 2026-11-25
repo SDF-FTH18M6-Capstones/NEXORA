@@ -571,6 +571,38 @@ components:
           format: date
           nullable: true
           description: Optional, `YYYY-MM-DD`, from 1900-01-01 up to today.
+    SaccoAdmins:
+      type: object
+      properties:
+        admins:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: integer
+              email:
+                type: string
+                nullable: true
+              phone:
+                type: string
+                nullable: true
+              status:
+                type: string
+                enum:
+                - active
+                - invited
+                - declined
+                - inactive
+              created_at:
+                type: string
+                format: date-time
+        has_admin:
+          type: boolean
+          description: True only when an admin has accepted; an unaccepted invitation does not count.
+      required:
+      - admins
+      - has_admin
     Member:
       type: object
       properties:
@@ -2016,6 +2048,53 @@ paths:
                   maxLength: 255
               required:
               - name
+  /api/v1/saccos/{sacco_id}/admins:
+    parameters:
+    - $ref: '#/components/parameters/sacco_id'
+    get:
+      summary: List a SACCO's administrators
+      description: '**Who:** platform owner
+
+
+        **Rate limit:** 120 per minute.
+
+
+        Names the admins a SACCO already has, so the owner can tell whether one exists before
+        inviting a first admin long after the SACCO was created. An invitation nobody has accepted
+        is listed with status `invited` and is not counted by `has_admin`.'
+      responses:
+        '200':
+          description: The SACCO's administrators, and whether one has accepted.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SaccoAdmins'
+        '401':
+          description: Missing, invalid or expired access token, or wrong credentials (`unauthorized`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Signed in but not the platform owner (`forbidden`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: No such SACCO (`not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '429':
+          description: Rate limit exceeded (`rate_limited`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      security:
+      - bearerAuth: []
   /api/v1/saccos/{sacco_id}/activate:
     parameters:
     - $ref: '#/components/parameters/sacco_id'
