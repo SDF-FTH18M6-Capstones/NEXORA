@@ -1,0 +1,29 @@
+version: 2
+
+updates:
+  # The frontend ships the lockfile, so npm updates arrive as reviewable PRs.
+  - package-ecosystem: npm
+    directory: /frontend
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: npm
+
+  # Runtime and CI pins for the API live in backend/requirements*.txt.
+  - package-ecosystem: pip
+    directory: /backend
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: pip
+
+  # The workflows pin actions by major tag; keep those tags current.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: ci
