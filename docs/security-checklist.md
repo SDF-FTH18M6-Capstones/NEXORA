@@ -20,7 +20,7 @@ does not replace one: see [Penetration testing](#penetration-testing).
 | Authentication | 9 | 0 | 1 |
 | Sessions and tokens | 4 | 1 | 1 |
 | Authorisation and tenancy | 6 | 1 | 0 |
-| Transport and browser hardening | 5 | 0 | 1 |
+| Transport and browser hardening | 6 | 0 | 0 |
 | Input handling and data access | 6 | 0 | 0 |
 | Rate limiting and abuse | 2 | 2 | 1 |
 | Secrets and configuration | 5 | 2 | 0 |
@@ -28,7 +28,7 @@ does not replace one: see [Penetration testing](#penetration-testing).
 | Audit and logging | 2 | 1 | 2 |
 | Dependencies and supply chain | 3 | 0 | 4 |
 | Operations | 2 | 1 | 2 |
-| **Total** | **48** | **9** | **12** |
+| **Total** | **49** | **9** | **11** |
 
 ## Authentication
 
@@ -80,7 +80,7 @@ storage recommendation above is adopted.
 | `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: no-referrer`, `Cache-Control: no-store` on every `/api/` answer | Done | `SECURITY_HEADERS` in `app/__init__.py` |
 | CORS: exact origins only, no wildcard, credentials off, `Vary: Origin` | Done | `backend/app/cors.py`; `*` refused in production |
 | Content-Security-Policy | Done | `frontend/vercel.json` sends one on every path, tuned to what the app loads: its own scripts plus the boot script by SHA-256, Google Fonts CSS and files, `data:`/`blob:` for the CSS textures and the photo preview, and the API host for photos and calls; `connect-src` names the Vercel origin and the Render API only. `SECURITY_HEADERS` in `app/__init__.py` sends `default-src 'none'` on every `/api/` answer. Tested by `tests/test_security_config.py::test_an_api_answer_loads_nothing` |
-| Security headers at the frontend edge | Missing | `frontend/vercel.json` now sends the CSP; HSTS, `nosniff` and `Referrer-Policy` for the app itself still come from Vercel defaults, not from us |
+| Security headers at the frontend edge | Done | `frontend/vercel.json` sends `Strict-Transport-Security: max-age=31536000; includeSubDomains`, `X-Content-Type-Options: nosniff` and `Referrer-Policy: no-referrer` on every path, beside the CSP, so the app no longer leans on Vercel's defaults for them. Not yet read off the deployed edge: the preview sits behind deployment protection |
 | TLS terminated by the platform | Done | `render.yaml`, `frontend/vercel.json` — Render and Vercel terminate TLS; nothing in the repo asserts it |
 
 ## Input handling and data access
