@@ -209,7 +209,9 @@ To choose a column, count changed lines per side in the pull request (additions 
 
 A changed file that reports no lines of its own, like a screenshot, counts as one line, so a pull request of nothing but screenshots is not filed as a tie.
 
-Use **Both halves** when each side has at least 10 lines and the smaller side is at least 15% of the larger. Otherwise the larger side owns it, and an exact tie goes to Backend. Leave tests out of the count: counting them as backend is what once made frontend-heavy pull requests look backend-only.
+**A side needs at least 10 lines before it can own a card.** When only one side reaches 10, that side owns it. When neither does, the card goes to Backend Done: one README line and a screenshot is not frontend work. Once both sides reach 10, use **Both halves** if the smaller side is at least 15% of the larger; otherwise the larger side owns it, and an exact tie goes to Backend.
+
+Leave tests out of the count: counting them as backend is what once made frontend-heavy pull requests look backend-only.
 
 ## Troubleshooting
 
