@@ -203,9 +203,11 @@ Work is tracked on the [NEXORA/NEX board](https://github.com/orgs/SDF-FTH18M6-Ca
 
 To choose a column, count changed lines per side in the pull request (additions plus deletions):
 
-- **frontend** - files under `frontend/`, except `package-lock.json`, `package.json`, `vite.config.js`, `vercel.json` and the eslint config.
+- **frontend** - files under `frontend/`, except `package.json`, `vite.config.js`, `vercel.json` and the eslint config. `package-lock.json` still counts: a dependency bump is frontend work.
 - **backend** - files under `backend/`, except test files.
-- **neither** - everything under `tests/`, plus `docs/` and root config.
+- **neither** - everything under `tests/`, plus `docs/` and root config. The exception is `docs/frontend/`, which counts as frontend: it holds the frontend handoff screenshots and starter stylesheets.
+
+A changed file that reports no lines of its own, like a screenshot, counts as one line, so a pull request of nothing but screenshots is not filed as a tie.
 
 Use **Both halves** when each side has at least 10 lines and the smaller side is at least 15% of the larger. Otherwise the larger side owns it, and an exact tie goes to Backend. Leave tests out of the count: counting them as backend is what once made frontend-heavy pull requests look backend-only.
 
