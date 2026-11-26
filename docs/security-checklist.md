@@ -1,7 +1,10 @@
 # Security checklist
 
 Every control below is marked **Done**, **Partial** or **Missing**, with the file that
-implements it. Reviewed on 2026-11-25 against `development` at `44cdc40`.
+implements it. Reviewed on 2026-11-25 against `development` at `44cdc40`. The two rows that were
+**Partial** for want of a test — single-use reset/verification links, and profile photo
+type and size — were re-checked on 2026-11-26 by running their tests; both pass and both
+are now **Done**.
 
 - **Done** — implemented in code, and where a test exists it is named.
 - **Partial** — implemented, with a known gap that is written down rather than hidden.
@@ -14,18 +17,18 @@ does not replace one: see [Penetration testing](#penetration-testing).
 
 | Area | Done | Partial | Missing |
 |---|---|---|---|
-| Authentication | 8 | 1 | 1 |
+| Authentication | 9 | 0 | 1 |
 | Sessions and tokens | 4 | 1 | 1 |
 | Authorisation and tenancy | 6 | 1 | 0 |
-| Transport and browser hardening | 4 | 0 | 2 |
-| Input handling and data access | 5 | 1 | 0 |
+| Transport and browser hardening | 5 | 0 | 1 |
+| Input handling and data access | 6 | 0 | 0 |
 | Rate limiting and abuse | 2 | 2 | 1 |
 | Secrets and configuration | 5 | 2 | 0 |
 | Money movement and data integrity | 4 | 1 | 0 |
 | Audit and logging | 2 | 1 | 2 |
 | Dependencies and supply chain | 3 | 0 | 4 |
 | Operations | 2 | 1 | 2 |
-| **Total** | **45** | **11** | **13** |
+| **Total** | **48** | **9** | **12** |
 
 ## Authentication
 
@@ -37,7 +40,7 @@ does not replace one: see [Penetration testing](#penetration-testing).
 | Locked account refused before the password is checked | Done | `auth/account.py:72` |
 | Emailed password reset | Done | `auth/routes.py` — `POST /forgot-password`, `POST /reset-password` |
 | Emailed address verification | Done | `auth/verification.py` |
-| Reset and verification tokens single use | Partial | Tokens are issued and expired, but single-use is not asserted by a test; a replayed link is worth confirming during the pen test |
+| Reset and verification tokens single use | Done | `auth/verification.py` — `confirm()` deletes the row it spends; `auth/account.py` — `reset_password()` spends the reset link through `revoke_all_sessions()`. Tested by `tests/test_account_recovery.py::test_a_reset_link_works_once` and `tests/test_email_verification.py::test_the_link_verifies_once` (second use answers 400) |
 | SACCO join PIN hashed with Argon2, 5 tries then 15 minutes | Done | `backend/app/auth/pin.py` |
 | Join code stored as an HMAC digest, shown once, one use, 5 attempts | Done | `auth/join.py:59,86,95` |
 | Multi-factor authentication | Missing | Not implemented |
@@ -76,8 +79,8 @@ storage recommendation above is adopted.
 | `Strict-Transport-Security: max-age=31536000; includeSubDomains` in production | Done | `app/__init__.py` (`HSTS`, applied when `APP_ENV=production`) |
 | `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: no-referrer`, `Cache-Control: no-store` on every `/api/` answer | Done | `SECURITY_HEADERS` in `app/__init__.py` |
 | CORS: exact origins only, no wildcard, credentials off, `Vary: Origin` | Done | `backend/app/cors.py`; `*` refused in production |
-| Content-Security-Policy | Missing | No CSP from the API; `frontend/vercel.json` declares no headers |
-| Security headers at the frontend edge | Missing | `frontend/vercel.json` only rewrites; HSTS/CSP for the app itself comes from Vercel defaults, not from us |
+| Content-Security-Policy | Done | `frontend/vercel.json` sends one on every path, tuned to what the app loads: its own scripts plus the boot script by SHA-256, Google Fonts CSS and files, `data:`/`blob:` for the CSS textures and the photo preview, and the API host for photos and calls; `connect-src` names the Vercel origin and the Render API only. `SECURITY_HEADERS` in `app/__init__.py` sends `default-src 'none'` on every `/api/` answer. Tested by `tests/test_security_config.py::test_an_api_answer_loads_nothing` |
+| Security headers at the frontend edge | Missing | `frontend/vercel.json` now sends the CSP; HSTS, `nosniff` and `Referrer-Policy` for the app itself still come from Vercel defaults, not from us |
 | TLS terminated by the platform | Done | `render.yaml`, `frontend/vercel.json` — Render and Vercel terminate TLS; nothing in the repo asserts it |
 
 ## Input handling and data access
@@ -88,7 +91,7 @@ storage recommendation above is adopted.
 | Request bodies capped at 16 KB | Done | `MAX_CONTENT_LENGTH` in `backend/config.py` |
 | Assistant input capped per message and per turn, plus a daily cap | Done | `assistant/routes.py` — `MAX_MESSAGE`, `MAX_TURN`, `_daily_cap` |
 | One error envelope, no stack traces or SQL leaked | Done | `backend/app/errors.py`, `tests/test_security_config.py` |
-| Uploaded profile photos validated for type and size | Partial | Upload goes through the profile route; the checks are worth re-confirming against a crafted file |
+| Uploaded profile photos validated for type and size | Done | `members/routes.py` — `put_me_photo` reads at most 1.5 MB + 1 byte (413 above it, 400 when empty) and identifies the type from magic bytes, not the filename or the client's `Content-Type`; JPEG, PNG and WebP only. Tested by `tests/test_me.py::test_profile_photo_rejects_invalid_and_oversized_images` (an SVG body and a 1.5 MB file are both refused) |
 | Output encoded before it reaches the DOM | Done | React escapes by default; no `dangerouslySetInnerHTML` in the app |
 
 ## Rate limiting and abuse
@@ -157,9 +160,10 @@ storage recommendation above is adopted.
 
 ## Penetration testing
 
-Status: **Missing**. The two panels that would make a test useful are also open — there
-is no CSP, and bearer tokens sit in `localStorage` — so an XSS finding would be real
-but already known. Fix those two first, or accept them as accepted risk in the report.
+Status: **Missing**. The panel that would make a test most useful is still open: bearer
+tokens sit in `localStorage`, so any XSS is a credential theft. The CSP now narrows what
+an injected script could run or load, but it does not undo that. Fix the token storage
+first, or accept it as accepted risk in the report.
 
 ### What a test needs to be worth running
 
@@ -213,7 +217,6 @@ upload handling, then configuration and headers.
 
 **7. What to fix first, so the test is not spent on known issues**
 
-- add a Content-Security-Policy, at least at the frontend edge
 - decide the token storage question (httpOnly cookie or in-memory)
 - add dependency scanning, so the report does not simply restate known CVEs
 - add per-account login throttling
