@@ -8,9 +8,10 @@ The rule (README, "Project board"): count a PR's added+deleted lines per side.
   backend/   everything there except tests
   neither    tests/, docs/, and root configuration
 
-A card goes to Both halves when each side has at least 10 lines and the smaller side
-is at least 15% of the larger. Otherwise it goes to the larger side, and a tie (or a
-card with no code under either side: docs, config, tests) goes to Backend Done.
+A side needs 10 lines before it can own a card, so a PR under 10 lines on both sides
+is Backend Done, and a side under 10 cannot claim the card on its own. With both sides
+at 10 or more, the card goes to Both halves when the smaller side is at least 15% of
+the larger, otherwise to the larger side, and a tie goes to Backend Done.
 
 Two edge cases settle how the rule reads, and the README states them the same way:
   * frontend/package-lock.json counts as frontend. It is a frontend dependency change;
@@ -112,11 +113,18 @@ def classify(files: list[dict]) -> tuple[str, int, int]:
     larger = max(frontend, backend)
     share = smaller / larger if larger else 0.0
 
-    if frontend >= MIN_LINES and backend >= MIN_LINES and share >= MIN_SHARE:
-        return "Both halves", frontend, backend
-    if frontend > backend:
-        return "Frontend Done", frontend, backend
-    return "Backend Done", frontend, backend  # backend ahead, or a tie
+    frontend_can_own = frontend >= MIN_LINES
+    backend_can_own = backend >= MIN_LINES
+    if not frontend_can_own and not backend_can_own:
+        # Neither side is real work: docs, config, tests, a stray stylesheet line.
+        return "Backend Done", frontend, backend
+    if frontend_can_own and backend_can_own:
+        if share >= MIN_SHARE:
+            return "Both halves", frontend, backend
+        owner = "Frontend Done" if frontend > backend else "Backend Done"
+        return owner, frontend, backend
+    owner = "Frontend Done" if frontend_can_own else "Backend Done"
+    return owner, frontend, backend
 
 
 def load_cache(path: Path) -> dict:

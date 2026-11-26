@@ -111,6 +111,15 @@ def test_an_error_response_keeps_the_headers(client):
     assert resp.headers["Cache-Control"] == "no-store"
 
 
+def test_an_api_answer_loads_nothing(client):
+    """A browser that lands on an API URL has no page to run: CSP allows no source."""
+    for resp in (client.get("/api/health"), client.get(f"{URL}/1")):
+        policy = resp.headers["Content-Security-Policy"]
+        assert policy.startswith("default-src 'none'")
+        assert "frame-ancestors 'none'" in policy
+        assert "'unsafe-inline'" not in policy
+
+
 def test_hsts_is_sent_in_production_only():
     prod = create_app(production_app()).test_client().get("/api/health")
     assert prod.headers["Strict-Transport-Security"] == HSTS

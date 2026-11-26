@@ -59,6 +59,13 @@ SECURITY_HEADERS = (
     ("X-Frame-Options", "DENY"),
     ("Referrer-Policy", "no-referrer"),
     ("Cache-Control", "no-store"),
+    # The API answers JSON and nothing else, so it must not be able to load anything:
+    # a browser that lands on an API URL directly has no page to run.
+    (
+        "Content-Security-Policy",
+        "default-src 'none'; frame-ancestors 'none'; "
+        "base-uri 'none'; form-action 'none'",
+    ),
 )
 
 
@@ -345,7 +352,10 @@ def _check_production_settings(app):
 
 
 def _install_security_headers(app):
-    """Every /api/ response is uncacheable and un-frameable; HSTS in production."""
+    """Every /api/ response is uncacheable, un-frameable and loads nothing.
+
+    HSTS is added in production only.
+    """
 
     @app.after_request
     def set_security_headers(response):
