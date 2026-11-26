@@ -12,14 +12,11 @@ A card goes to Both halves when each side has at least 10 lines and the smaller 
 is at least 15% of the larger. Otherwise it goes to the larger side, and a tie (or a
 card with no code under either side: docs, config, tests) goes to Backend Done.
 
-Three edge cases settle the way the board already is, and are spelled out here because
-the rule on its own would misfile them:
+Two edge cases settle how the rule reads, and the README states them the same way:
   * frontend/package-lock.json counts as frontend. It is a frontend dependency change;
     the file is only excluded above for balance, not because it is not frontend work.
   * docs/frontend/** counts as frontend, at one line per file even when the file is a
     binary that reports no lines (the screenshots).
-  * a side needs 10 lines to claim a card. A README PR that carries one CSS line is a
-    docs PR, not frontend work.
 
 Only PR cards already sitting in one of the three half columns are moved: that is the
 sorting this script exists to do. A card in Backlog, In progress or rejected holds a
