@@ -117,6 +117,7 @@ describe('a session rebuilt after a reload', () => {
     const session = await restoreSession();
 
     expect(session.role).toBe('member');
-    expect(get.mock.calls.some(([path]) => path === '/members/me/permissions')).toBe(true);
+    // One call, for the landing SACCO's permissions. A second would be the owner probe.
+    expect(permissionCalls()).toBe(1);
   });
 });
