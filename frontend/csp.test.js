@@ -17,11 +17,13 @@ const here = new URL('.', import.meta.url);
 const html = readFileSync(new URL('index.html', here), 'utf8');
 const vercel = JSON.parse(readFileSync(new URL('vercel.json', here), 'utf8'));
 
-const headerNamed = headers =>
-  headers.find(header => header.key.toLowerCase() === 'content-security-policy');
-
-const policyHeaders = vercel.headers.map(rule => headerNamed(rule.headers)).filter(Boolean);
-const policy = policyHeaders[0] ? policyHeaders[0].value : '';
+/* No policy at all is a missing CSP, so it has to be reported as one: reading `vercel.headers`
+ * straight through would throw a TypeError while this file loads, which says nothing useful. */
+const rules = Array.isArray(vercel.headers) ? vercel.headers : [];
+const policyHeaders = rules
+  .flatMap(rule => (Array.isArray(rule.headers) ? rule.headers : []))
+  .filter(header => String(header.key || '').toLowerCase() === 'content-security-policy');
+const policy = policyHeaders.length ? String(policyHeaders[0].value || '') : '';
 
 const directive = name =>
   policy
@@ -37,11 +39,13 @@ const inlineScripts = [...html.matchAll(/<script(?![^>]*\ssrc=)[^>]*>([\s\S]*?)<
   match => match[1].replace(/\r\n/g, '\n'),
 );
 
+const NO_POLICY = 'vercel.json declares no Content-Security-Policy header';
+
 describe('the policy in vercel.json', () => {
   it('is sent, on every path, with a script-src', () => {
-    expect(policyHeaders).toHaveLength(1);
-    expect(policy).toContain("default-src 'self'");
-    expect(directive('script-src')).not.toBe('');
+    expect(policyHeaders, NO_POLICY).toHaveLength(1);
+    expect(policy, "the policy has no default-src 'self'").toContain("default-src 'self'");
+    expect(directive('script-src'), 'the policy has no script-src directive').not.toBe('');
   });
 
   it('finds exactly one inline script to pin: the theme boot', () => {
@@ -50,11 +54,15 @@ describe('the policy in vercel.json', () => {
   });
 
   it('pins that script by the hash index.html currently produces', () => {
+    const scriptSrc = directive('script-src');
+    expect(scriptSrc, 'the policy has no script-src directive to pin a hash in').not.toBe('');
     const digest = createHash('sha256').update(inlineScripts[0]).digest('base64');
-    expect(hashes(directive('script-src'))).toContain(`sha256-${digest}`);
+    expect(hashes(scriptSrc), `script-src should pin sha256-${digest}`).toContain(
+      `sha256-${digest}`,
+    );
   });
 
   it('does not carry a second, stale hash in script-src', () => {
-    expect(hashes(directive('script-src'))).toHaveLength(1);
+    expect(hashes(directive('script-src')), NO_POLICY).toHaveLength(1);
   });
 });
