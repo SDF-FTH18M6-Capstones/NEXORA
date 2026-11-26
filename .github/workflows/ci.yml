@@ -50,6 +50,12 @@ jobs:
       - name: Install dependencies
         run: pip install -r backend/requirements.txt
 
+      # Fails on a known vulnerable pin in what production installs.
+      - name: Audit dependencies
+        run: |
+          pip install pip-audit
+          pip-audit -r backend/requirements-prod.txt
+
       # The schema tests create nexora_schema_test themselves; the postgres
       # superuser created by the service above is allowed to do that.
       # Fails when total coverage is below fail_under in pyproject.toml.
@@ -79,6 +85,10 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+
+      # Fails on a high or critical advisory in the installed tree.
+      - name: Audit dependencies
+        run: npm audit --audit-level=high
 
       - name: Lint
         run: npm run lint

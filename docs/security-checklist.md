@@ -28,7 +28,7 @@ does not replace one: see [Penetration testing](#penetration-testing).
 | Audit and logging | 2 | 1 | 2 |
 | Dependencies and supply chain | 3 | 0 | 4 |
 | Operations | 2 | 1 | 2 |
-| **Total** | **49** | **9** | **11** |
+| **Total** | **53** | **9** | **7** |
 
 ## Authentication
 
@@ -143,10 +143,10 @@ storage recommendation above is adopted.
 | Python dependencies pinned by version | Done | `backend/requirements.txt`, `requirements-prod.txt` |
 | Frontend dependencies locked | Done | `frontend/package-lock.json`, `npm ci` in CI |
 | CI runs the tests with a coverage floor and Ruff | Done | `.github/workflows/ci.yml` (`fail_under = 94` in `pyproject.toml`) |
-| Vulnerability scanning of Python dependencies | Missing | No `pip-audit`, no OSV scan |
-| Vulnerability scanning of npm dependencies | Missing | No `npm audit` in CI |
-| Dependabot or similar version updates | Missing | No `.github/dependabot.yml` |
-| Static analysis / secret scanning (CodeQL, gitleaks) | Missing | Not configured |
+| Vulnerability scanning of Python dependencies | Done | `pip-audit -r backend/requirements-prod.txt` runs in the CI `Tests and lint` job and fails on a known advisory; clean at the time of writing |
+| Vulnerability scanning of npm dependencies | Done | `npm audit --audit-level=high` runs in the frontend CI job and fails on a high or critical advisory; clean at the time of writing |
+| Dependabot or similar version updates | Done | `.github/dependabot.yml` opens weekly PRs for npm (`frontend/`), pip (`backend/`) and pinned Actions |
+| Static analysis / secret scanning (CodeQL, gitleaks) | Done | `.github/workflows/codeql.yml` analyses Python and JavaScript; `.github/workflows/secrets.yml` runs TruffleHog with `--only-verified`, so it fails on a live credential rather than a lookalike |
 
 ## Operations
 
